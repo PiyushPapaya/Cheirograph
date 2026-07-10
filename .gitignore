@@ -1,0 +1,66 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+*.pio
+
+# Arduino IDE
+build/
+*.hex
+*.elf
+*.bin
+*.map
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Large ML / data artefacts
+ml/*.zip
+ml/*.tflite
+ml/*.h
+data/*.csv
+data/*.json
+data/**/*.npy
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Node (if any tooling lands here)
+node_modules/
+
+# Secrets / env
+.env
+*.key
+secrets.json
+
+# Claude Code local config (personal, not project state)
+.claude/settings.local.json
