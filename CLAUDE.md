@@ -146,3 +146,4 @@ recorded in DECISIONS.md. **Understanding stays with the human.**
   layer ahead before the previous one is proven (sensors → mux → raw → filter → relative
   → glove → ML).
 - Don't over-engineer. This is a solo learning build, not production.
+
