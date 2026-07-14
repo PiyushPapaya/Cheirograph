@@ -34,6 +34,38 @@ Rules:
 
 ---
 
+### 2026-07-14 | Phase 1 — First light: MCU + onboard IMU alive
+
+**Plan:** Electrically verify the Seeed XIAO nRF52840 Sense for the first time — get it
+flashing, then read its onboard 6-DOF IMU. This is the first gate: is the board even alive?
+
+**Achieved:**
+- **Got the board flashing.** It initially would *not* connect / show up as a
+  programmable port. Fix: **double-tap the RESET button** to force the nRF52840 into UF2
+  bootloader mode — after that the port enumerated and uploads worked. Set up the Arduino
+  IDE with the Seeed board package URL and installed the `seeed nrf52` boards.
+- **LED sanity test passing** → new milestone folder `firmware/00_led_sanity_test/`
+  (`.ino`). Cycles the onboard RGB user-LED red → green → blue, 500 ms each. Confirmed the
+  full toolchain + USB + bootloader + MCU are good. Noted the LED is **active-LOW**
+  (`LOW` = on).
+- **Onboard IMU reading** → filled in `firmware/01_xiao_imu_test/main.cpp` with real code
+  using the [Seeed_Arduino_LSM6DS3](https://github.com/Seeed-Studio/Seeed_Arduino_LSM6DS3)
+  library. Streams `aX,aY,aZ,gX,gY,gZ` CSV at 115200 baud. Key detail: the onboard
+  LSM6DS3TR-C answers at I²C **`0x6A`** (not `0x68`, which is the finger MPU-6050s).
+- **Reference doc** → captured the full XIAO spec sheet, pin map, both pinout images
+  (front/back), and the "which of the two Seeed libraries to install" note in
+  `hardware/datasheets/XIAO_nRF52840_Sense.md`.
+
+**Problems & blockers:** The board-not-connecting scare at the start (resolved by the
+double-tap-RESET trick — worth remembering, it'll happen again). No IMU issues once the
+right address (`0x6A`) and library were in place.
+
+**Next:** Move to `firmware/02_single_mpu6050_test/` — wire up one external MPU-6050
+(GY-521) on the D4/D5 I²C bus and confirm a single finger sensor reads at `0x68`, before
+introducing the PCA9548A mux.
+
+---
+
 ### 2026-07-10 | Phase 0 — GitHub repo scaffold
 
 **Plan:** Create a well-structured, rigid GitHub repository where I can properly document progress, test firmware milestone by milestone, and share the build publicly as a portfolio piece.
