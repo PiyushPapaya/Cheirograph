@@ -8,11 +8,10 @@ One entry per completed phase. Written after the phase is done, not before. Incl
 
 ## Entry index
 
-*(Entries will appear here as phases complete.)*
-
-- Phase 1 — coming soon
-- Phase 2 — coming soon
-- …
+- [Phase 0 — Deciding what to build, then building the skeleton](phase-00.md)
+- [Phase 1 — First light](phase-01.md)
+- [Phase 2 — The first finger sensor, and the chip that lied about who it was](phase-02.md)
+- Phase 3 — coming soon (PCA9548A mux)
 
 ---
 
