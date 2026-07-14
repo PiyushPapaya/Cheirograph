@@ -92,6 +92,7 @@ Cheirograph/
 │   └── datasheets/            — board references, pinouts, spec sheets
 │
 └── docs/
+    ├── REFERENCES.md          — external sources, datasheets, libraries used
     ├── log/                   — narrative devlog, one entry per phase
     └── media/                 — photos, GIFs, serial traces
 ```
