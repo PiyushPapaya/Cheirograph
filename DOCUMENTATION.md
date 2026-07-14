@@ -83,9 +83,17 @@ board-package version still a placeholder, and still no breadboard photo — tha
 media slip from Phase 1 is open. Left the bench-only `while(!Serial)` in the
 milestone sketch on purpose, flagged in a comment.
 
-**Next:** Phase 3 — bring in the PCA9548A mux. Address `0x70`, select a channel,
-then reach the same `0x68` sensor *through* it. Run the WIRING.md pre-flight
-checks (master-side pull-ups, 400 kHz) before I commit to any glove wiring.
+**Next:** the road from here is a straight line —
+1. **Set up the bus** (Phase 3): bring in the PCA9548A mux at `0x70`, select a
+   channel, and reach the same `0x68` clone *through* it. Run the WIRING.md
+   pre-flight checks (master-side pull-ups, 400 kHz) first.
+2. **Read everyone at once** (Phase 4): loop over all five finger sensors behind
+   the mux *plus* the XIAO's onboard IMU (the hand reference), and stream all six
+   at a steady 100 Hz. Scan each finger module as it goes on — they're probably
+   all the same `0x72` clone.
+3. **Put it on the glove** (Phase 7): once the six-sensor read is solid on the
+   bench, mount everything onto the left glove, strain-relieve every knuckle run,
+   and re-verify — bench-solid is not glove-solid until the wires have taken a bend.
 
 ---
 
