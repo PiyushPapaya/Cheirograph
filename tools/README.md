@@ -5,6 +5,20 @@ None are implemented yet — this README documents what will land here.
 
 ---
 
+## Implemented
+
+### `plot_imu_3d.py`  *(Phase 2)*
+3D visualiser for a single-sensor raw capture. Reads a 3-column `x,y,z` CSV
+(skips `#` comments and a header row), draws the samples as a time-coloured path
+through 3D space, and either opens a window or saves a PNG.
+- Dependency: `numpy`, `matplotlib`.
+- Used to plot the Phase 2 accel/gyro bench captures → `docs/media/phase2_*_3d.png`.
+```bash
+python plot_imu_3d.py ../data/phase2_single_mpu6050/gyro_raw.csv --kind gyro
+```
+
+---
+
 ## Planned scripts
 
 ### `plot_raw.py`
@@ -55,4 +69,5 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` will be committed alongside the first script.
+`requirements.txt` is committed and pinned (Phase 2). Update it in the same commit
+as any script that adds a dependency.

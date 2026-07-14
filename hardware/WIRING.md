@@ -37,8 +37,23 @@ Keep it in sync with the firmware. If you change a wire, update this file in the
 
 ## Wiring diagram
 
-> Schematic / photo to be added here once the first physical layout is confirmed.
-> Placeholder: `docs/media/wiring_v1.jpg` — coming soon.
+Full-glove schematic / photo to be added once the first physical layout is confirmed.
+Placeholder: `docs/media/wiring_v1.jpg` — coming soon.
+
+**Phase 2 — single sensor, direct (no mux), verified 2026-07-14:**
+
+```
+        MPU-6050 (GY-521)                 XIAO nRF52840 Sense
+        VCC ──────────────────────────────► 3V3
+        GND ──────────────────────────────► GND
+        SDA ──────────────────────────────► D4 / SDA
+        SCL ──────────────────────────────► D5 / SCL
+        AD0 ──► GND   (sets I²C addr 0x68)
+        INT ──► (not connected)
+```
+
+This is the same D4/D5 external bus the PCA9548A will occupy in Phase 3; the mux
+inserts between this sensor and the XIAO without changing the XIAO-side pins.
 
 ---
 
@@ -72,4 +87,4 @@ Keep it in sync with the firmware. If you change a wire, update this file in the
 
 | Date | Change | Changed by |
 |---|---|---|
-| *(first entry goes here)* | | |
+| 2026-07-14 | Added Phase 2 single-sensor direct-connect diagram (MPU-6050 → D4/D5, AD0→GND = 0x68). Verified on the bench. | Piyush |

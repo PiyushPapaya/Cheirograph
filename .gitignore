@@ -11,6 +11,10 @@ build/
 *.bin
 *.map
 
+# Third-party Arduino libraries (installed via Library Manager, not project source).
+# Versions are pinned per-milestone in each folder's README instead.
+libraries/
+
 # Python
 __pycache__/
 *.py[cod]
