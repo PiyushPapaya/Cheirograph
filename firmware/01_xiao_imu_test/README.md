@@ -25,6 +25,11 @@
   `0x68` is what the external MPU-6050 finger sensors use. Easy to mix up.
 - **`begin()` returns 0 on success.** Non-zero means the chip never ACKed on the bus —
   check wiring/board package before blaming code.
+- **Output follows the project serial contract:** `millis,sensor_id,aX,aY,aZ,gX,gY,gZ`,
+  with `sensor_id = 0` (hand). The timestamp gives fusion a real `dt` later and lets the
+  loop rate be verified from logs instead of assumed.
+- **Versions used** (until PlatformIO pinning lands): Seeed nRF52 board package
+  `<fill in from Boards Manager>`, Seeed_Arduino_LSM6DS3 `<fill in from Library Manager>`.
 - **This first version runs at ~20 Hz** (`delay(50)`), which is plenty for eyeballing that
   the values move sensibly when you tilt the board. The ≥ 100 Hz target above belongs to the
   final fused read loop, not this raw sanity read — don't over-optimise the test.

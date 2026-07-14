@@ -72,6 +72,7 @@ Cheirograph/
 ├── LICENSE
 │
 ├── firmware/                  — numbered milestone folders (never overwritten)
+│   ├── 00_led_sanity_test/    — Phase 0: first flash, onboard RGB LED blink
 │   ├── 01_xiao_imu_test/      — Phase 1: XIAO onboard IMU over serial
 │   ├── 02_single_mpu6050_test/— Phase 2: single MPU-6050, direct I²C
 │   ├── 03_mux_channel_test/   — Phase 3: PCA9548A mux bring-up
@@ -87,7 +88,8 @@ Cheirograph/
 │
 ├── hardware/
 │   ├── BOM.md                 — bill of materials
-│   └── WIRING.md              — authoritative sensor ↔ mux-channel ↔ finger map
+│   ├── WIRING.md              — authoritative sensor ↔ mux-channel ↔ finger map
+│   └── datasheets/            — board references, pinouts, spec sheets
 │
 └── docs/
     ├── log/                   — narrative devlog, one entry per phase
@@ -98,7 +100,7 @@ Cheirograph/
 
 ## Tech and skills exercised
 
-This project involved:
+Skills this project exercises, layer by layer (see [`GENERAL_PLAN.md`](GENERAL_PLAN.md) for which phases are actually complete):
 
 - **Embedded C/C++** — Arduino framework on PlatformIO; real-time sensor read/fuse loop at 100 Hz.
 - **I²C bus multiplexing** — PCA9548A channel switching; address collision resolution.
@@ -119,16 +121,24 @@ The project is structured as eleven incremental, proven-before-advancing phases.
 
 > *This section will be expanded as phases land.*
 
-**Toolchain:**
-- [PlatformIO](https://platformio.org/) (recommended) — version-pinned via `platformio.ini` in each firmware folder.
-- Python 3 — dependencies pinned in `tools/requirements.txt`.
+**Toolchain (current — Arduino IDE):**
+1. Arduino IDE with the Seeed board package — add
+   `https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json`
+   under **File → Preferences → Additional Boards Manager URLs**, then install
+   **Seeed nRF52 Boards** via Boards Manager.
+2. **Tools → Board →** *Seeed XIAO nRF52840 Sense*; select its COM port
+   (double-tap **RESET** if the port doesn't appear).
+3. Open the `.ino` in any `firmware/NN_*/` milestone folder and **Upload**.
+4. Serial Monitor at **115200 baud**.
 
-**Flash a milestone:**
-```bash
-cd firmware/01_xiao_imu_test
-pio run --target upload
-pio device monitor --baud 115200
-```
+Full board reference, pinout, and library notes:
+[`hardware/datasheets/XIAO_nRF52840_Sense.md`](hardware/datasheets/XIAO_nRF52840_Sense.md).
+
+> A PlatformIO migration (for `platformio.ini` version pinning) is planned once the
+> milestone folders stabilise — see `DECISIONS.md`. Until then, the board-package and
+> library versions in use are recorded in each milestone README.
+
+- Python 3 for `tools/` — dependencies pinned in `tools/requirements.txt` (lands with the first script).
 
 ---
 
