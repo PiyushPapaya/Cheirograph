@@ -11,8 +11,10 @@
 // I2C address: the onboard IMU answers at 0x6A (NOT 0x68). 0x68 is the address
 // the external MPU-6050 finger sensors use — don't confuse the two.
 //
-// Line format (matches the project serial contract, raw variant):
-//   aX,aY,aZ,gX,gY,gZ    accel in g, gyro in deg/s
+// Line format (project serial contract, raw variant — see tools/README.md):
+//   millis,sensor_id,aX,aY,aZ,gX,gY,gZ    accel in g, gyro in deg/s
+// sensor_id 0 = hand (onboard XIAO). The timestamp matters later: Madgwick
+// needs a real dt, and loop-rate claims can only be verified from logs.
 
 #include <Wire.h>
 #include "LSM6DS3.h"
@@ -22,7 +24,9 @@ LSM6DS3 myIMU(I2C_MODE, 0x6A);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial);  // wait for the USB serial monitor to attach
+  // Wait for the USB serial monitor to attach. BENCH-TEST ONLY: on battery with
+  // no USB host this blocks forever — never copy this line into glove firmware.
+  while (!Serial);
 
   // begin() returns 0 on success. Non-zero => the chip didn't answer on I2C.
   if (myIMU.begin() != 0) {
@@ -31,7 +35,7 @@ void setup() {
   }
 
   Serial.println("IMU initialized");
-  Serial.println("aX,aY,aZ,gX,gY,gZ");  // CSV header for the plotter/parser
+  Serial.println("millis,sensor_id,aX,aY,aZ,gX,gY,gZ");  // CSV header for the plotter/parser
 }
 
 void loop() {
@@ -45,6 +49,8 @@ void loop() {
   float gY = myIMU.readFloatGyroY();
   float gZ = myIMU.readFloatGyroZ();
 
+  Serial.print(millis());   // timestamp — real dt for later fusion + rate checks
+  Serial.print(",0,");      // sensor_id 0 = hand (onboard XIAO)
   Serial.print(aX, 3);
   Serial.print(",");
   Serial.print(aY, 3);

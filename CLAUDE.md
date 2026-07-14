@@ -104,8 +104,10 @@ lives in `tools/`.
 
 ## Coding conventions
 
-- Firmware: **Arduino framework, PlatformIO preferred** for reproducibility (Arduino IDE
-  acceptable). One sketch per milestone folder.
+- Firmware: **Arduino framework.** Currently built with the **Arduino IDE** (`.ino`
+  sketches); PlatformIO migration deferred until milestones stabilise — see DECISIONS.md
+  (2026-07-14). Until then, record board-package + library versions in each milestone
+  README. One sketch per milestone folder.
 - Python 3, `pyserial` + `matplotlib` for visualization. Small, runnable scripts.
 - Comment the non-obvious math — quaternion ops, fusion, channel switching. Clarity over
   cleverness.
@@ -126,7 +128,18 @@ recorded in DECISIONS.md. **Understanding stays with the human.**
 
 ## Quick gotchas (hard-won; check these first)
 
+- **Board won't show a COM port / won't flash** → double-tap the RESET button to force
+  UF2 bootloader mode, then re-select the port. (Bit us on day one.)
 - **Drift** → almost always gyro bias, not the filter. Recalibrate before rewriting fusion.
+- **Relative *yaw* drifts even with perfect calibration** → expected physics, not a bug.
+  6-DOF sensors have no yaw reference; gravity anchors only pitch/roll. Classify on
+  gravity-referenced features and use the re-zero pose — see DECISIONS.md (2026-07-14).
+- **100 Hz loop can't keep up with 6 sensors** → check the I²C clock first. At the default
+  100 kHz, five muxed MPU-6050 reads ≈ ~10 ms of bus time alone; set 400 kHz
+  (`Wire.setClock(400000)`) and re-verify once wiring moves onto the glove.
+- **Firmware hangs on battery but works on USB** → a leftover `while (!Serial);` from a
+  bench sketch. Fine for bench tests; must not be copy-pasted into glove firmware.
+- **Onboard IMU won't init** → the LSM6DS3 is at I²C **0x6A**, not 0x68 (that's the MPU-6050s).
 - **A finger's angle changes when you rotate your whole hand** → you're reading absolute,
   not relative orientation. Apply `conjugate(q_hand) ⊗ q_finger`.
 - **I²C reads garbage / hangs** → check pull-ups, the active mux channel, and that you

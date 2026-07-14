@@ -19,6 +19,26 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-14 | Arduino IDE now vs. PlatformIO from day one
+
+**Alternatives:** Start on PlatformIO immediately (version pinning, `platformio.ini` per milestone) vs. start on the Arduino IDE and migrate later.
+
+**Choice:** Arduino IDE for the bring-up phases; PlatformIO migration deferred until the milestone folders stabilise.
+
+**Rationale:** The Seeed tutorials, board package, and LSM6DS3 library all target the Arduino IDE, which made first-flash friction minimal on day one — the priority was proving the hardware alive, not toolchain purity. The trade-off is weaker reproducibility for now; mitigated by recording the exact board-package and library versions in each milestone README until `platformio.ini` takes over that job.
+
+---
+
+### 2026-07-14 | Accept 6-DOF yaw drift; classify on gravity-referenced features + re-zero pose
+
+**Alternatives:** (a) 9-DOF IMUs with magnetometers for absolute yaw, (b) accept 6-DOF and feed raw `q_rel` to the classifier hoping drift is slow, (c) accept 6-DOF but design features around the drift.
+
+**Choice:** (c) — keep the 6-DOF sensors, but treat the yaw component of `q_rel` as untrusted: favour gravity-referenced features (relative pitch/roll), and plan a "flat hand" re-zero pose that snapshots and subtracts accumulated yaw offsets.
+
+**Rationale:** Without a magnetometer, Madgwick has no absolute yaw reference, so each of the six filters drifts in yaw independently and the yaw of `q_rel` drifts without bound — this is physics, not a tuning problem. Finger *curl* (the dominant fingerspelling signal) is pitch relative to the hand, which gravity anchors and which does not drift; only abduction-like letter pairs (e.g. U vs. V) lean on yaw, and the re-zero pose covers those. Magnetometers were rejected because they behave badly centimetres from current-carrying glove wiring and would mean new sensors, new drivers, and a new BOM for marginal gain.
+
+---
+
 ### Pre-build | PCA9548A mux vs. two I²C addresses (0x68 / 0x69)
 
 **Alternatives:** Use the MPU-6050's AD0 pin to select between address 0x68 and 0x69 (gives two sensors per bus) vs. a PCA9548A 8-channel multiplexer.

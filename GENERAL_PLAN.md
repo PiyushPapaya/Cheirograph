@@ -47,8 +47,11 @@ Never re-scope this toward "translate ASL" — it would require location, motion
 > Rename, renumber, split, merge, or insert folders as your real progress dictates.
 > The fixed principle is: each meaningful milestone gets its own self-contained folder that is never overwritten.
 
-- [ ] **Phase 1 — XIAO onboard IMU over serial** (`firmware/01_xiao_imu_test/`)
-  Read the onboard LSM6DS3 via internal I²C; stream raw accel + gyro to serial at 115 200 baud. Deliverable: clean serial trace with six values per line.
+- [x] **Phase 0 — First flash / LED sanity test** (`firmware/00_led_sanity_test/`) ✅ 2026-07-14
+  Prove the XIAO powers on, enumerates, and runs code. Deliverable: onboard RGB LED cycling red→green→blue.
+
+- [x] **Phase 1 — XIAO onboard IMU over serial** (`firmware/01_xiao_imu_test/`) ✅ 2026-07-14
+  Read the onboard LSM6DS3 via internal I²C; stream raw accel + gyro to serial at 115 200 baud. Deliverable: clean serial trace in contract format (`millis,sensor_id,ax..gz`).
 
 - [ ] **Phase 2 — Single MPU-6050, direct I²C** (`firmware/02_single_mpu6050_test/`)
   Wire one MPU-6050 directly (no mux); read and stream raw data. Deliverable: second sensor confirmed working in isolation.
@@ -57,13 +60,13 @@ Never re-scope this toward "translate ASL" — it would require location, motion
   Bring up the mux; address two sensors, then all five. Deliverable: all five MPU-6050s readable by channel-switching the mux.
 
 - [ ] **Phase 4 — All 6 IMUs raw at 100 Hz** (`firmware/04_all_imus_raw/`)
-  Stream all six IMUs (5 MPU-6050 + onboard) at the target loop rate. Add `tools/plot_raw.py` raw serial plotter. Deliverable: stable 100 Hz read loop, no missed samples.
+  Stream all six IMUs (5 MPU-6050 + onboard) at the target loop rate. Requires I²C at **400 kHz** (at the default 100 kHz, five muxed reads ≈ ~10 ms of bus time — the whole budget) and a `millis()`-based fixed-rate scheduler, not `delay()`. Add `tools/plot_raw.py` raw serial plotter. Deliverable: **measured** (from timestamps, not assumed) stable 100 Hz read loop, no missed samples.
 
 - [ ] **Phase 5 — Madgwick fusion per IMU** (`firmware/05_madgwick_fusion/`)
-  Run Madgwick filter on each IMU; output quaternions. Deliverable: orientation holds under slow rotation without obvious drift.
+  Per-sensor gyro-bias calibration at startup (log the measured bias values per sensor), then Madgwick on each IMU. Deliverable: orientation holds under slow rotation; **measured drift in °/min before vs. after calibration** recorded in DOCUMENTATION.md.
 
 - [ ] **Phase 6 — Relative orientation + skeleton viz** (`firmware/06_relative_orientation/`)
-  Compute `q_rel = conj(q_hand) ⊗ q_finger` for each finger; add `tools/skeleton_viz.py` 3D hand visualiser. Deliverable: virtual fingers move correctly; wrist rotation has no effect on relative angles.
+  Compute `q_rel = conj(q_hand) ⊗ q_finger` for each finger; add `tools/skeleton_viz.py` 3D hand visualiser. Design the "flat hand" re-zero pose here (see DECISIONS.md 2026-07-14 on yaw drift). Deliverable: virtual fingers move correctly; wrist rotation has no effect on relative angles — **and this still holds after 5+ minutes of continuous wear** (pitch/roll must hold; yaw offset handled by the re-zero pose).
 
 - [ ] **Phase 7 — Full glove mount** (`firmware/07_full_glove/`)
   Mount all sensors on the glove with proper strain relief. Deliverable: all sensors survive a 30-minute wear session with no connection drop.

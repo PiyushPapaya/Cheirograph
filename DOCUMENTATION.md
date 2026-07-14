@@ -34,6 +34,22 @@ Rules:
 
 ---
 
+### 2026-07-14 (later) | Repo audit — docs brought in line with reality, two risks surfaced
+
+**Plan:** Full technical audit of the repo: architecture, the two working sketches, the docs system, and the forward plan.
+
+**Achieved:**
+- **Surfaced the yaw-drift risk** (the big one): 6-DOF sensors have no yaw reference, so the yaw of `q_rel` drifts unboundedly even with perfect calibration. Mitigation decided and logged in DECISIONS.md: gravity-referenced features + a "flat hand" re-zero pose. Phases 5/6 deliverables updated to include measured drift numbers and a time-dimension acceptance test.
+- **Computed the I²C bus budget:** at the default 100 kHz, five muxed MPU-6050 reads ≈ ~10 ms — the entire 100 Hz budget. 400 kHz required; baked into Phase 4 and WIRING.md pre-flight checks.
+- **Fixed the toolchain fiction:** README claimed PlatformIO + `pio run`; reality is Arduino IDE + `.ino`. README now documents the real workflow; the fork is logged in DECISIONS.md with PlatformIO migration deferred.
+- **Aligned sketch 01 with the serial contract** (`millis,sensor_id,...` — was missing timestamp + id), flagged `while(!Serial)` as bench-only, deleted the stale `tree.md`, ticked Phases 0–1, added GY-521 LDO / pull-up pre-flight checks to WIRING.md, added five new gotchas to CLAUDE.md.
+
+**Problems & blockers:** No devlog entry or media captured for Phase 1 yet — the media-discipline rule slipped in the very first phase. Board-package/library versions not yet recorded (placeholders left in `01`'s README).
+
+**Next:** Re-flash sketch 01 to confirm the contract-format output, screenshot the serial trace + photo the LED test into `docs/media/`, fill in the version placeholders, write the Phase 1 devlog entry. Then Phase 2: single MPU-6050 on D4/D5 — run the WIRING.md pre-flight checks first.
+
+---
+
 ### 2026-07-14 | Phase 1 — First light: MCU + onboard IMU alive
 
 **Plan:** Electrically verify the Seeed XIAO nRF52840 Sense for the first time — get it
