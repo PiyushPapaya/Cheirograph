@@ -13,6 +13,8 @@
 
 Four wires. AD0 → GND fixes the address at `0x68`.
 
+![MPU-6050 → XIAO direct wiring](../../hardware/wiring_mpu6050_direct.png)
+
 ```
         MPU-6050 (GY-521)                 XIAO nRF52840 Sense
         ┌──────────────┐                  ┌──────────────────┐
@@ -45,6 +47,7 @@ Four wires. AD0 → GND fixes the address at `0x68`.
 | File | Output | Role |
 |---|---|---|
 | `02_single_mpu6050_test.ino` | `millis,sensor_id,aX,aY,aZ,gX,gY,gZ` | **Milestone** — full serial contract, the reusable one |
+| `diagnostics/i2c_scan/i2c_scan.ino` | text | Scans the bus + reads `WHO_AM_I` — the sketch that found the clone |
 | `diagnostics/gyro_raw/gyro_raw.ino` | `gX,gY,gZ` | Minimal gyro-only stream (used for the 3D plot) |
 | `diagnostics/accel_raw/accel_raw.ino` | `aX,aY,aZ` | Minimal accel-only stream (used for the 3D plot) |
 
@@ -55,6 +58,25 @@ its own subfolder. Open the `.ino` and the folder name will match.
 Why this one and not Adafruit_MPU6050 → see `DECISIONS.md` (2026-07-14).
 
 **Board package:** Seeed nRF52 mbed-enabled boards — *record exact version here at next flash.*
+
+---
+
+## The clone — why the first library failed
+
+The first attempt used `Adafruit_MPU6050` and it just printed
+`Failed to find MPU6050 chip!` and halted. The bring-up went:
+
+1. **I²C scan** (`diagnostics/i2c_scan/`) → device present at **`0x68`**. Wiring is fine.
+2. **`WHO_AM_I` (register 0x75)** → returns **`0x72`**, not the `0x68` a genuine
+   MPU-6050 reports. This module is a **clone** (the 0x72 ID belongs to the
+   MPU-6500 / 9250 family that fills a lot of cheap "MPU-6050" breakouts).
+3. Adafruit validates `WHO_AM_I` strictly and refuses the mismatch; `MPU6050_light`
+   doesn't, so it drives the clone without complaint.
+
+Full write-up in `DECISIONS.md` (2026-07-14); sources in `docs/REFERENCES.md`.
+**Watch-item:** a clone can differ in register defaults / self-test, so if fusion
+misbehaves in Phase 5 this is a suspect. All five finger modules are likely the
+same clone — scan each one when it goes on.
 
 ---
 

@@ -25,7 +25,7 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 **Choice:** `MPU6050_light` for the finger IMUs.
 
-**Rationale:** MPU6050_light bundles gyro/accel bias calibration (`calcOffsets()`) and the tilt/angle math in one small, readable library — exactly the Phase 2 need, and it makes the resting-bias subtraction a single call. Adafruit's stack is heavier, spreads across three libraries, and wraps every read in a `sensors_event_t` abstraction we don't use here. The trade-off: MPU6050_light is a single-maintainer library, so if it ever needs patching we own that; acceptable for a sensor this well-trodden, and nothing stops a later switch since the sketch only touches `getAcc*/getGyro*`.
+**Rationale:** This wasn't a style preference — Adafruit's driver flat-out refused the module with `Failed to find MPU6050 chip!`. An I²C scan proved the board was wired and ACKing at `0x68`, so the bus was fine; the `WHO_AM_I` register (0x75) came back **`0x72`**, not the `0x68` a genuine MPU-6050 returns. The module is a clone (MPU-6500/9250 family is common on cheap "MPU-6050" breakouts), and Adafruit validates `WHO_AM_I` strictly, so it bails. `MPU6050_light` doesn't gate on that check, talks to the clone happily, and as a bonus bundles bias calibration (`calcOffsets()`) and tilt math in one small readable library. Trade-off / risk: it's a single-maintainer lib, and the clone may differ from a true MPU-6050 in register defaults or self-test — something to watch if fusion misbehaves later. A later switch is cheap since the sketch only touches `getAcc*/getGyro*`. **If more clone modules arrive, expect the same 0x72 and reach for MPU6050_light first.**
 
 ---
 

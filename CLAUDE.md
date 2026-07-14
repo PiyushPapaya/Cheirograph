@@ -140,6 +140,12 @@ recorded in DECISIONS.md. **Understanding stays with the human.**
 - **Firmware hangs on battery but works on USB** → a leftover `while (!Serial);` from a
   bench sketch. Fine for bench tests; must not be copy-pasted into glove firmware.
 - **Onboard IMU won't init** → the LSM6DS3 is at I²C **0x6A**, not 0x68 (that's the MPU-6050s).
+- **`Failed to find MPU6050 chip!` yet the I²C scanner clearly sees 0x68** → the board
+  ACKs, so wiring is fine; the driver is rejecting the `WHO_AM_I` (reg 0x75) value. Cheap
+  "MPU-6050" modules are frequently MPU-6500/9250-family clones — ours reports **0x72**,
+  not 0x68. Adafruit's library refuses the mismatch; `MPU6050_light` is lenient and works.
+  See DECISIONS.md (2026-07-14). Run `firmware/02_single_mpu6050_test/diagnostics/i2c_scan/`
+  to confirm the address and read WHO_AM_I yourself before blaming wiring.
 - **A finger's angle changes when you rotate your whole hand** → you're reading absolute,
   not relative orientation. Apply `conjugate(q_hand) ⊗ q_finger`.
 - **I²C reads garbage / hangs** → check pull-ups, the active mux channel, and that you

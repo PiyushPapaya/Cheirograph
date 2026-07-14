@@ -42,6 +42,8 @@ Placeholder: `docs/media/wiring_v1.jpg` — coming soon.
 
 **Phase 2 — single sensor, direct (no mux), verified 2026-07-14:**
 
+![MPU-6050 → XIAO direct wiring](./wiring_mpu6050_direct.png)
+
 ```
         MPU-6050 (GY-521)                 XIAO nRF52840 Sense
         VCC ──────────────────────────────► 3V3

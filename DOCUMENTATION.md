@@ -43,12 +43,19 @@ debugging five behind a mux.
 
 **Achieved:**
 - Wired it with four lines — VCC→3V3, GND→GND, SDA→D4, SCL→D5 — and tied AD0 to
-  GND so it sits at `0x68`. Sensor answered on the first try, no I²C hangs, no
-  `0xFF` garbage. Diagram's in `hardware/WIRING.md` now.
-- Went with the `MPU6050_light` library instead of the Adafruit one. It does the
-  bias calibration (`calcOffsets()`) in a single call and the code is small
-  enough to actually read, which is what I wanted. Wrote up the reasoning in
-  DECISIONS.md.
+  GND so it sits at `0x68`. Diagram's in `hardware/WIRING.md` now.
+- Hit a wall first though: the Adafruit MPU6050 example just printed
+  `Failed to find MPU6050 chip!` and halted. Ran an I²C scanner to check — it
+  found a device at `0x68`, so the wiring was clearly fine. Then I read the
+  `WHO_AM_I` register (0x75) directly and it came back **`0x72`**, not `0x68`.
+  So the "MPU-6050" I have is actually a clone (the 0x72 points to the
+  MPU-6500/9250 family), and Adafruit's driver checks WHO_AM_I strictly and
+  refuses anything that isn't exactly 0x68.
+- Swapped to `MPU6050_light`, which doesn't gate on that check — worked
+  immediately. It also does bias calibration (`calcOffsets()`) in one call and is
+  small enough to actually read. The whole fork is written up in DECISIONS.md, and
+  I added an `i2c_scan` diagnostic sketch so the 0x68-present / WHO_AM_I=0x72
+  finding is reproducible, not just a story.
 - Milestone sketch `02_single_mpu6050_test.ino` streams the full contract line
   (`millis,sensor_id,aX,aY,aZ,gX,gY,gZ`) at 400 kHz. I also kept the two stripped
   diagnostic sketches I actually flashed to grab clean single-axis-set streams —
@@ -64,13 +71,17 @@ debugging five behind a mux.
   toward zero when I stop. First `requirements.txt` landed too (numpy, matplotlib
   pinned).
 
-**Problems & blockers:** The gyro doesn't quite return to a clean zero at rest —
-there's a couple deg/s of leftover bias sitting there even after `calcOffsets()`.
-Not a bug, that's the drift the Madgwick filter has to deal with later, but worth
-noting it's visible this early. Still haven't recorded the exact library/board
-versions (placeholders in the folder README) and no photo of the breadboard yet —
-that media-discipline slip from Phase 1 is still open. Also left the bench-only
-`while(!Serial)` in the milestone sketch on purpose, flagged in a comment.
+**Problems & blockers:** The clone chip is the one to keep an eye on — it works
+now, but a clone can differ from a real MPU-6050 in register defaults, self-test,
+or full-scale calibration, so if the Madgwick fusion behaves oddly later this is a
+prime suspect. All five finger modules came from the same batch, so odds are
+they're all 0x72 clones; I should scan every one when they go on. Separately, the
+gyro doesn't return to a clean zero at rest — a couple deg/s of leftover bias even
+after `calcOffsets()`. Not a bug, that's the drift the filter has to fight, but
+good to see it this early. Library version now recorded (MPU6050_light 1.2.1);
+board-package version still a placeholder, and still no breadboard photo — that
+media slip from Phase 1 is open. Left the bench-only `while(!Serial)` in the
+milestone sketch on purpose, flagged in a comment.
 
 **Next:** Phase 3 — bring in the PCA9548A mux. Address `0x70`, select a channel,
 then reach the same `0x68` sensor *through* it. Run the WIRING.md pre-flight
