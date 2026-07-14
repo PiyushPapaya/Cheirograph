@@ -19,6 +19,16 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-14 | MPU6050_light vs. Adafruit_MPU6050 for the finger sensors
+
+**Alternatives:** `Adafruit_MPU6050` (+ Adafruit_Sensor + BusIO) vs. `MPU6050_light` by rfetick.
+
+**Choice:** `MPU6050_light` for the finger IMUs.
+
+**Rationale:** MPU6050_light bundles gyro/accel bias calibration (`calcOffsets()`) and the tilt/angle math in one small, readable library — exactly the Phase 2 need, and it makes the resting-bias subtraction a single call. Adafruit's stack is heavier, spreads across three libraries, and wraps every read in a `sensors_event_t` abstraction we don't use here. The trade-off: MPU6050_light is a single-maintainer library, so if it ever needs patching we own that; acceptable for a sensor this well-trodden, and nothing stops a later switch since the sketch only touches `getAcc*/getGyro*`.
+
+---
+
 ### 2026-07-14 | Arduino IDE now vs. PlatformIO from day one
 
 **Alternatives:** Start on PlatformIO immediately (version pinning, `platformio.ini` per milestone) vs. start on the Arduino IDE and migrate later.

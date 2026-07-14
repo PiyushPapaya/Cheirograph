@@ -53,8 +53,8 @@ Never re-scope this toward "translate ASL" — it would require location, motion
 - [x] **Phase 1 — XIAO onboard IMU over serial** (`firmware/01_xiao_imu_test/`) ✅ 2026-07-14
   Read the onboard LSM6DS3 via internal I²C; stream raw accel + gyro to serial at 115 200 baud. Deliverable: clean serial trace in contract format (`millis,sensor_id,ax..gz`).
 
-- [ ] **Phase 2 — Single MPU-6050, direct I²C** (`firmware/02_single_mpu6050_test/`)
-  Wire one MPU-6050 directly (no mux); read and stream raw data. Deliverable: second sensor confirmed working in isolation.
+- [x] **Phase 2 — Single MPU-6050, direct I²C** (`firmware/02_single_mpu6050_test/`) ✅ 2026-07-14
+  Wire one MPU-6050 directly (no mux); read and stream raw data. Deliverable: second sensor confirmed working in isolation. Raw accel + gyro captured and plotted in 3D (`docs/media/phase2_*_3d.png`).
 
 - [ ] **Phase 3 — PCA9548A mux bring-up** (`firmware/03_mux_channel_test/`)
   Bring up the mux; address two sensors, then all five. Deliverable: all five MPU-6050s readable by channel-switching the mux.

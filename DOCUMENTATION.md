@@ -34,6 +34,50 @@ Rules:
 
 ---
 
+### 2026-07-14 (evening) | Phase 2 — first external MPU-6050 alive, raw accel + gyro plotted
+
+**Plan:** Wire up one MPU-6050 straight to the XIAO (no mux yet) and get raw accel
+and gyro out over serial. Goal was just to prove a single finger sensor works
+before I add the multiplexer, since debugging one sensor is a lot easier than
+debugging five behind a mux.
+
+**Achieved:**
+- Wired it with four lines — VCC→3V3, GND→GND, SDA→D4, SCL→D5 — and tied AD0 to
+  GND so it sits at `0x68`. Sensor answered on the first try, no I²C hangs, no
+  `0xFF` garbage. Diagram's in `hardware/WIRING.md` now.
+- Went with the `MPU6050_light` library instead of the Adafruit one. It does the
+  bias calibration (`calcOffsets()`) in a single call and the code is small
+  enough to actually read, which is what I wanted. Wrote up the reasoning in
+  DECISIONS.md.
+- Milestone sketch `02_single_mpu6050_test.ino` streams the full contract line
+  (`millis,sensor_id,aX,aY,aZ,gX,gY,gZ`) at 400 kHz. I also kept the two stripped
+  diagnostic sketches I actually flashed to grab clean single-axis-set streams —
+  `diagnostics/gyro_raw/` and `diagnostics/accel_raw/`. Arduino IDE only compiles
+  one sketch per folder so each got its own subfolder.
+- Captured both streams by hand-waving the sensor around then setting it still,
+  saved them under `data/phase2_single_mpu6050/`, and wrote `tools/plot_imu_3d.py`
+  to draw each as a 3D path coloured by time. PNGs are in `docs/media/`.
+- The plots actually told me something. The accel one sits on a ~1 g sphere like
+  it should (gravity is constant magnitude), with a tight cluster where I put it
+  down at the end — that's the sanity check that calibration and axes are right.
+  The gyro one loops way out to ±100–240 deg/s on the fast twists and comes back
+  toward zero when I stop. First `requirements.txt` landed too (numpy, matplotlib
+  pinned).
+
+**Problems & blockers:** The gyro doesn't quite return to a clean zero at rest —
+there's a couple deg/s of leftover bias sitting there even after `calcOffsets()`.
+Not a bug, that's the drift the Madgwick filter has to deal with later, but worth
+noting it's visible this early. Still haven't recorded the exact library/board
+versions (placeholders in the folder README) and no photo of the breadboard yet —
+that media-discipline slip from Phase 1 is still open. Also left the bench-only
+`while(!Serial)` in the milestone sketch on purpose, flagged in a comment.
+
+**Next:** Phase 3 — bring in the PCA9548A mux. Address `0x70`, select a channel,
+then reach the same `0x68` sensor *through* it. Run the WIRING.md pre-flight
+checks (master-side pull-ups, 400 kHz) before I commit to any glove wiring.
+
+---
+
 ### 2026-07-14 (later) | Repo audit — docs brought in line with reality, two risks surfaced
 
 **Plan:** Full technical audit of the repo: architecture, the two working sketches, the docs system, and the forward plan.
