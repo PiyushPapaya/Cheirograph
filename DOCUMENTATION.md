@@ -34,6 +34,75 @@ Rules:
 
 ---
 
+### 2026-07-16 | Phase 3/4 — mux bring-up + all 5 finger IMUs reading coherently
+
+**Plan:** Get the serial bus working with all 5 finger sensors — bring up the
+PCA9548A mux, read the data from the MCU (hand IMU) and all 5 finger sensors,
+then finally mount all the components (the MCU, the 5 IMUs, and the mux/serial
+bus) onto the glove.
+
+**Achieved:**
+- Wired the PCA9548A on a breadboard: XIAO D4/D5 → mux SDA/SCL, mux VIN/GND →
+  3V3/GND shared rail, A0/A1/A2 → GND (mux address `0x70`), RST → 3V3 (held
+  high, active-low). All five MPU-6050 clones sit on mux channels 0-4
+  (SD0/SC0 .. SD4/SC4), every one with AD0 → GND (address `0x68` — identical
+  across all five; the mux is the only thing that tells them apart). Photos:
+  `docs/media/phase3-4_breadboard_top.jpg`, `docs/media/phase3-4_breadboard_angle.jpg`.
+- Wrote `firmware/04_all_imus_raw/04_all_imus_raw.ino`: one `MPU6050_light`
+  object reused across channels per sensor, a `tcaSelect()` helper that writes
+  the one-hot channel byte to `0x70` before every access, and a boot-time
+  `scanChannels()` sweep. That sweep found `0x68` on channels 0-4 with nothing
+  on 5-7 and no cross-talk — mux switching confirmed working (closes Phase 3,
+  no separate isolated-channel sketch needed).
+- Streamed gyro (deg/s) from all 5 finger sensors live over serial at ~50 Hz
+  (`delay(20)`-paced, not yet the target `millis()`-scheduled 100 Hz loop).
+  Captured a hand-motion bench run — `data/phase3-4_five_imu_gyro/movement_test.csv`
+  (41 samples, gyro only) — and wrote `tools/analyze_multi_imu.py` +
+  `tools/plot_multi_imu.py` to check it, producing
+  `docs/media/phase3-4_five_imu_movement.png`.
+- **The data checks out:** all five sensors track the same physical rotation
+  (Pearson r vs. IMU0 on the dominant Y-axis swing: IMU1 0.999, IMU2 0.994,
+  IMU3 0.986, IMU4 0.975 — falling off slightly with "wiring distance" from
+  IMU0, consistent with sequential-read timing skew, not a bad sensor).
+  Cross-sensor spread (std across the 5 sensors per sample, averaged over the
+  whole run) is small — gx 0.61°/s, gy 1.44°/s, gz 0.90°/s — confirming no
+  dead, duplicated, or cross-talking channel.
+
+**Problems & blockers:**
+- This capture is gyro-only (no accel yet) and the sketch doesn't emit the
+  project's `millis,sensor_id,ax..gz` serial contract — it prints a
+  human-readable `IMUn [gx, gy, gz]` line instead, and timestamps in the saved
+  CSV are the Serial Monitor's host-side receive time, not device `millis()`.
+  Fine for this bring-up check, but the contract rework has to happen before
+  this feeds into fusion.
+- No clean "at rest" calibration baseline was captured this session — the
+  bench-motion CSV never holds fully still, so the noise numbers above
+  (frame-to-frame std in the calmest 9-sample stretch: gx 1.97°/s, gy 0.69°/s,
+  gz 0.50°/s) are an upper bound, not a proper per-sensor bias table. A
+  deliberate "sit still for 10s" capture is still needed.
+- The onboard XIAO hand IMU (sensor 0) isn't wired into this sketch yet —
+  Phase 4 isn't closed until it's reading alongside the five fingers in the
+  same loop.
+- The glove-mounting step (MCU + 5 IMUs + mux physically on the glove,
+  Phase 7) did **not** happen this session — everything above is still on a
+  breadboard. That's next, not done.
+
+**Next:**
+1. Add the onboard LSM6DS3 (hand reference, sensor 0) into the same loop as
+   the five fingers.
+2. Rework the print loop to emit the real `millis,sensor_id,ax,ay,az,gx,gy,gz`
+   contract (add accel while at it) and switch from `delay(20)` to a
+   `millis()`-scheduled loop; measure the real achieved rate from the
+   timestamps rather than assuming 100 Hz.
+3. Capture a deliberate still-calibration log for a proper per-sensor gyro
+   bias table.
+4. Only once the six-sensor bench read is solid: move the MCU, mux, and five
+   IMUs onto the glove (Phase 7) with strain relief per `hardware/WIRING.md`,
+   and re-verify — bench-solid isn't glove-solid until the wires have taken a
+   bend.
+
+---
+
 ### 2026-07-14 (evening) | Phase 2 — first external MPU-6050 alive, raw accel + gyro plotted
 
 **Plan:** Wire up one MPU-6050 straight to the XIAO (no mux yet) and get raw accel

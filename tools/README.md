@@ -17,6 +17,25 @@ through 3D space, and either opens a window or saves a PNG.
 python plot_imu_3d.py ../data/phase2_single_mpu6050/gyro_raw.csv --kind gyro
 ```
 
+### `analyze_multi_imu.py`  *(Phase 3/4)*
+Cross-sensor coherence + noise check for a multi-IMU mux bench capture.
+Computes cross-sensor spread per axis, pairwise correlation against a
+reference sensor, and a frame-to-frame noise estimate over the calmest
+stretch of the run.
+- Dependency: `numpy`.
+```bash
+python analyze_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv
+```
+
+### `plot_multi_imu.py`  *(Phase 3/4)*
+Static multi-sensor time-series plot: one subplot per gyro axis (gx/gy/gz),
+one coloured line per sensor, plus a cross-sensor-spread subplot on a shared
+time axis.
+- Dependency: `numpy`, `matplotlib`.
+```bash
+python plot_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv --save ../docs/media/phase3-4_five_imu_movement.png
+```
+
 ---
 
 ## Planned scripts

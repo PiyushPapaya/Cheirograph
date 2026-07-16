@@ -56,11 +56,12 @@ Never re-scope this toward "translate ASL" — it would require location, motion
 - [x] **Phase 2 — Single MPU-6050, direct I²C** (`firmware/02_single_mpu6050_test/`) ✅ 2026-07-14
   Wire one MPU-6050 directly (no mux); read and stream raw data. Deliverable: second sensor confirmed working in isolation. Raw accel + gyro captured and plotted in 3D (`docs/media/phase2_*_3d.png`).
 
-- [ ] **Phase 3 — PCA9548A mux bring-up** (`firmware/03_mux_channel_test/`)
-  Bring up the mux; address two sensors, then all five. Deliverable: all five MPU-6050s readable by channel-switching the mux.
+- [x] **Phase 3 — PCA9548A mux bring-up** (`firmware/03_mux_channel_test/`) ✅ 2026-07-16
+  Bring up the mux; address two sensors, then all five. Deliverable: all five MPU-6050s readable by channel-switching the mux. Verified via `scanChannels()` in the Phase 4 sketch — 0x68 on channels 0-4, no cross-talk.
 
-- [ ] **Phase 4 — All 6 IMUs raw at 100 Hz** (`firmware/04_all_imus_raw/`)
+- [ ] **Phase 4 — All 6 IMUs raw at 100 Hz** (`firmware/04_all_imus_raw/`) 🟡 partial 2026-07-16
   Stream all six IMUs (5 MPU-6050 + onboard) at the target loop rate. Requires I²C at **400 kHz** (at the default 100 kHz, five muxed reads ≈ ~10 ms of bus time — the whole budget) and a `millis()`-based fixed-rate scheduler, not `delay()`. Add `tools/plot_raw.py` raw serial plotter. Deliverable: **measured** (from timestamps, not assumed) stable 100 Hz read loop, no missed samples.
+  All 5 finger IMUs confirmed reading coherently through the mux (bench data + analysis in `data/phase3-4_five_imu_gyro/`, `tools/analyze_multi_imu.py`). Still open: onboard hand IMU (sensor 0), accelerometer channels, the project's `millis,sensor_id,...` CSV contract (current sketch prints a human-readable line instead), and a `millis()`-scheduled loop at a measured 100 Hz (current loop uses `delay(20)`, ~50 Hz).
 
 - [ ] **Phase 5 — Madgwick fusion per IMU** (`firmware/05_madgwick_fusion/`)
   Per-sensor gyro-bias calibration at startup (log the measured bias values per sensor), then Madgwick on each IMU. Deliverable: orientation holds under slow rotation; **measured drift in °/min before vs. after calibration** recorded in DOCUMENTATION.md.
