@@ -59,6 +59,34 @@ inserts between this sensor and the XIAO without changing the XIAO-side pins.
 
 ---
 
+**Phase 3/4 — PCA9548A mux + all 5 finger IMUs, bench breadboard, verified 2026-07-16:**
+
+Photos: `docs/media/phase3-4_breadboard_top.jpg`, `docs/media/phase3-4_breadboard_angle.jpg`.
+
+```
+        PCA9548A                          XIAO nRF52840 Sense
+        VIN ──────────────────────────────► 3V3
+        GND ──────────────────────────────► GND
+        SDA ──────────────────────────────► D4 / SDA
+        SCL ──────────────────────────────► D5 / SCL
+        A0, A1, A2 ──► GND   (sets mux addr 0x70)
+        RST ──► 3V3          (active-low — hold high to keep the mux enabled)
+
+        MPU-6050 #0..#4 (all identical, all AD0 -> GND -> addr 0x68)
+        VCC ──────────────────────────────► 3V3 (shared rail)
+        GND ──────────────────────────────► GND (shared rail)
+        SDA ──────────────────────────────► mux SD0..SD4 (one channel each)
+        SCL ──────────────────────────────► mux SC0..SC4 (one channel each)
+```
+
+This is a bench bring-up: sensors sit flat on a breadboard, referred to in
+firmware/data as `IMU0`..`IMU4` (= mux channels 0-4). **No finger identity is
+assigned yet** — that mapping (thumb/index/middle/ring/pinky) happens when
+these move onto the glove in Phase 7; the table above is the plan for that
+point, not the current wiring.
+
+---
+
 ## Pre-flight checks (verify at first MPU-6050 power-on, Phase 2)
 
 - [ ] **GY-521 LDO vs. 3.3 V supply:** most GY-521 boards route VCC through an onboard
@@ -89,4 +117,5 @@ inserts between this sensor and the XIAO without changing the XIAO-side pins.
 
 | Date | Change | Changed by |
 |---|---|---|
+| 2026-07-16 | Added Phase 3/4 mux + 5-finger-IMU bench wiring (breadboard, no finger identity assigned yet). Mux channel switching verified via `scanChannels()` — 0x68 on channels 0-4, no cross-talk. | Piyush |
 | 2026-07-14 | Added Phase 2 single-sensor direct-connect diagram (MPU-6050 → D4/D5, AD0→GND = 0x68). Verified on the bench. | Piyush |
