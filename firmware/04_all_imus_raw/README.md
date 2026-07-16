@@ -3,7 +3,7 @@
 > *This folder's number is a flexible guide, not a permanent label. Rename or renumber as the real build dictates.*
 
 **Phase:** 4
-**Status:** 🟡 partial — all 5 finger IMUs confirmed reading coherently through the mux (bench-verified 2026-07-16, see below). Onboard hand IMU (sensor 0) and accelerometer channels are **not yet in this sketch** — still open before this phase can be checked off.
+**Status:** 🟡 near-complete — the sketch now reads all 6 sensors (onboard hand IMU + 5 fingers), both accel and gyro, in the project's real serial contract, with a `millis()`-scheduled loop, a boot-time still-calibration window with a printed bias/noise table, and a periodic achieved-rate report (2026-07-17). Still open: confirm the achieved rate is ≥100 Hz from a real `# rate_hz=` log line, and re-run calibration with the rig genuinely motionless (see the data README — the 2026-07-17 capture's "still" window wasn't actually still).
 
 **Goal:** Read all six IMUs (five MPU-6050s via mux + onboard LSM6DS3) in a single timed loop at 100 Hz. Stream raw data to serial in the stable CSV format. Add `tools/plot_raw.py` to plot it live.
 
@@ -50,5 +50,26 @@ correlation, and a rough noise estimate; `tools/plot_multi_imu.py` renders
 
 Bench photos: `docs/media/phase3-4_breadboard_top.jpg`, `docs/media/phase3-4_breadboard_angle.jpg`.
 Interactive time-series + vector visualizer (source: `docs/media/phase3-4_visualizer.html`): https://claude.ai/code/artifact/42a29277-c048-45e2-adf7-df7abe635b00 (private link — share it from the artifact page if you want others to see it).
+
+---
+
+## 2026-07-17 update — full 6-sensor sketch (accel + gyro, real contract, calibration)
+
+Replaced the gyro-only 5-finger sketch above with the complete Phase 4
+implementation: reads onboard LSM6DS3 (sensor 0) + 5 finger MPU-6050s
+(sensors 1-5), both accel and gyro, on a `millis()`-scheduled ~100 Hz loop,
+emits the real `millis,sensor_id,ax,ay,az,gx,gy,gz` contract, runs a 10 s
+still-calibration window at boot that accumulates gyro mean/std per sensor
+and prints a bias table, and logs an achieved-rate report every 2 s
+(`# rate_hz=...`) so "100 Hz" is a measured fact, not an assumption.
+
+A bench capture from this sketch is saved (partial — see
+`data/phase4_six_imu_capture/README.md`) and analyzed with
+`tools/analyze_calibration.py`. Finding: the logged "still" calibration
+window wasn't actually still (the hand sensor's gZ climbs from -10 to -35
+deg/s across it), so the resting-bias numbers from that run aren't
+trustworthy yet — a genuinely motionless capture is still needed. Finger 5
+also shows elevated accel magnitude (1.246 g vs ~1.0-1.02 g for the others)
+and gyro noise (std 5-13°/s vs 1-3°/s) worth checking in isolation.
 
 **What this is not:** not fused, not at the target contract format, no hand IMU, no accelerometer.

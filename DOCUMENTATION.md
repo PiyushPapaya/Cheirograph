@@ -34,6 +34,128 @@ Rules:
 
 ---
 
+### 2026-07-17 | Phase 4 — full 6-sensor sketch (accel + gyro + calibration), rest-window analysis flags a bad "still" capture
+
+**Plan:** Extend the mux/5-finger sketch to the full Phase 4 target: read the
+onboard hand IMU alongside all 5 fingers, add accelerometer, emit the real
+serial contract, and add a still-calibration + rate-measurement routine.
+
+**Achieved:**
+- Rewrote `firmware/04_all_imus_raw/04_all_imus_raw.ino`: all 6 sensors
+  (onboard LSM6DS3 + 5 finger MPU-6050s), accel + gyro, real
+  `millis,sensor_id,ax,ay,az,gx,gy,gz` contract, `millis()`-scheduled ~100 Hz
+  loop, a 10 s boot-time still-calibration window that accumulates per-sensor
+  gyro mean/std and prints a bias table, and a periodic achieved-rate report.
+- Captured a bench run and saved the opening calibration-window excerpt to
+  `data/phase4_six_imu_capture/capture_01_raw.csv` (the full ~9.8 s capture
+  was too large to transcribe by hand — see that folder's README).
+- Wrote `tools/analyze_calibration.py` and ran it on the excerpt: all six
+  sensors show sane accel magnitudes (~1.0-1.25 g), confirming they're alive
+  and reading real gravity.
+
+**Problems & blockers:**
+- **The "still" calibration window wasn't still.** The hand sensor's gZ
+  climbs monotonically from -10.43 to -35.00 deg/s across the 16 saved
+  samples (~160 ms) — that's real angular acceleration, meaning the rig was
+  being moved during the "Calibrating... hold still" phase. The large
+  resting-gyro means seen on the fingers (15-25 deg/s) are an artifact of
+  that motion, not their true zero-rate bias. **A genuinely motionless
+  capture is still needed** before the bias table means anything.
+- **Finger 5 is an outlier**: accel magnitude 1.246 g (vs ~1.0-1.02 g for
+  the others) and gyro noise std 5-13 deg/s (vs 1-3 deg/s) — worth
+  re-checking that sensor in isolation (loose connection on its mux channel
+  is the first suspect).
+- The full multi-thousand-line capture couldn't be persisted to the repo
+  from a chat paste — only the calibration-window excerpt was saved at
+  first. **Resolved within the same session**: the full session log turned
+  up saved as a plain file (`datalog.txt.txt`, 5052 lines) rather than
+  pasted text — moved into `data/phase4_six_imu_capture/capture_02_full_session.csv`
+  and analyzed directly. That let the earlier excerpt-only findings above be
+  checked against the complete run.
+
+**Full-session findings (`capture_02_full_session.csv`, ~8.7 s, all 6
+sensors) — supersede the excerpt guesses above:**
+- **Finger 2 (mux channel 1), not finger 5, is the sensor that drops out** —
+  and it's not intermittent: it goes to a permanent `0,0,0,0,0,0` at
+  millis=1468 and never recovers for the remaining ~8.3 s of the run (801 of
+  841 samples). Confirms the "exact zeros = dead registers, not noise"
+  diagnosis from earlier in this session — a live MPU always carries ~1 g of
+  gravity somewhere. Visible directly in the new
+  `docs/media/phase4_6imu_accel_3d.png` (trajectory stops dead at the
+  origin) and `docs/media/phase4_6imu_accel_3d.gif` (one arrow freezes while
+  the other five keep swinging).
+- **Confirmed at full scale**: the whole capture sits inside the firmware's
+  declared 10 s calibration window, yet every live sensor's gyro std across
+  the run is 25-102 deg/s — nowhere near a still-capture noise floor. The
+  "hold still" instruction was not followed for this run; the bias table
+  this sketch would print from it is not usable.
+- Wrote `tools/analyze_calibration.py` (already existed) and added
+  `tools/plot_6imu_3d.py` (new — static 3D trajectory + animated 3D vector
+  GIF) to produce these findings and visuals.
+
+**Harder problems worked through this session (worth remembering):**
+- **Onboard IMU is a "trunk" device, not a mux channel.** The LSM6DS3TR-C
+  lives on the same D4/D5 bus as the PCA9548A at a fixed `0x6A`, which
+  doesn't collide with the mux (`0x70`) or the finger MPUs (`0x68`, only
+  reachable *through* the mux). The fix: write `0x00` to the mux
+  (`tcaDisable()`) to deselect every channel before touching `0x6A` — read it
+  like any other bus device, no special-casing needed beyond that one write.
+  Forgetting this deselect is a plausible-looking-data trap: whichever finger
+  channel was last selected stays wired through, so the "onboard" reading is
+  silently actually a finger's.
+- **Axis labels legitimately differ between the onboard chip and the
+  breadboard MPUs, and that's not a bug.** The onboard LSM6DS3 is soldered
+  flat on the XIAO in its own orientation; the finger MPUs sit in a different
+  orientation on the breadboard. On a flat, still rig this shows up as
+  gravity landing on *different* accel axes per sensor (onboard: ~1 g on Z;
+  fingers: ~1 g on X) — same physical "down," different local axis. Any
+  fusion math later has to account for each sensor's own mounting frame, not
+  assume a shared axis convention.
+- **A sensor reading exact `0.0000,0.0000,0.0000,0.00,0.00,0.00` means the
+  chip ACKed on the bus but its data registers are dead** (asleep or reset) —
+  never a real reading, since a live MPU always carries ~1 g of gravity
+  somewhere. Finger 5 (mux channel 3) dropped to this exact all-zero pattern
+  mid-session, having worked earlier in the same run — the fingerprint of an
+  intermittent physical contact (loose jumper on VCC/GND/SDA/SCL for that
+  channel), not a code bug. Diagnosed a targeted software mitigation for
+  next time: in the per-frame read, if `|ax|+|ay|+|az|` comes back under a
+  small threshold, re-run that sensor's `begin()` and re-read once before
+  moving on — a live-but-glitched sensor re-wakes within one frame instead of
+  streaming zeros for the rest of the run. **Not yet added to the sketch** —
+  flagged for the next firmware pass, with the caveat that a fully
+  disconnected wire will just add a failed-init retry cost every frame, so
+  watch the `# rate_hz=` line for a sag if this is leaned on instead of fixing
+  the wire.
+
+**Next session — move off the breadboard onto the glove:**
+1. **Fix finger 2's channel-1 connection properly before mounting** —
+   confirmed dead (permanent all-zero from millis=1468 onward) in the full
+   session capture; reseat or re-solder (breadboard jumpers are exactly the
+   kind of loose contact that caused today's dropout, and glove wiring needs
+   to be more reliable than a breadboard, not less).
+2. **Physically mount the XIAO, PCA9548A, and all 5 MPU-6050s on the glove**:
+   finger sensors on the middle phalanx (thumb on proximal), hand IMU
+   (onboard XIAO) flat and rigid on the back of the hand. Follow
+   `hardware/WIRING.md`'s strain-relief rules — anchor every wire run on the
+   insulation (not the solder pad) on both sides of each knuckle, stranded
+   28-30 AWG wire only, flex-test 20x per finger before trusting continuity.
+   Assign the real thumb/index/middle/ring/pinky-to-channel mapping in
+   `hardware/WIRING.md` once wiring is physically committed (it's currently
+   just placeholder `IMU0..IMU4` labels from the bench rig).
+3. **Reconnect everything and re-run `firmware/04_all_imus_raw/04_all_imus_raw.ino`
+   as-is first** — confirm all 6 sensors still read cleanly after the move
+   from breadboard to glove before changing anything else. Wiring that
+   worked flat on a breadboard is not guaranteed to survive being bent
+   around knuckles; that's exactly what this re-test is for.
+4. **Capture a genuinely still calibration run** (rig at rest, hand relaxed,
+   nobody touching it) to finally get a trustworthy bias/noise table — this
+   was blocked all of today's session by the rig moving during "hold still."
+5. Once 6-sensor reads are solid on the glove: add the self-heal retry for
+   dropped sensors, confirm the achieved rate from `# rate_hz=`, then this
+   closes Phase 4 and Phase 7 (glove mount) together.
+
+---
+
 ### 2026-07-16 | Phase 3/4 — mux bring-up + all 5 finger IMUs reading coherently
 
 **Plan:** Get the serial bus working with all 5 finger sensors — bring up the
