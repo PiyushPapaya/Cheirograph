@@ -109,6 +109,29 @@ consistent in direction and small in magnitude, so the headline conclusion
 deg/min figures should be treated as a rough first read, not a final
 number, until a multi-minute capture confirms them.
 
+### Visualizations
+
+```bash
+cd tools
+python plot_fusion.py ../data/phase5_madgwick_fusion/capture_02_drift.csv \
+    --save ../docs/media/phase5_drift_rpy.png --title "Phase 5 drift test (held still, ~31.5 s)"
+python plot_fusion.py ../data/phase5_madgwick_fusion/capture_01_movement.csv \
+    --save ../docs/media/phase5_movement_rpy.png --title "Phase 5 movement test (~29.5 s)"
+```
+
+`docs/media/phase5_drift_rpy.png` — roll/pitch/yaw vs. time, one line per
+sensor, unwrapped so ±180° crossings don't show as vertical jumps. Confirms
+the table above visually: roll and pitch sit flat for the full 31.5 s, yaw
+is a tight noise band for the fingers with the hand sensor showing a small,
+slow upward creep.
+
+`docs/media/phase5_movement_rpy.png` — same plot for the movement capture.
+Useful as a qualitative sanity check ahead of Phase 6: the five finger
+traces move together as one tight cluster through every swing, while the
+hand sensor's trace diverges independently — exactly the "fingers move
+coherently, hand is a separate reference" structure that `q_rel = conj(q_hand)
+⊗ q_finger` depends on.
+
 ### Movement capture (`capture_01_movement.csv`)
 
 Used here only to confirm the fusion runs stably under real motion (no
