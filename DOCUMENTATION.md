@@ -34,6 +34,54 @@ Rules:
 
 ---
 
+### 2026-07-17 | Phase 5 second pass — seeded orientation, two-stage β, first bench drift + movement data
+
+**Plan:** Replace the first Madgwick fusion sketch with an improved version (accel-seeded initial orientation, two-stage β, roll/pitch/yaw output), then bench-test it with a still-hold drift capture and a movement capture, and give a final read on whether the 6 sensors are healthy and how to best configure them going forward.
+
+**Achieved:**
+- **Replaced `firmware/05_madgwick_fusion/05_madgwick_fusion.ino`** with the improved version: each sensor's Madgwick filter is now seeded from its own calibration-window accel average instead of starting at identity (`quatFromAccel()`), uses a two-stage β (`BETA_INIT=2.0` for 1.5 s after calibration, then `BETA_STEADY=0.033`), and the serial contract grew to `millis,sensor_id,qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg` with an optional raw-column tail (`INCLUDE_RAW`). Logged the seeding/two-stage-β design choice in DECISIONS.md.
+- **Captured and analyzed two bench sessions**, saved under `data/phase5_madgwick_fusion/` with a new `tools/analyze_drift.py` (computes per-sensor roll/pitch/yaw drift in deg/min from first-vs-last sample):
+  - `capture_01_movement.csv` (~29.5 s, deliberate movement, `SUBTRACT_GYRO_BIAS=1`) — confirms the fusion runs stably under motion (no NaNs, no stuck values, all 6 sensors keep reporting).
+  - `capture_02_drift.csv` (~31.5 s, held still) — the actual drift test.
+- **Calibration quality is now trustworthy**: gyro bias std is 0.05-0.35 deg/s across all six sensors (from `capture_01`'s embedded boot log), two orders of magnitude better than every Phase 4 capture (std 38-84 deg/s) — this window was genuinely held still. Finger 5 remains the noisiest sensor of the six (std ~3x the others), a finding that's now repeated across every capture taken so far.
+- **No sensor dropouts in either capture** — all 6 report OK at boot and hold matched sample counts through both sessions. Finger 2's intermittent all-zero dropout (seen in both Phase 4 captures) did not reproduce here.
+- **Drift result**: roll/pitch essentially flat (≤ ~1.7 deg/min, mostly < 0.5) — expected, gravity-anchored by Madgwick's accel correction regardless of gyro bias. Yaw crept at ~0.2-2.1 deg/min depending on sensor — small, and matches the predicted unbounded 6-DOF yaw drift (DECISIONS.md 2026-07-14), not a bug.
+- **Rate dropped to ~84-86 Hz** (from Phase 4's ~93.6 Hz) — the added Madgwick math, Euler conversion, and extra printed columns cost real time inside the 10 ms tick budget.
+
+**Final verdict on sensor health:** all 6 IMUs (onboard hand + 5 fingers) are electrically sound and read correctly. The intermittent finger-2 dropout seen twice in Phase 4 has not reproduced across two more sessions, but with only one clean run it should be called "not currently reproducing," not "fixed" — a marginal breadboard contact doesn't announce itself on a schedule. Finger 5 is consistently the noisiest unit (higher gyro std, and previously an outlier accel magnitude that has since resolved) but is not faulty — just the weakest of the six, worth an isolated single-channel re-check before fully trusting it in later phases. The calibration-window-not-still problem that flagged three Phase 4 captures in a row is gone in this session — the fix was capture discipline (physically hold the rig motionless), not code, exactly as suspected.
+
+**How to stabilize / pre-configure for optimal reading (going forward):**
+1. **Keep `SUBTRACT_GYRO_BIAS=1`** — the measured biases are non-trivial (e.g. finger 5's y-axis bias is -6.98 deg/s), and leaving them uncorrected would dominate any real drift measurement.
+2. **Hold the rig on a fixed surface during the 10 s calibration window**, not in-hand — every prior "bad calibration" finding traced back to hand tremor during that window, never a code fault.
+3. **Re-check finger 2's mux-channel-1 contact** before glove-mounting — reflow or replace the jumper, since its failure mode (intermittent, not permanent) is exactly what a marginal solder/breadboard contact looks like, and strain relief on the glove won't fix a connection that's already borderline.
+4. **Bench-test finger 5 in isolation** (single-channel, no mux) to determine whether its elevated noise is intrinsic to that unit or still a contact-quality artifact.
+5. **If 100 Hz is required before Phase 6**, trim per-tick serial output first (each `Serial.print` blocks on UART) — that's the most likely place the extra ~10 Hz went missing between Phase 4 and Phase 5.
+
+**Problems & blockers:** Still missing a proper `SUBTRACT_GYRO_BIAS` on/off **paired** A/B drift capture from the same sitting — the current drift number is compared against Phase 4's uncorrected noise floor, not a same-session control. The drift capture was also only ~31.5 s; the sketch's own comment asks for "several minutes," so the deg/min figures should be treated as directionally right but not final. The 84-86 Hz rate shortfall hasn't been profiled to find exactly which added step costs the most.
+
+**Next:** Capture a same-session bias-on/bias-off drift pair, run one multi-minute (5+) still-hold drift test for a solid deg/min number, and re-check finger 2's physical contact before moving to glove-mounting. Once drift is confirmed acceptable, move on to Phase 6 (`q_rel = conj(q_hand) ⊗ q_finger`, re-zero pose, skeleton viz).
+
+---
+
+### 2026-07-17 | Phase 4 re-check + Phase 5 first pass — Madgwick fusion written, sensor health re-verified
+
+**Plan:** Before moving forward, re-run the Phase 4 six-sensor sketch to confirm all 6 IMU connections are still good, then write the first Madgwick fusion implementation for Phase 5, with the intent of mounting all sensors on the glove soon and moving toward Phase 6 (relative orientation).
+
+**Achieved:**
+- **Re-ran `firmware/04_all_imus_raw/04_all_imus_raw.ino`** and captured a fresh ~15 s full session (`data/phase4_six_imu_capture/capture_03_full_session.csv`), analyzed with `tools/analyze_calibration.py` and re-plotted with `tools/plot_6imu_3d.py` (`docs/media/phase4_6imu_accel_3d_capture03.png`/`.gif`).
+- **All 6 sensors initialize and read correctly** — no dead channel at boot.
+- **Measured rate: ~93.6-93.7 Hz**, not the 100 Hz target, from the firmware's own `# rate_hz=` log lines — the six sequential mux-switch+read cycles cost more than the naive 10 ms tick budget allows. Recorded as an open item in `firmware/04_all_imus_raw/README.md`.
+- **Calibration window (10 s) still wasn't genuinely still** — printed gyro bias/std table shows 38-84°/s std across all six sensors, an order of magnitude above a real at-rest noise floor. Third capture in a row with this same finding; it's confirmed as a capture-discipline problem (rig gets moved before/during the window), not a firmware bug.
+- **Finger 2 (mux channel 1) had another intermittent dropout** — all-zero readings for the last ~340 ms of this session (vs. a full-session dropout in the earlier `capture_02`). Two different dropout windows on the same channel across two sessions points at a loose physical contact (breadboard jumper), not a code fault — worth watching once mounted on the glove, where proper strain relief should help.
+- **Finger 5's earlier elevated accel magnitude (~1.23 g) did not reappear** in this run — likely was contact-quality noise in the previous session rather than a persistent hardware issue on that channel.
+- **Wrote `firmware/05_madgwick_fusion/05_madgwick_fusion.ino`** — first real implementation, replacing the placeholder `main.cpp`. Reuses Phase 4's mux switching, per-sensor read, and boot-time gyro-bias calibration, and adds one independent Madgwick filter instance per sensor (gradient-descent IMU fusion, no magnetometer), emitting the project's fused contract `millis,sensor_id,qw,qx,qy,qz`. β left at 0.1 (Madgwick's published default), untuned. Logged the Madgwick-vs-Mahony-vs-complementary-filter choice in DECISIONS.md (2026-07-17).
+
+**Problems & blockers:** Not yet flashed/bench-tested — this session's Phase 5 work is code only, no verification yet that the quaternions behave correctly under real rotation (hold-flat-near-identity, slow-360°-return-to-start). The 93.6 Hz rate shortfall and the intermittent finger-2 contact are both still open from Phase 4 and haven't been root-caused (mux/read timing profiling and physical contact fix, respectively). Didn't get to mounting sensors on the glove or starting Phase 6 this session — bench-level fusion needs to be verified first.
+
+**Next:** Flash `05_madgwick_fusion.ino`, verify no NaNs, check the flat-hold-near-identity and slow-rotation-returns-to-start behavior, and record measured drift before/after calibration (the phase's actual deliverable). Then mount all 6 sensors on the glove with proper strain relief and start Phase 6 (`q_rel = conj(q_hand) ⊗ q_finger`, re-zero pose, skeleton viz).
+
+---
+
 ### 2026-07-17 | Phase 4 — full 6-sensor sketch (accel + gyro + calibration), rest-window analysis flags a bad "still" capture
 
 **Plan:** Extend the mux/5-finger sketch to the full Phase 4 target: read the

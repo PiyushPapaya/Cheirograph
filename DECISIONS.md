@@ -19,6 +19,26 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-17 | Accel-seeded orientation + two-stage β, instead of identity start + fixed β
+
+**Alternatives:** (a) start every filter at identity `(1,0,0,0)` with a single fixed β and let accel correction converge it over several seconds, (b) seed each filter's initial quaternion from its own calibration-window accel average (roll/pitch only — yaw is unobservable), with a temporarily high β right after seeding that drops to a lower steady-state value once converged.
+
+**Choice:** (b) — `quatFromAccel()` seeds roll/pitch at the end of calibration, then `BETA_INIT = 2.0` runs for `CONVERGE_MS = 1500` ms before dropping to `BETA_STEADY = 0.033`.
+
+**Rationale:** A single fixed β can't satisfy both ends of the trade-off: high enough to converge quickly from a bad start injects accelerometer noise into the steady-state estimate, low enough to be quiet at rest takes too long to snap in from identity if a sensor is mounted at a real tilt (all five fingers are, by design — resting near-horizontal, not flat). Seeding from the already-collected calibration-window accel average is free (that data is gathered anyway for the gyro bias table) and gives every filter a correct starting tilt instead of fighting toward one. Trade-off: two more tuning constants (`CONVERGE_MS`, `BETA_INIT`) than a one-β design, and if the calibration window itself wasn't still (as happened in earlier Phase 4 captures), the seed accel average would be wrong too — this fix doesn't help if the underlying capture discipline (hold still during calibration) fails.
+
+---
+
+### 2026-07-17 | Madgwick vs. Mahony vs. complementary filter for per-sensor fusion
+
+**Alternatives:** Madgwick gradient-descent filter, Mahony explicit-complementary filter (PI controller on the same accel-vs-gravity error), or a simple fixed-weight complementary filter (`angle = a*gyro_integral + (1-a)*accel_angle`).
+
+**Choice:** Madgwick, one independent instance per sensor (`firmware/05_madgwick_fusion/05_madgwick_fusion.ino`).
+
+**Rationale:** Both Madgwick and Mahony solve the same problem (blend gyro integration with an accel-derived gravity reference) and would likely perform similarly well tuned; Madgwick was picked because it needs only one hand-tuned parameter (β) instead of Mahony's two (Kp and Ki), and its gradient-descent correction converges from a bad initial orientation faster than Mahony's proportional-integral controller — useful at boot, before any calibration pose is guaranteed. The plain complementary filter was rejected outright: fixed-weight blending doesn't reason about *how wrong* the current estimate is, so it either lags under fast motion or lets noise through at rest, and can't produce a proper quaternion without extra bookkeeping. Trade-off: Madgwick is a few more FLOPs per sample than a complementary filter — irrelevant here, since six filters at 100 Hz is well within the nRF52840's headroom.
+
+---
+
 ### 2026-07-14 | MPU6050_light vs. Adafruit_MPU6050 for the finger sensors
 
 **Alternatives:** `Adafruit_MPU6050` (+ Adafruit_Sensor + BusIO) vs. `MPU6050_light` by rfetick.
