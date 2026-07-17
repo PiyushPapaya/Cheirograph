@@ -114,23 +114,71 @@ number, until a multi-minute capture confirms them.
 ```bash
 cd tools
 python plot_fusion.py ../data/phase5_madgwick_fusion/capture_02_drift.csv \
-    --save ../docs/media/phase5_drift_rpy.png --title "Phase 5 drift test (held still, ~31.5 s)"
+    --save ../docs/media/phase5_drift_rpy.png
 python plot_fusion.py ../data/phase5_madgwick_fusion/capture_01_movement.csv \
-    --save ../docs/media/phase5_movement_rpy.png --title "Phase 5 movement test (~29.5 s)"
+    --save ../docs/media/phase5_movement_rpy.png
+# pass --no-mount-correction to see the raw, uncorrected per-sensor angles instead
 ```
 
-`docs/media/phase5_drift_rpy.png` — roll/pitch/yaw vs. time, one line per
-sensor, unwrapped so ±180° crossings don't show as vertical jumps. Confirms
-the table above visually: roll and pitch sit flat for the full 31.5 s, yaw
-is a tight noise band for the fingers with the hand sensor showing a small,
-slow upward creep.
+Both plots apply a fixed **+90° rotation about each finger sensor's local
+Y-axis** (`q_corrected = q_raw ⊗ q_offset`) before computing Euler angles,
+purely to make the fingers visually comparable to the hand sensor — see
+"Why hand and finger angles differ so much" below and DECISIONS.md
+(2026-07-17) for what this correction is and isn't.
 
-`docs/media/phase5_movement_rpy.png` — same plot for the movement capture.
-Useful as a qualitative sanity check ahead of Phase 6: the five finger
-traces move together as one tight cluster through every swing, while the
-hand sensor's trace diverges independently — exactly the "fingers move
-coherently, hand is a separate reference" structure that `q_rel = conj(q_hand)
-⊗ q_finger` depends on.
+`docs/media/phase5_drift_rpy.png` — roll/pitch/yaw vs. time, one line per
+sensor, unwrapped so ±180° crossings don't show as vertical jumps. With the
+mount correction applied, roll and yaw for fingers 1-4 sit close to the
+hand's baseline (within a few degrees), pitch settles to a small residual
+9-16° per finger (their real resting tilt, not mounting error) — and
+finger 5 visibly does **not** line up the way 1-4 do, sitting apart on all
+three axes. Confirms the table above: everything stays flat for the full
+31.5 s (no drift), and finger 5 is mounted differently, not just noisier.
+
+`docs/media/phase5_movement_rpy.png` — same correction, movement capture.
+Useful as a qualitative sanity check ahead of Phase 6: with the mount
+correction applied, the five finger traces move together as one cluster
+through every swing (finger 5 tracking the same shape but visibly offset),
+while the hand sensor's trace diverges independently — exactly the
+"fingers move coherently, hand is a separate reference" structure that
+`q_rel = conj(q_hand) ⊗ q_finger` depends on.
+
+### Why hand and finger angles differ so much on the same breadboard
+
+Absolute roll/pitch/yaw are **per-sensor-local** - each IMU reports its tilt
+relative to gravity in its *own* body frame, not a frame shared across
+sensors. Two chips on the same breadboard can report very different
+numbers simply because they're tilted differently, and that's exactly
+what's happening here: the finger MPU-6050 breakout modules are plugged
+straight into the breadboard rows (standing upright on their pin legs),
+while the XIAO (hand, sensor 0) sits closer to flat. That's roughly a 90°
+difference in physical mounting angle, and it shows up almost exactly that
+way in the data - raw finger pitch sits near -75° to -80° while the hand
+sits near 0°.
+
+Verified with actual quaternion math (not just eyeballed): applying a fixed
++90° rotation about each finger sensor's local Y-axis
+(`q_corrected = q_raw ⊗ q_offset`, `q_offset` = 90° about Y) brings fingers
+1-4's roll and yaw into close agreement with the hand sensor, e.g. finger 1
+goes from raw `(roll=-2.1, pitch=-80.7, yaw=0.3)` to corrected
+`(roll=-0.4, pitch=9.3, yaw=-1.8)` against the hand's `(-1.6, -1.1, 0.0)` -
+close on roll and yaw, with the remaining ~9-16° of pitch being each
+finger's actual resting tilt on the bench, not mounting error.
+
+**Finger 5 does not follow the same pattern** - the identical correction
+leaves it out of alignment with the other four (its yaw stays near 56°
+instead of settling near 0 like fingers 1-4's ~-2 to +3°). Combined with
+finger 5's consistently elevated gyro noise across every capture so far,
+this points at finger 5 being seated in its breadboard slot at a genuinely
+different angle than the other four, not merely a noisier unit. Worth a
+physical check before glove-mounting.
+
+This is expected behavior, not a bug, and doesn't need fixing for the real
+pipeline - it's exactly why Phase 6 computes `q_rel = conj(q_hand) ⊗
+q_finger` instead of comparing absolute angles. The `+90°/Y` correction
+here is a one-off, hand-picked constant for making *this rig's* plots
+readable; it is explicitly not that calculation and won't carry over once
+sensors are mounted on the glove at their intended angles.
 
 ### Movement capture (`capture_01_movement.csv`)
 
