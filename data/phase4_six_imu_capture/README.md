@@ -9,6 +9,7 @@ sensor_id 0) + five finger MPU-6050 clones via the PCA9548A mux (sensor_id
 |---|---|---|---|
 | `capture_01_raw.csv` | `millis,sensor_id,ax,ay,az,gx,gy,gz` | accel g, gyro deg/s | First ~160 ms of the still-calibration window only — hand-transcribed excerpt, superseded by capture_02 below |
 | `capture_02_full_session.csv` | `millis,sensor_id,ax,ay,az,gx,gy,gz` | accel g, gyro deg/s | **Full session**, ~8.7 s, millis 1048-9797, all 6 sensors |
+| `capture_03_full_session.csv` | `millis,sensor_id,ax,ay,az,gx,gy,gz` | accel g, gyro deg/s | **Full session, re-run**, ~15 s, millis 1000-16000, all 6 sensors, includes the firmware's own printed bias table + `# rate_hz=` lines |
 
 `capture_02_full_session.csv` is the complete run (the file the firmware
 actually wrote, saved directly rather than transcribed from a chat paste —
@@ -44,6 +45,60 @@ python analyze_calibration.py ../data/phase4_six_imu_capture/capture_02_full_ses
 python plot_6imu_3d.py ../data/phase4_six_imu_capture/capture_02_full_session.csv \
     --save-static ../docs/media/phase4_6imu_accel_3d.png \
     --save-gif ../docs/media/phase4_6imu_accel_3d.gif --stride 4
+```
+
+## capture_03 findings (re-verification, 2026-07-17)
+
+Same rig, same sketch, run again to re-check sensor health before moving on to
+Phase 5. This capture embeds the firmware's own instrumentation: a printed
+gyro bias/std table at the end of the 10 s calibration window, and periodic
+`# rate_hz=` achieved-rate reports.
+
+- **All 6 sensors initialized OK** (`# sensor N OK` for N=0..5) — no dead
+  channel at boot this time.
+- **Achieved loop rate: ~93.6-93.7 Hz** (from the embedded `# rate_hz=93.7
+  frames=188 over_ms=2007` / `93.6` lines), not the 100 Hz target. Six
+  sequential mux-switch-then-I²C-read cycles per 10 ms tick apparently cost
+  more than the tick budget allows even at 400 kHz — worth profiling
+  per-sensor read time before Phase 4 is called fully done.
+- **Calibration window still wasn't still.** The printed bias table shows
+  gyro std of 38-84 deg/s across all six sensors over the full 934-sample
+  window (`# 0,934,-4.614,-10.784,-0.878,83.302,53.905,40.212` etc.) — an
+  order of magnitude above a genuine at-rest noise floor (which should be a
+  few deg/s, per the capture_02 finding below). The rig was moved during
+  what the firmware logs as calibration, again.
+- **Finger 2 (mux channel 1) dropped to an all-zero reading again, but only
+  for the last ~340 ms of the ~15 s run** (34 of 1404 samples, millis
+  15660-16000) — a much smaller and later dropout than capture_02's, where
+  it died at millis=1468 and stayed dead for the rest of the session. Two
+  different capture sessions, two different dropout windows on the *same*
+  channel: this pattern (intermittent, not a fixed dead time) points at a
+  loose physical contact on that mux channel or its finger sensor's
+  breadboard jumper, not a firmware bug — confirms the capture_02
+  hypothesis rather than replacing it. Visible in
+  `docs/media/phase4_6imu_accel_3d_capture03.png` / `.gif` as five sensors
+  tracking one shared motion cluster, with no full-session flatline this
+  time (the dropout is too short at this timescale to show as a stationary
+  point).
+- **Finger 5's earlier accel-magnitude outlier is gone in this run** — no
+  longer runs ~1.23 g high; worth treating capture_02's finding as
+  session-specific breadboard contact quality rather than a fixed hardware
+  fault on that channel, unless it reappears.
+
+**Conclusion:** electrically, all 6 sensors are alive and none is
+permanently dead — the intermittent finger-2 dropout is the one open item to
+watch once this moves onto the glove, where strain relief should reduce (not
+necessarily eliminate) loose-contact risk. The calibration-window-not-still
+problem is now confirmed across three separate capture attempts and is a
+capture-discipline issue (hold the rig physically still), not a firmware
+issue — the still-window code itself is working as designed.
+
+```bash
+cd tools
+python analyze_calibration.py ../data/phase4_six_imu_capture/capture_03_full_session.csv
+python plot_6imu_3d.py ../data/phase4_six_imu_capture/capture_03_full_session.csv \
+    --save-static ../docs/media/phase4_6imu_accel_3d_capture03.png \
+    --save-gif ../docs/media/phase4_6imu_accel_3d_capture03.gif --stride 4
 ```
 
 ## What the saved excerpt shows
