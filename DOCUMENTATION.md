@@ -34,6 +34,23 @@ Rules:
 
 ---
 
+### 2026-07-17 | Phase 5 visualization fix + mounting-angle explanation, finger 5 mount anomaly found
+
+**Plan:** Visualize the two Phase 5 captures (drift + movement) as roll/pitch/yaw time series, then investigate why the hand (onboard) sensor's readings differ so much from the five finger sensors even though everything sits on the same breadboard.
+
+**Achieved:**
+- **Wrote `tools/plot_fusion.py`** — first version had a real bug: it plotted `millis` timestamps as if they were roll, making it look like roll ramped to 45,000° over 30 seconds. Fixed the column indexing.
+- **Diagnosed the hand-vs-finger angle gap.** Raw finger pitch sits near -75° to -80° while the hand sits near 0° — not a sensor fault. The finger MPU-6050 breakout modules are plugged straight into the breadboard (standing upright on their pin legs) while the XIAO sits closer to flat, so gravity lands on a different local axis for each. Verified with actual quaternion math (not guessed): a fixed +90° rotation about each finger sensor's local Y-axis brings fingers 1-4's roll and yaw into close agreement with the hand sensor, leaving a small residual pitch (9-16°, each finger's real resting tilt).
+- **Finger 5 does not follow the pattern** — the same correction leaves it out of alignment with fingers 1-4 (yaw stays near 56° instead of settling near 0). Combined with finger 5's consistently elevated gyro noise across every capture this session and last, this points at finger 5 being seated at a genuinely different angle in its breadboard slot, not just a noisier unit.
+- **Added the correction to `plot_fusion.py`** as an opt-out (`--no-mount-correction`), clearly documented as a rough, hand-picked, visualization-only fix — not a substitute for Phase 6's real `q_rel = conj(q_hand) ⊗ q_finger`, which will handle this properly and per-session regardless of how each sensor happens to be mounted.
+- Regenerated `docs/media/phase5_drift_rpy.png` and `phase5_movement_rpy.png` with the correction applied; both now show fingers 1-4 clustering close to the hand's baseline, with finger 5 visibly offset. Logged the correction as a design decision in DECISIONS.md (2026-07-17).
+
+**Problems & blockers:** None beyond the initial plotting bug (caught before it made it into the docs). The mount-angle explanation is inferred from the data and physical reasoning about how breadboard-mounted breakout modules typically sit, not confirmed by physically measuring the rig's angles — worth a quick visual check next session.
+
+**Next:** Before glove-mounting, physically check finger 5's breadboard orientation against fingers 1-4 to confirm the mount-angle theory. Once on the glove, sensors will be mounted at deliberate, known angles (flat on each phalanx) so this particular ~90° bench artifact goes away — but the underlying lesson (compare `q_rel`, never raw absolute angles) carries forward permanently.
+
+---
+
 ### 2026-07-17 | Phase 5 second pass — seeded orientation, two-stage β, first bench drift + movement data
 
 **Plan:** Replace the first Madgwick fusion sketch with an improved version (accel-seeded initial orientation, two-stage β, roll/pitch/yaw output), then bench-test it with a still-hold drift capture and a movement capture, and give a final read on whether the 6 sensors are healthy and how to best configure them going forward.

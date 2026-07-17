@@ -19,6 +19,16 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-17 | Fixed +90°/Y visualization correction for finger sensors, not a real mount calibration
+
+**Alternatives:** (a) plot each sensor's raw absolute roll/pitch/yaw as-is, accepting that fingers and hand look wildly different because they're mounted at different physical angles on the bench; (b) apply a per-session, data-derived mount-offset correction (e.g. compute it from each capture's own seed-accel reading); (c) apply one fixed, hand-picked correction quaternion (+90° about each finger sensor's local Y-axis) to all finger sensors in `tools/plot_fusion.py`, purely for visual comparison.
+
+**Choice:** (c), applied only in the plotting tool, clearly labeled as a rough diagnostic and explicitly not a substitute for Phase 6's real `q_rel = conj(q_hand) ⊗ q_finger`.
+
+**Rationale:** The raw finger pitch sitting near -75° to -80° while the hand sits near 0° isn't a sensor fault — the GY-521 finger modules are plugged straight into the breadboard (standing upright on their pin legs) while the XIAO sits closer to flat, so gravity shows up on a different local axis for each. A single fixed +90°/Y correction (verified by hand with quaternion math, not guessed) brings fingers 1-4's roll and yaw into close agreement with the hand sensor, leaving a small residual pitch (9-16°, their real physical tilt) — good enough to make the plots readable side by side. It deliberately does **not** attempt a proper per-sensor mount calibration, because that's Phase 6's job once sensors are actually glove-mounted at known angles; doing it properly now, on a temporary breadboard rig, would be wasted precision. Trade-off / finding: the same correction does **not** line up finger 5, which stays off by roughly the same amount it was before — this is itself useful signal that finger 5 is mounted at a distinctly different angle than 1-4, not merely noisier as previously suspected (see DOCUMENTATION.md 2026-07-17).
+
+---
+
 ### 2026-07-17 | Accel-seeded orientation + two-stage β, instead of identity start + fixed β
 
 **Alternatives:** (a) start every filter at identity `(1,0,0,0)` with a single fixed β and let accel correction converge it over several seconds, (b) seed each filter's initial quaternion from its own calibration-window accel average (roll/pitch only — yaw is unobservable), with a temporarily high β right after seeding that drops to a lower steady-state value once converged.
