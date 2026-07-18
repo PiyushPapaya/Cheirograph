@@ -87,6 +87,33 @@ point, not the current wiring.
 
 ---
 
+## Physical mounting (Phase 7 — glove)
+
+- **Finger IMUs → leukoplast (fabric tape) only.** Needs to be rigidly coupled to the
+  phalanx — any wobble injects noise into that finger's whole orientation signal. Tape
+  can go directly over the MPU-6050 chip itself; it does not damage the IC (no pressure
+  risk, no static risk from the tape).
+- **XIAO + PCA9548A → velcro, or leukoplast if serviceability isn't a priority.** These
+  need occasional removal (reflash the XIAO, recharge the battery); leukoplast is
+  semi-permanent once stuck down hard. Velcro (hook on the board/enclosure, loop sewn or
+  taped to the glove) trades a little rigidity for that removability.
+- **PCA9548A has no orientation constraint** — it has no axes, so mount it however wiring
+  is shortest: upstream pins (VIN/GND/SDA/SCL) facing the XIAO, channel pins facing the
+  fingers.
+- **Pin-header orientation on the finger breakouts**: mount so VCC/GND/SCL/SDA sit closest
+  to the hand (shortest run back to the mux) and the two unused pins (AD0, INT) point
+  toward the fingertip, out of the way.
+- **IMU axis convention on the glove**: Y toward the fingertip (down the finger). X and Z
+  follow from the board's fixed geometry once Y is chosen — don't try to align them
+  independently. Verify empirically after taping: hold the hand flat, palm down, and check
+  which raw accel axis reads ~-9.81 (that's local "down"); note the sign per sensor before
+  trusting any relative-orientation math.
+- **Leave slack in the finger→mux wire runs** and tack the slack loop down with one strip
+  of tape — see strain-relief notes below; this is the #1 cause of a glove sensor that
+  worked on the bench and died once mounted.
+
+---
+
 ## Pre-flight checks (verify at first MPU-6050 power-on, Phase 2)
 
 - [ ] **GY-521 LDO vs. 3.3 V supply:** most GY-521 boards route VCC through an onboard
