@@ -34,6 +34,26 @@ Rules:
 
 ---
 
+### 2026-07-18 | Phase 7 — full glove mount + wiring, all 6 IMUs confirmed reading
+
+**Plan:** Mount the remaining loose components (XIAO, PCA9548A mux) onto the glove, wire all 5 finger IMUs to the mux and the mux to the XIAO with proper strain relief, then re-flash `firmware/04_all_imus_raw` to confirm all 6 sensors still read cleanly off the breadboard bench.
+
+**Achieved:**
+- All 5 finger MPU-6050s (thumb → pinky, middle phalanx / thumb proximal phalanx) mounted with leukoplast tape, snug with no play. Confirmed in earlier session's photos and re-confirmed today before wiring.
+- XIAO + PCA9548A mux + a small breadboard mounted together on the wrist strap (breadboard used as the wiring hub between the finger jumpers and the mux/XIAO, rather than mux-and-XIAO going directly to bare wire splices) — see `docs/media/phase7_glove_mount_breadboard_wrist.jpg`.
+- All five fingers wired back to the mux via jumper wire, routed loosely across the back of the hand (`docs/media/phase7_glove_mount_hand_top.jpg`, `phase7_glove_mount_fingers_wired.jpg`).
+- **Flashed and ran the sketch — all 6 IMUs power up and read live**, confirmed visually by each finger sensor's onboard red LED lighting (`docs/media/phase7_glove_mount_sensors_live.jpg`) and by serial data streaming. This closes the electrical half of Phase 7: the glove-mounted wiring works, not just the breadboard bench wiring.
+
+**Problems & blockers:**
+- **No capture file was saved this session** — "data gets shown" was confirmed live in the Serial Monitor, not logged to `data/`. Nothing to run `tools/analyze_calibration.py` or `tools/plot_6imu_3d.py` against yet from the glove-mounted rig specifically.
+- **The 30-minute continuous-wear deliverable from `GENERAL_PLAN.md` Phase 7 is not yet met** — today confirms the wiring works at power-on, not that it survives sustained wear/flex. Phase 7 is mounted-and-wired-and-verified-alive, not fully closed.
+- Wire routing is currently loose dupont jumpers, not yet strain-relief-taped at every knuckle per `hardware/WIRING.md`'s rule (anchor on both sides of each flex point, on the insulation not the pad) — visible in the photos as a loose bundle rather than tacked-down runs. This is the most likely failure point if left as-is through repeated wear.
+- No finger-identity-to-mux-channel table was captured from this exact wiring pass — `hardware/WIRING.md`'s channel-assignment table is still the *planned* mapping from Phase 3/4, not confirmed re-verified against the physical glove wiring today.
+
+**Next:** Tape down strain relief at every knuckle crossing before doing any extended wear-testing (the wiring works now, but a loose jumper bundle is exactly what breaks first). Save an actual capture from the glove-mounted rig and run it through the existing analysis tools to confirm sensor health hasn't regressed from moving off the bare bench. Then run the real 30-minute wear test to close Phase 7. After that: build a Python tool (`tools/`) that receives fused orientation data live over a wireless link (BLE or Thread/Zigbee — pick one, log the choice in DECISIONS.md) instead of USB serial, and visualizes the current finger pose in real time — this is the practical, watchable proof that Phase 6's `q_rel` math is working before committing to Phase 8's data collection. Then: Phase 8 labelled data collection, then Phase 9 (Edge Impulse classifier).
+
+---
+
 ### 2026-07-17 | Phase 5 visualization fix + mounting-angle explanation, finger 5 mount anomaly found
 
 **Plan:** Visualize the two Phase 5 captures (drift + movement) as roll/pitch/yaw time series, then investigate why the hand (onboard) sensor's readings differ so much from the five finger sensors even though everything sits on the same breadboard.

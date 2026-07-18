@@ -19,6 +19,16 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-18 | Leukoplast for finger IMUs, velcro for MCU/mux — mounting material split by removability need
+
+**Alternatives:** (a) leukoplast (fabric tape) for everything — most rigid, cheapest, matches what's already used for strain relief elsewhere on the glove; (b) velcro for everything — fully removable but adds bulk and a small amount of mounting play; (c) split by component: leukoplast for the finger IMUs, velcro (or leukoplast if serviceability isn't needed) for the XIAO + PCA9548A.
+
+**Choice:** (c).
+
+**Rationale:** Finger IMUs need zero wobble — any play at the mount injects directly into that finger's orientation signal — and never need to come off mid-build, so rigid tape wins outright. The XIAO and battery need periodic removal (reflashing, recharging) that repeated re-taping would fight against, so velcro's minor rigidity cost is worth the serviceability. Taping directly over the MPU-6050 chip itself is safe (no pressure or static risk) — freed up the mounting spot decision to be "best flat surface," not "avoid the chip."
+
+---
+
 ### 2026-07-17 | Fixed +90°/Y visualization correction for finger sensors, not a real mount calibration
 
 **Alternatives:** (a) plot each sensor's raw absolute roll/pitch/yaw as-is, accepting that fingers and hand look wildly different because they're mounted at different physical angles on the bench; (b) apply a per-session, data-derived mount-offset correction (e.g. compute it from each capture's own seed-accel reading); (c) apply one fixed, hand-picked correction quaternion (+90° about each finger sensor's local Y-axis) to all finger sensors in `tools/plot_fusion.py`, purely for visual comparison.

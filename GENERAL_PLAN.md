@@ -70,8 +70,12 @@ Never re-scope this toward "translate ASL" — it would require location, motion
 - [ ] **Phase 6 — Relative orientation + skeleton viz** (`firmware/06_relative_orientation/`)
   Compute `q_rel = conj(q_hand) ⊗ q_finger` for each finger; add `tools/skeleton_viz.py` 3D hand visualiser. Design the "flat hand" re-zero pose here (see DECISIONS.md 2026-07-14 on yaw drift). Deliverable: virtual fingers move correctly; wrist rotation has no effect on relative angles — **and this still holds after 5+ minutes of continuous wear** (pitch/roll must hold; yaw offset handled by the re-zero pose).
 
-- [ ] **Phase 7 — Full glove mount** (`firmware/07_full_glove/`)
+- [ ] **Phase 7 — Full glove mount** (`firmware/07_full_glove/`) 🟡 partial 2026-07-18
   Mount all sensors on the glove with proper strain relief. Deliverable: all sensors survive a 30-minute wear session with no connection drop.
+  All 6 IMUs mounted and wired on the glove, confirmed reading live (photos in `docs/media/phase7_glove_mount_*.jpg`). Still open: knuckle strain-relief taping (wiring is currently loose jumpers, not yet anchored per `hardware/WIRING.md`), a saved/analyzed capture from the glove-mounted rig, and the actual 30-minute wear test.
+
+- [ ] **Phase 7.5 — Live wireless visualization** (`tools/`)
+  Once Phase 6's `q_rel` math and Phase 7's mount are solid: a Python tool that receives fused orientation over a wireless link (BLE, or Thread/Zigbee — choice to be logged in DECISIONS.md when made) instead of USB serial, and renders the live hand/finger pose. Deliverable: moving a finger on the physical glove visibly moves the corresponding finger in the visualization, untethered. Serves as the practical proof-of-working before committing to full data collection.
 
 - [ ] **Phase 8 — Labelled data collection** (`data/`)
   Capture labelled samples for each fingerspelling letter; aim for ≥ 30 samples × 3 sessions per class. Deliverable: balanced dataset in `data/`.
