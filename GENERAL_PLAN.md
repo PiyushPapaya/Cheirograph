@@ -74,8 +74,9 @@ Never re-scope this toward "translate ASL" — it would require location, motion
   Mount all sensors on the glove with proper strain relief. Deliverable: all sensors survive a 30-minute wear session with no connection drop.
   All 6 IMUs mounted and wired on the glove (photos in `docs/media/phase7_glove_mount_*.jpg`). 30-minute wear test passed: continuous data throughout, glove put on/taken off multiple times during the test with no connection drop, fit stayed snug and comfortable.
 
-- [ ] **Phase 7.5 — Live wireless visualization** (`tools/`)
-  Once Phase 6's `q_rel` math and Phase 7's mount are solid: a Python tool that receives fused orientation over a wireless link (BLE, or Thread/Zigbee — choice to be logged in DECISIONS.md when made) instead of USB serial, and renders the live hand/finger pose. Deliverable: moving a finger on the physical glove visibly moves the corresponding finger in the visualization, untethered. Serves as the practical proof-of-working before committing to full data collection.
+- [ ] **Phase 7.5 — Live wireless visualization** (`firmware/08_ble_dashboard/`, `tools/handrig_dashboard.html`) 🟡 in progress 2026-07-19
+  Once Phase 6's `q_rel` math and Phase 7's mount are solid: a tool that receives fused orientation over a wireless link and renders the live hand/finger pose. Deliverable: moving a finger on the physical glove visibly moves the corresponding finger in the visualization, untethered. Serves as the practical proof-of-working before committing to full data collection.
+  Link chosen: **BLE** (Nordic UART Service, binary frames — see `firmware/08_ble_dashboard/README.md`). Browser dashboard built (Three.js 3D hand + per-sensor live traces + in-browser calibration). Found and fixed a clone-IMU (`WHO_AM_I=0x72`) init bug that was corrupting 4 of 5 finger channels (`DECISIONS.md`, 2026-07-19) — firmware v3 written but not yet reflashed/reverified on the glove. Sensor-to-model axis remap designed but not yet implemented. Not closing this phase until both are verified.
 
 - [ ] **Phase 8 — Labelled data collection** (`data/`)
   Capture labelled samples for each fingerspelling letter; aim for ≥ 30 samples × 3 sessions per class. Deliverable: balanced dataset in `data/`.

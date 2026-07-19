@@ -34,6 +34,29 @@ Rules:
 
 ---
 
+### 2026-07-19 | Phase 7.5 — BLE live dashboard, found & fixed clone-IMU init bug
+
+**Plan:** With all hardware now mounted on the glove (XIAO, mux, all 5 finger IMUs, power rails — from the 2026-07-18 session), build a live wireless dashboard: the XIAO streams all 6 IMUs over BLE, and a browser page shows the post-Madgwick-fusion 3D hand alongside each sensor's raw accel/gyro, so I can actually *see* my hand tracked live and confirm the whole chain works end to end (Phase 7.5 in `GENERAL_PLAN.md`).
+
+**Achieved:**
+- Wrote and flashed a first BLE streaming sketch (`bluefruit.h` NUS service, 79-byte binary frames, ~50 Hz) plus `tools/handrig_dashboard.html` (Three.js 3D hand, live accel/gyro trace canvases per sensor, in-browser calibration that measures gyro bias/noise over 10 s of stillness).
+- Connected over Web Bluetooth and got live data — but 4 of the 5 finger sensors were clearly garbage (fingers flailing on their own, or frozen). Captured two raw CSVs via the dashboard's Export button (`data/phase7_5_ble_diagnostics/`) and went through them numerically instead of guessing.
+- Diagnosed the pattern precisely: `thumb_gx` stuck at exactly `246.0938` every single row, `middle_ay` stuck at exactly `1.9688`, `ring_gx` ramping in a perfectly linear `±0x2000` LSB step per frame — not sensor noise, not drift, but digital init artifacts. Only `hand` (onboard LSM6DS3) and `pinky` (mux ch4) were clean.
+- Root-caused it to the finger modules being MPU-6500/9250-family clones (`WHO_AM_I = 0x72`, not the genuine MPU-6050's `0x68`) that `MPU6050_light` never fully wakes (missing `PWR_MGMT_2` axis-enable write) — see `DECISIONS.md`.
+- Rewrote the finger IMU driver as raw I²C (explicit reset → wake → enable-all-axes → configure), dropping `MPU6050_light` for the fingers entirely. Added a boot-time per-channel diagnostic (`WHO_AM_I` + 10-sample liveness/stuck-value check) so this class of bug is visible on Serial within 2 seconds of every boot from now on. New sketch lives at `firmware/08_ble_dashboard/08_ble_dashboard.ino` (v3).
+- Confirmed the mux channel map against the physical build: thumb = ch0 (`SD0/SC0`), pinky = ch4 (`SD4/SC4`) — matches `hardware/WIRING.md`.
+- Confirmed the finger sensor mounting axis convention empirically: sensor `-Y` → fingertip, sensor `+Z` → up. Also found the hand IMU (LSM6DS3) reads `az≈-0.98g` flat/palm-down — a different Z sense than the fingers — so the hand sensor needs its own axis handling, not the same one as the fingers.
+- Ruled out the leukoplast tape (used to mount every finger sensor) as a cause of the garbage data — it's non-conductive and physically can't produce a stuck digital register; it remains a real but separate risk for *intermittent* dropouts from wire strain during flex.
+
+**Problems & blockers:**
+- The core bug looked at first like a fusion/calibration problem ("garbage in, garbage out no matter how I calibrate") — the actual fix was two layers below that, in the I²C init sequence, before any math ran. Lesson: when calibration "does nothing," check whether the raw bytes are even real before touching the filter.
+- The dashboard's 3D model uses a different axis convention (`+Z=forward, +Y=up`) than either sensor's raw frame, so a per-sensor axis remap is needed before Madgwick. **This was designed (see `DECISIONS.md`) but not yet implemented** — `tools/handrig_dashboard.html` currently feeds raw sensor-frame data straight into fusion. Finger curl should already look roughly right (the mounting keeps that rotation axis aligned); spread/abduction will look wrong until the remap lands.
+- v3 firmware (the clone-init fix) was written and reviewed but **not yet reflashed and reverified on the physical glove this session** — the boot diagnostic output confirming all 6 channels read `OK` is the first thing to check next time.
+
+**Next:** Flash `firmware/08_ble_dashboard/08_ble_dashboard.ino`, read the boot diagnostic on Serial (115200) with the glove flat and still, and confirm all 6 sensors report `OK`. If any channel is still `BAD`/`SUSPECT` at boot, that's now electrical (solder joint, pull-ups), not firmware — go straight to that channel's connections. Then implement the `(x,y,z)→(x,z,-y)` axis remap for the fingers (and derive the hand sensor's own remap) in `tools/handrig_dashboard.html`, reconnect, and verify spread/abduction motion tracks correctly in the 3D view before calling Phase 7.5 done.
+
+---
+
 ### 2026-07-18 | Phase 7 — full glove mount + wiring, all 6 IMUs confirmed reading
 
 **Plan:** Mount the remaining loose components (XIAO, PCA9548A mux) onto the glove, wire all 5 finger IMUs to the mux and the mux to the XIAO with proper strain relief, then re-flash `firmware/04_all_imus_raw` to confirm all 6 sensors still read cleanly off the breadboard bench.

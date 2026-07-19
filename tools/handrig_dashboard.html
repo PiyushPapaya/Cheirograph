@@ -1,0 +1,600 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HandRig · 6-IMU live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#0f141b; --panel:#121821; --panel2:#161d27;
+    --line:#1f2a37; --line2:#28374a;
+    --tx:#e6edf3; --mut:#7d8896; --dim:#4a5563;
+    --x:#ff5470; --y:#3fd99b; --z:#5b8cff;
+    --live:#3ad0c4; --ref:#f5b544; --bad:#ff5470;
+    --r:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 700px at 78% -10%,#10202a 0%,transparent 60%),var(--bg);
+    color:var(--tx); font-family:"Space Grotesk",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; height:100vh; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+
+  header{display:flex;align-items:center;gap:16px;padding:12px 18px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,var(--bg2),transparent);flex:none}
+  .brand{display:flex;align-items:baseline;gap:10px;letter-spacing:.02em}
+  .brand b{font-weight:700;font-size:17px}
+  .brand span{color:var(--mut);font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);transition:.25s}
+  .dot.on{background:var(--live);box-shadow:0 0 12px 1px var(--live)}
+  .dot.err{background:var(--bad);box-shadow:0 0 12px 1px var(--bad)}
+  .status{font-size:13px;color:var(--mut);min-width:150px}
+  .spacer{flex:1}
+  .telem{display:flex;gap:20px;align-items:center}
+  .telem .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .telem .v{font-size:15px}
+  .telem .v.warnv{color:var(--bad)}
+  button{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--tx);
+    background:var(--panel2);border:1px solid var(--line2);padding:9px 15px;border-radius:8px;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--live);color:#fff}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--live);color:#04121a;border-color:transparent}
+  button.primary:hover{filter:brightness(1.08)}
+  button.ref{background:transparent;border-color:var(--ref);color:var(--ref)}
+  button.ref:hover{background:var(--ref);color:#1a1400}
+  button.rec{border-color:var(--bad);color:var(--bad)}
+  button.rec.active{background:var(--bad);color:#1a0006;border-color:transparent}
+  button:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  button.mini{padding:6px 11px;font-size:12px}
+
+  main{flex:1;display:grid;grid-template-columns:1.5fr 1fr;min-height:0}
+  .stage{position:relative;border-right:1px solid var(--line);min-height:0}
+  #gl{position:absolute;inset:0;display:block}
+  .hint{position:absolute;top:16px;left:18px;color:var(--dim);font-size:12px}
+  .stagefoot{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+    padding:14px 18px;background:linear-gradient(0deg,rgba(10,14,20,.94),transparent)}
+  .ctrl{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12px}
+  input[type=range]{width:110px;accent-color:var(--live)}
+  .seg{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+  .seg button{border:0;border-radius:0;background:transparent;padding:7px 12px;font-size:12px;color:var(--mut)}
+  .seg button.on{background:var(--panel2);color:var(--tx)}
+
+  /* calibration banner */
+  .calbanner{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:8;
+    background:rgba(8,11,16,.82);backdrop-filter:blur(3px)}
+  .calbanner.show{display:flex}
+  .calbanner .c{text-align:center}
+  .calbanner .big{font-size:64px;font-weight:700;font-family:"JetBrains Mono";color:var(--ref);line-height:1}
+  .calbanner .lab{margin-top:10px;font-size:15px;color:var(--tx);letter-spacing:.02em}
+  .calbanner .sub{margin-top:4px;font-size:12px;color:var(--mut)}
+
+  .veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(10,14,20,.55);backdrop-filter:blur(2px);z-index:6}
+  .veil .box{text-align:center;max-width:360px}
+  .veil h2{font-weight:600;font-size:19px;margin:0 0 8px}
+  .veil p{color:var(--mut);font-size:13px;line-height:1.5;margin:0 0 18px}
+  .warn{margin-top:16px;font-size:11px;color:var(--dim);line-height:1.5}
+
+  .cards{overflow-y:auto;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+  .cards::-webkit-scrollbar{width:8px}.cards::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
+    border-radius:var(--r);padding:12px 13px 13px;position:relative;overflow:hidden}
+  .card.dead{opacity:.42}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dim)}
+  .card.live::before{background:var(--live)}
+  .card.flag::before{background:var(--ref)}
+  .card.bad::before{background:var(--bad)}
+  .chead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .cid{font-family:"JetBrains Mono";font-size:11px;color:var(--dim)}
+  .cname{font-weight:600;font-size:13px;letter-spacing:.06em}
+  .cflag{font-size:10px;color:var(--ref);letter-spacing:.04em}
+  .cled{width:7px;height:7px;border-radius:50%;background:var(--dim);margin-left:auto}
+  .card.live .cled{background:var(--live);box-shadow:0 0 8px var(--live)}
+  .blabel{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin:8px 0 5px;display:flex;justify-content:space-between}
+  .blabel .mag{color:var(--mut)}
+  .row{display:grid;grid-template-columns:14px 1fr 60px;align-items:center;gap:7px;height:16px}
+  .axl{font-family:"JetBrains Mono";font-size:11px;font-weight:700;text-align:center}
+  .axl.x{color:var(--x)}.axl.y{color:var(--y)}.axl.z{color:var(--z)}
+  .bar{position:relative;height:4px;background:#0b1017;border-radius:3px;overflow:hidden}
+  .bar i{position:absolute;top:0;bottom:0;left:50%;width:0;border-radius:3px}
+  .bar.x i{background:var(--x)}.bar.y i{background:var(--y)}.bar.z i{background:var(--z)}
+  .val{font-family:"JetBrains Mono";font-size:12px;text-align:right}
+  canvas.trace{width:100%;height:52px;margin-top:10px;border-radius:6px;background:#0a0f16;display:block}
+  .rpy{display:flex;gap:14px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+  .rpy div{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  .rpy b{display:block;font-family:"JetBrains Mono";font-size:13px;font-weight:500;margin-top:2px}
+
+  @media (max-width:900px){
+    main{grid-template-columns:1fr;grid-template-rows:minmax(280px,40vh) 1fr}
+    .stage{border-right:none;border-bottom:1px solid var(--line)}
+    .telem{display:none}
+  }
+</style>
+
+<header>
+  <div class="brand"><b>HandRig</b><span>6-IMU · live</span></div>
+  <div class="dot" id="dot"></div>
+  <div class="status" id="status">not connected</div>
+  <div class="spacer"></div>
+  <div class="telem">
+    <div><div class="k">rate</div><div class="v mono"><span id="thz">0</span> Hz</div></div>
+    <div><div class="k">throughput</div><div class="v mono"><span id="tkb">0.0</span> KB/s</div></div>
+    <div><div class="k">loss</div><div class="v mono" id="tlossv"><span id="tloss">0.0</span>%</div></div>
+  </div>
+  <button class="primary" id="conn">Connect</button>
+</header>
+
+<main>
+  <section class="stage">
+    <canvas id="gl"></canvas>
+    <div class="hint">drag to orbit · scroll to zoom</div>
+
+    <div class="stagefoot">
+      <button class="ref" id="cal" disabled>Calibrate (10 s)</button>
+      <button class="mini" id="zero" disabled>Zero orient.</button>
+      <div class="ctrl">smoothing <input type="range" id="beta" min="0.02" max="0.3" step="0.01" value="0.06"><span class="mono" id="betav">0.06</span></div>
+      <div class="spacer"></div>
+      <div class="seg" id="traceview">
+        <button data-v="gyro" class="on">gyro trace</button>
+        <button data-v="accel">accel trace</button>
+      </div>
+      <button class="rec mini" id="rec" disabled>● Record</button>
+      <button class="mini" id="csv" disabled>Export CSV</button>
+    </div>
+
+    <div class="calbanner" id="calbanner">
+      <div class="c">
+        <div class="big" id="calcount">10</div>
+        <div class="lab">Hold your hand flat &amp; still</div>
+        <div class="sub">measuring gyro bias on all sensors…</div>
+      </div>
+    </div>
+
+    <div class="veil" id="veil">
+      <div class="box">
+        <h2>Connect your glove</h2>
+        <p>Flash <b>handrig_ble.ino</b>, power the rig, connect. Then run <b>Calibrate (10 s)</b> with the glove lying flat and still — that removes gyro bias so the fingers stop drifting.</p>
+        <button class="primary" id="conn2">Connect over Bluetooth</button>
+        <div class="warn" id="unsupported"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cards" id="cards"></section>
+</main>
+
+<script>
+"use strict";
+
+const NUS="6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const TX ="6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const SYNC=0xAB, FRAME_LEN=79, ACC_SCALE=8192.0, GYR_SCALE=65.536, DEG=Math.PI/180;
+const HLEN=400;              // trace history length
+const REC_CAP=300000;       // recording row cap
+
+const META=[
+  {id:0,name:"HAND",role:"palm"},
+  {id:1,name:"THUMB"},{id:2,name:"INDEX"},{id:3,name:"MIDDLE"},{id:4,name:"RING"},{id:5,name:"PINKY"},
+];
+
+// ===== Madgwick (accel+gyro) =====
+class Madgwick{
+  constructor(beta=0.06){this.q=[1,0,0,0];this.beta=beta;}
+  update(gx,gy,gz,ax,ay,az,dt){
+    let [q0,q1,q2,q3]=this.q;
+    gx*=DEG;gy*=DEG;gz*=DEG;
+    let qd0=0.5*(-q1*gx-q2*gy-q3*gz);
+    let qd1=0.5*( q0*gx+q2*gz-q3*gy);
+    let qd2=0.5*( q0*gy-q1*gz+q3*gx);
+    let qd3=0.5*( q0*gz+q1*gy-q2*gx);
+    let n=Math.hypot(ax,ay,az);
+    if(n>1e-6){
+      ax/=n;ay/=n;az/=n;
+      const _2q0=2*q0,_2q1=2*q1,_2q2=2*q2,_2q3=2*q3,_4q0=4*q0,_4q1=4*q1,_4q2=4*q2,_8q1=8*q1,_8q2=8*q2;
+      const q0q0=q0*q0,q1q1=q1*q1,q2q2=q2*q2,q3q3=q3*q3;
+      let s0=_4q0*q2q2+_2q2*ax+_4q0*q1q1-_2q1*ay;
+      let s1=_4q1*q3q3-_2q3*ax+4*q0q0*q1-_2q0*ay-_4q1+_8q1*q1q1+_8q1*q2q2+_4q1*az;
+      let s2=4*q0q0*q2+_2q0*ax+_4q2*q3q3-_2q3*ay-_4q2+_8q2*q1q1+_8q2*q2q2+_4q2*az;
+      let s3=4*q1q1*q3-_2q1*ax+4*q2q2*q3-_2q2*ay;
+      const sn=Math.hypot(s0,s1,s2,s3);
+      if(sn>1e-6){s0/=sn;s1/=sn;s2/=sn;s3/=sn;
+        qd0-=this.beta*s0;qd1-=this.beta*s1;qd2-=this.beta*s2;qd3-=this.beta*s3;}
+    }
+    q0+=qd0*dt;q1+=qd1*dt;q2+=qd2*dt;q3+=qd3*dt;
+    const qn=Math.hypot(q0,q1,q2,q3)||1;
+    this.q=[q0/qn,q1/qn,q2/qn,q3/qn];
+  }
+  three(){return new THREE.Quaternion(this.q[1],this.q[2],this.q[3],this.q[0]);}
+}
+
+// ===== per-sensor state =====
+const S=META.map(()=>({
+  fil:new Madgwick(0.06),
+  a:[0,0,0], g:[0,0,0], gc:[0,0,0],       // raw accel, raw gyro, calibrated gyro
+  amag:0,
+  bias:[0,0,0], noise:[0,0,0], calibrated:false, flag:"", bad:false,
+  qRef:new THREE.Quaternion(), rel:new THREE.Quaternion(),
+  last:0, alive:false,
+  hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
+}));
+
+// ===== 3D =====
+let renderer,scene,camera,palm;
+const fingerGroups=[];
+let camYaw=0.7,camPitch=0.5,camDist=9;
+
+function buildScene(){
+  const cv=document.getElementById("gl");
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(42,1,0.1,100);
+  scene.add(new THREE.HemisphereLight(0x9fc6ff,0x0a0e14,0.9));
+  const key=new THREE.DirectionalLight(0xffffff,0.9);key.position.set(4,8,6);scene.add(key);
+  const rim=new THREE.DirectionalLight(0x3ad0c4,0.5);rim.position.set(-6,2,-4);scene.add(rim);
+  const grid=new THREE.GridHelper(20,20,0x28374a,0x161d27);grid.position.y=-3.2;scene.add(grid);
+
+  palm=new THREE.Group();scene.add(palm);
+  const palmMat=new THREE.MeshStandardMaterial({color:0x223140,roughness:.75,metalness:.1});
+  palm.add(new THREE.Mesh(new THREE.BoxGeometry(2.4,0.55,2.6),palmMat));
+  const mk=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.12,0.5),
+    new THREE.MeshStandardMaterial({color:0x3ad0c4,emissive:0x0d4c47,roughness:.4}));
+  mk.position.set(0,0.34,-0.2);palm.add(mk);
+
+  const anchors={
+    THUMB :{x: 1.35,z: 0.15,len:1.5,rad:0.20,yaw: 0.9},
+    INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06},
+    MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0},
+    RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05},
+    PINKY :{x:-0.80,z: 1.10,len:1.7,rad:0.16,yaw:-0.12},
+  };
+  const finMat=new THREE.MeshStandardMaterial({color:0x2b3d4e,roughness:.6,metalness:.12});
+  META.forEach(m=>{
+    if(m.role==="palm"){fingerGroups[0]=null;return;}
+    const a=anchors[m.name];
+    const g=new THREE.Group();g.position.set(a.x,0.1,a.z);g.rotation.y=a.yaw;
+    const seg=new THREE.Group();
+    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(a.rad*0.8,a.rad,a.len,16),finMat);
+    cyl.rotation.x=Math.PI/2;cyl.position.z=a.len/2;seg.add(cyl);
+    const tip=new THREE.Mesh(new THREE.SphereGeometry(a.rad*0.8,16,12),finMat);tip.position.z=a.len;seg.add(tip);
+    seg.add(new THREE.Mesh(new THREE.SphereGeometry(a.rad*1.05,16,12),finMat));
+    g.add(seg);g.userData={restYaw:a.yaw};palm.add(g);fingerGroups[m.id]=g;
+  });
+
+  addEventListener("resize",resize);resize();
+  renderer.setAnimationLoop(render);
+  initOrbit(cv);
+}
+function initOrbit(cv){
+  let down=false,px=0,py=0;
+  cv.addEventListener("pointerdown",e=>{down=true;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener("pointermove",e=>{if(!down)return;
+    camYaw-=(e.clientX-px)*0.008;camPitch-=(e.clientY-py)*0.008;
+    camPitch=Math.max(-1.3,Math.min(1.3,camPitch));px=e.clientX;py=e.clientY;});
+  cv.addEventListener("pointerup",()=>down=false);
+  cv.addEventListener("wheel",e=>{camDist=Math.max(4,Math.min(20,camDist+e.deltaY*0.01));e.preventDefault();},{passive:false});
+}
+function resize(){const s=document.querySelector(".stage");const w=s.clientWidth,h=s.clientHeight;
+  renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+
+const _tmp=new THREE.Quaternion();
+function render(){
+  camera.position.set(camDist*Math.cos(camPitch)*Math.sin(camYaw),camDist*Math.sin(camPitch),camDist*Math.cos(camPitch)*Math.cos(camYaw));
+  camera.lookAt(0,0,0);
+  const palmQ=S[0].bad?new THREE.Quaternion():S[0].rel;
+  palm.quaternion.copy(palmQ);
+  const invPalm=_tmp.copy(palmQ).invert();
+  META.forEach(m=>{
+    if(m.role==="palm")return;const g=fingerGroups[m.id];if(!g)return;
+    const local=S[m.id].bad ? new THREE.Quaternion()               // frozen straight
+              : new THREE.Quaternion().copy(invPalm).multiply(S[m.id].rel);
+    const rest=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,g.userData.restYaw,0));
+    g.quaternion.copy(local).multiply(rest);
+  });
+  renderer.render(scene,camera);
+}
+
+// ===== BLE =====
+let device=null,rxBuf=new Uint8Array(0);
+let lastSeq=-1,framesWin=0,bytesWin=0,lostWin=0,totWin=0,winT=0,lastT=0;
+
+function supportOk(){return "bluetooth" in navigator;}
+async function connect(){
+  if(!supportOk()){setStatus("Web Bluetooth not available","err");return;}
+  try{
+    setStatus("requesting device…");
+    device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[NUS]});
+    device.addEventListener("gattserverdisconnected",onDisc);
+    setStatus("connecting…");
+    const srv=await device.gatt.connect();
+    const s=await srv.getPrimaryService(NUS);
+    const c=await s.getCharacteristic(TX);
+    await c.startNotifications();
+    c.addEventListener("characteristicvaluechanged",onNotify);
+    onConnected();
+  }catch(e){setStatus("connect failed: "+e.message,"err");}
+}
+function onConnected(){
+  document.getElementById("dot").className="dot on";
+  document.getElementById("veil").style.display="none";
+  document.getElementById("conn").textContent="Disconnect";
+  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
+  setStatus((device.name||"device")+" · streaming");winT=performance.now();
+}
+function onDisc(){
+  document.getElementById("dot").className="dot err";
+  document.getElementById("conn").textContent="Connect";
+  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
+  document.getElementById("veil").style.display="flex";
+  setStatus("disconnected","err");S.forEach(s=>s.alive=false);
+}
+function disconnect(){if(device&&device.gatt.connected)device.gatt.disconnect();}
+
+function onNotify(e){
+  const dv=e.target.value;
+  const chunk=new Uint8Array(dv.buffer,dv.byteOffset,dv.byteLength);
+  bytesWin+=chunk.length;
+  const merged=new Uint8Array(rxBuf.length+chunk.length);
+  merged.set(rxBuf,0);merged.set(chunk,rxBuf.length);rxBuf=merged;
+  let i=0;
+  while(rxBuf.length-i>=FRAME_LEN){
+    if(rxBuf[i]!==SYNC){i++;continue;}
+    parseFrame(rxBuf.subarray(i,i+FRAME_LEN));i+=FRAME_LEN;
+  }
+  rxBuf=rxBuf.subarray(i);
+}
+
+function pushHist(h,gx,gy,gz,ax,ay,az){
+  h.gx.push(gx);h.gy.push(gy);h.gz.push(gz);h.ax.push(ax);h.ay.push(ay);h.az.push(az);
+  if(h.gx.length>HLEN){h.gx.shift();h.gy.shift();h.gz.shift();h.ax.shift();h.ay.shift();h.az.shift();}
+}
+
+function parseFrame(f){
+  const dv=new DataView(f.buffer,f.byteOffset,f.byteLength);
+  const seq=dv.getUint8(1), t=dv.getUint32(2,true), mask=dv.getUint8(6);
+  if(lastSeq>=0){lostWin+=(seq-lastSeq-1)&0xff;}
+  totWin++;lastSeq=seq;framesWin++;
+  let dt=(t-lastT)/1000;lastT=t;if(dt<=0||dt>0.25)dt=0.02;
+
+  const recRow=recording?[t]:null;
+  let off=7;
+  for(let sid=0;sid<6;sid++){
+    const ax=dv.getInt16(off,true)/ACC_SCALE, ay=dv.getInt16(off+2,true)/ACC_SCALE, az=dv.getInt16(off+4,true)/ACC_SCALE;
+    const gx=dv.getInt16(off+6,true)/GYR_SCALE, gy=dv.getInt16(off+8,true)/GYR_SCALE, gz=dv.getInt16(off+10,true)/GYR_SCALE;
+    off+=12;
+    if(recRow)recRow.push(ax,ay,az,gx,gy,gz);
+    if(!(mask&(1<<sid)))continue;
+    const st=S[sid];
+    st.a=[ax,ay,az];st.g=[gx,gy,gz];st.amag=Math.hypot(ax,ay,az);
+    st.alive=true;st.last=performance.now();
+
+    // calibration collection (raw gyro/accel while "still")
+    if(calState==="run"){
+      const c=calAcc[sid];c.n++;
+      c.gs[0]+=gx;c.gs[1]+=gy;c.gs[2]+=gz;
+      c.gq[0]+=gx*gx;c.gq[1]+=gy*gy;c.gq[2]+=gz*gz;
+      c.as[0]+=ax;c.as[1]+=ay;c.as[2]+=az;
+    }
+
+    // apply bias + deadband -> calibrated gyro
+    const gc=[gx-st.bias[0],gy-st.bias[1],gz-st.bias[2]];
+    for(let k=0;k<3;k++){const db=Math.max(0.6,3*st.noise[k]);if(Math.abs(gc[k])<db)gc[k]=0;}
+    st.gc=gc;
+
+    st.fil.update(gc[0],gc[1],gc[2],ax,ay,az,dt);
+    st.rel.copy(st.qRef).invert().multiply(st.fil.three());
+
+    pushHist(st.hist,gc[0],gc[1],gc[2],ax,ay,az);
+  }
+  if(recRow){recFrames.push(recRow);if(recFrames.length>REC_CAP)recording=false;}
+}
+
+// ===== calibration =====
+let calState="idle", calEnd=0, calAcc=null, capRefAt=0;
+function startCalibration(){
+  calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));
+  calState="run";calEnd=performance.now()+10000;
+  document.getElementById("calbanner").classList.add("show");
+}
+function finishCalibration(){
+  META.forEach(m=>{
+    const st=S[m.id],c=calAcc[m.id];
+    if(c.n<5){st.flag="no data";st.bad=true;return;}
+    for(let k=0;k<3;k++){
+      const mean=c.gs[k]/c.n; st.bias[k]=mean;
+      st.noise[k]=Math.sqrt(Math.max(0,c.gq[k]/c.n-mean*mean));
+    }
+    const am=Math.hypot(c.as[0]/c.n,c.as[1]/c.n,c.as[2]/c.n);
+    const maxNoise=Math.max(Math.abs(st.noise[0]),Math.abs(st.noise[1]),Math.abs(st.noise[2]));
+    const maxBias =Math.max(Math.abs(st.bias[0]), Math.abs(st.bias[1]), Math.abs(st.bias[2]));
+    // a healthy still sensor: |a|~1g, tiny gyro bias, tiny gyro noise
+    st.flag=""; st.bad=false;
+    if(Math.abs(am-1)>0.25){ st.flag="|a|="+am.toFixed(2)+"g · bad accel"; st.bad=true; }
+    else if(maxBias>40)   { st.flag="bias "+maxBias.toFixed(0)+"°/s · bad gyro"; st.bad=true; }
+    else if(maxNoise>15)  { st.flag="noisy "+maxNoise.toFixed(0)+"°/s"; st.bad=true; }
+    st.calibrated=true;
+    st.fil.q=[1,0,0,0];   // re-settle from bias-free gravity
+  });
+  calState="done";
+  capRefAt=performance.now()+600;   // let filters settle, then capture orientation ref
+  document.getElementById("calbanner").classList.remove("show");
+  document.getElementById("csv"); // no-op keep
+}
+function zeroOrient(){S.forEach(st=>st.qRef.copy(st.fil.three()));}
+
+// ===== recording =====
+let recording=false, recFrames=[];
+function toggleRec(){
+  recording=!recording;
+  const b=document.getElementById("rec");
+  b.classList.toggle("active",recording);
+  b.textContent=recording?"■ Stop":"● Record";
+  if(recording){recFrames=[];}
+  document.getElementById("csv").disabled=recording||recFrames.length===0;
+}
+function exportCSV(){
+  if(!recFrames.length)return;
+  let head="t_ms";
+  META.forEach(m=>{["ax","ay","az","gx","gy","gz"].forEach(c=>head+=","+m.name.toLowerCase()+"_"+c);});
+  const lines=[head];
+  for(const row of recFrames){
+    lines.push(row.map((v,i)=>i===0?v:(+v).toFixed(4)).join(","));
+  }
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="handrig_raw_"+Date.now()+".csv";a.click();
+  URL.revokeObjectURL(url);
+}
+
+function setStatus(t,cls){document.getElementById("status").textContent=t;
+  if(cls==="err")document.getElementById("dot").className="dot err";}
+
+// ===== cards =====
+function buildCards(){
+  const wrap=document.getElementById("cards");
+  META.forEach(m=>{
+    const c=document.createElement("div");
+    c.className="card dead";c.id="card"+m.id;
+    c.innerHTML=`
+      <div class="chead">
+        <span class="cid mono">S${m.id}</span><span class="cname">${m.name}</span>
+        <span class="cflag" id="flag${m.id}"></span><span class="cled"></span>
+      </div>
+      <div class="blabel">accel · g <span class="mag mono" id="am${m.id}">|a| —</span></div>
+      ${axisRows(m.id,"a")}
+      <div class="blabel">gyro · °/s <span class="mag mono" id="bias${m.id}"></span></div>
+      ${axisRows(m.id,"g")}
+      <canvas class="trace" id="tr${m.id}" width="520" height="104"></canvas>
+      <div class="rpy">
+        <div>roll<b class="mono" id="r${m.id}">—</b></div>
+        <div>pitch<b class="mono" id="p${m.id}">—</b></div>
+        <div>yaw<b class="mono" id="w${m.id}">—</b></div>
+      </div>`;
+    wrap.appendChild(c);
+  });
+}
+function axisRows(id,kind){
+  return ["x","y","z"].map(ax=>`
+    <div class="row"><span class="axl ${ax}">${ax.toUpperCase()}</span>
+    <span class="bar ${ax}"><i id="${kind}${id}${ax}b"></i></span>
+    <span class="val" id="${kind}${id}${ax}">0.000</span></div>`).join("");
+}
+
+// ===== trace drawing =====
+let traceMode="gyro";
+function drawTrace(id){
+  const st=S[id],cv=document.getElementById("tr"+id),ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle="#182230";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();
+  const keys=traceMode==="gyro"?["gx","gy","gz"]:["ax","ay","az"];
+  const cols=["#ff5470","#3fd99b","#5b8cff"];
+  const fs=traceMode==="gyro"?300:2;   // full-scale +/-
+  keys.forEach((k,ci)=>{
+    const arr=st.hist[k];if(arr.length<2)return;
+    ctx.strokeStyle=cols[ci];ctx.lineWidth=1.4;ctx.beginPath();
+    const step=W/(HLEN-1);
+    for(let i=0;i<arr.length;i++){
+      const x=i*step;
+      const y=H/2-Math.max(-1,Math.min(1,arr[i]/fs))*(H/2-3);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    }
+    ctx.stroke();
+  });
+}
+
+// ===== UI refresh =====
+function refreshCards(){
+  const now=performance.now();
+  // calibration timing
+  if(calState==="run"){
+    const rem=Math.ceil((calEnd-now)/1000);
+    document.getElementById("calcount").textContent=Math.max(0,rem);
+    if(now>=calEnd)finishCalibration();
+  }
+  if(calState==="done"&&capRefAt&&now>=capRefAt){zeroOrient();capRefAt=0;}
+
+  META.forEach(m=>{
+    const st=S[m.id],card=document.getElementById("card"+m.id);
+    const fresh=st.alive&&now-st.last<400;
+    // provisional accel health before a full calibration
+    if(!st.calibrated&&fresh){
+      if(Math.abs(st.amag-1)>0.3){st.flag="|a|="+st.amag.toFixed(2)+"g · bad accel";st.bad=true;}
+      else{st.flag="";st.bad=false;}
+    }
+    card.classList.toggle("live",fresh);
+    card.classList.toggle("dead",!fresh);
+    card.classList.toggle("flag",!!st.flag&&fresh&&!st.bad);
+    card.classList.toggle("bad",!!st.bad&&fresh);
+    const fe=document.getElementById("flag"+m.id);
+    fe.textContent=fresh?st.flag:"";
+    fe.style.color=st.bad?"var(--bad)":"var(--ref)";
+    document.getElementById("am"+m.id).textContent="|a| "+(fresh?st.amag.toFixed(2):"—");
+    document.getElementById("bias"+m.id).textContent=st.calibrated?"bias-corr":"raw";
+    setAxis("a",m.id,st.a,2.0,3);
+    setAxis("g",m.id,st.gc,250,1);      // show CALIBRATED gyro (post-bias, deadbanded)
+    _e.setFromQuaternion(st.rel,"YXZ");
+    document.getElementById("r"+m.id).textContent=fresh?deg(_e.z):"—";
+    document.getElementById("p"+m.id).textContent=fresh?deg(_e.x):"—";
+    document.getElementById("w"+m.id).textContent=fresh?deg(_e.y):"—";
+    drawTrace(m.id);
+  });
+
+  const dt=now-winT;
+  if(dt>=500){
+    document.getElementById("thz").textContent=Math.round(framesWin*1000/dt);
+    document.getElementById("tkb").textContent=(bytesWin/dt).toFixed(1);
+    const loss=totWin?((lostWin/(totWin+lostWin))*100):0;
+    document.getElementById("tloss").textContent=loss.toFixed(1);
+    document.getElementById("tlossv").classList.toggle("warnv",loss>15);
+    framesWin=0;bytesWin=0;lostWin=0;totWin=0;winT=now;
+    document.getElementById("csv").disabled=recording||recFrames.length===0;
+  }
+  requestAnimationFrame(refreshCards);
+}
+const _e=new THREE.Euler();
+function setAxis(kind,id,v,fs,dp){
+  ["x","y","z"].forEach((ax,k)=>{
+    document.getElementById(kind+id+ax).textContent=v[k].toFixed(dp);
+    const el=document.getElementById(kind+id+ax+"b");
+    const frac=Math.max(-1,Math.min(1,v[k]/fs));
+    if(frac>=0){el.style.left="50%";el.style.width=(frac*50)+"%";}
+    else{el.style.left=(50+frac*50)+"%";el.style.width=(-frac*50)+"%";}
+  });
+}
+function deg(r){return (r/DEG).toFixed(0)+"°";}
+
+// ===== wire up =====
+document.getElementById("beta").addEventListener("input",e=>{
+  const b=parseFloat(e.target.value);
+  document.getElementById("betav").textContent=b.toFixed(2);
+  S.forEach(s=>s.fil.beta=b);
+});
+document.getElementById("conn").addEventListener("click",()=>{
+  if(device&&device.gatt.connected)disconnect();else connect();});
+document.getElementById("conn2").addEventListener("click",connect);
+document.getElementById("cal").addEventListener("click",startCalibration);
+document.getElementById("zero").addEventListener("click",zeroOrient);
+document.getElementById("rec").addEventListener("click",toggleRec);
+document.getElementById("csv").addEventListener("click",exportCSV);
+document.querySelectorAll("#traceview button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    traceMode=b.dataset.v;
+    document.querySelectorAll("#traceview button").forEach(x=>x.classList.toggle("on",x===b));
+  });
+});
+
+if(!supportOk()){
+  document.getElementById("unsupported").textContent=
+    "This browser has no Web Bluetooth. Use Chrome or Edge on desktop (or Android).";
+  document.getElementById("conn").disabled=true;
+}
+
+buildScene();buildCards();refreshCards();
+</script>

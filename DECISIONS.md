@@ -19,6 +19,26 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-19 | Sensor-frame axis remap over re-deriving the model from the sensor's frame
+
+**Alternatives:** (a) rebuild the 3D model's rest geometry so its local axes match each sensor's physical mounting frame directly; (b) apply a fixed per-sensor axis remap `(x, y, z) → (x, z, −y)` to raw accel/gyro before they hit Madgwick, so every sensor's data lands in one common "model frame" (`+Z`=forward/fingertip, `+Y`=up) before any fusion math runs.
+
+**Choice:** (b) — not yet implemented in `tools/handrig_dashboard.html`, but this is the agreed approach for the next session.
+
+**Rationale:** Remapping raw data once, before fusion, keeps Madgwick and the relative-orientation math (`q_rel = conj(q_hand) ⊗ q_finger`) working in a single consistent frame for all 6 sensors — including the hand IMU, which uses a different chip (LSM6DS3) with its own axis sense (`az≈-0.98g` flat, opposite the fingers' `+Z=up`). Rebuilding the model's rest geometry per sensor was rejected because it would require a different transform baked into every mesh instead of one small, auditable function, and it wouldn't generalize if a sensor gets re-mounted later. The remap for the finger sensors, derived from the confirmed mounting (sensor `-Y`→fingertip, sensor `+Z`→up) and a right-handed cross-product to fix the third axis, is `(x,y,z)→(x,z,-y)`; the hand sensor needs its own remap once its rest-pose data is captured cleanly. Curl (rotation about X) should already display roughly correctly without the remap since the mounting keeps that axis aligned; spread/abduction (Y/Z-axis motion) will not, until this lands.
+
+---
+
+### 2026-07-19 | Raw I²C register driver over MPU6050_light for the finger IMUs (clone WHO_AM_I=0x72 fix)
+
+**Alternatives:** (a) keep `MPU6050_light` and try to coax it into working with the clone chips (extra `begin()` calls, manual delays); (b) switch to Adafruit's MPU6050 library, which does a fuller init sequence but hard-rejects any `WHO_AM_I` other than the genuine `0x68`; (c) drop both libraries for the fingers and drive them with a minimal raw-I²C sequence written against the shared MPU-6050/6500/9250 register map.
+
+**Choice:** (c).
+
+**Rationale:** Analysis of two raw captures (`data/phase7_5_ble_diagnostics/`) showed 4 of 5 finger sensors returning exact-repeating stuck values or perfectly linear `±0x2000` LSB ramps — digital init artifacts, not sensor noise, immediately ruling out calibration or wiring as the cause. The root cause: these finger modules are MPU-6500/9250-family clones (`WHO_AM_I=0x72`), and `MPU6050_light` never issues an explicit `PWR_MGMT_2` axis-enable write, so clones boot half-initialized. Adafruit's library was rejected because it hard-fails on the WHO_AM_I mismatch (`Failed to find MPU6050 chip!`, already logged in `CLAUDE.md` gotchas) even though the data registers are compatible. A ~15-line raw I²C reset→wake→enable-axes→configure sequence (`firmware/08_ble_dashboard/08_ble_dashboard.ino`) works identically for the genuine 0x68 (pinky) and the 0x72 clones (thumb/index/middle/ring), and adds a per-channel boot diagnostic (`WHO_AM_I` + a 10-sample liveness/stuck-value check) so any future channel failure is visible on the Serial monitor within 2 seconds of boot instead of requiring another CSV-forensics session.
+
+---
+
 ### 2026-07-18 | Leukoplast for finger IMUs, velcro for MCU/mux — mounting material split by removability need
 
 **Alternatives:** (a) leukoplast (fabric tape) for everything — most rigid, cheapest, matches what's already used for strain relief elsewhere on the glove; (b) velcro for everything — fully removable but adds bulk and a small amount of mounting play; (c) split by component: leukoplast for the finger IMUs, velcro (or leukoplast if serviceability isn't needed) for the XIAO + PCA9548A.
