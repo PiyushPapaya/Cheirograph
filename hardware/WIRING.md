@@ -140,9 +140,33 @@ point, not the current wiring.
 
 ---
 
+## IMU axis convention — confirmed on-glove (2026-07-19)
+
+With all 5 finger sensors taped to the glove and the hand IMU seated flat:
+
+- **Finger sensors**: sensor **−Y points toward the fingertip**, sensor **+Z
+  points up** (out of the back of the finger). X follows from board geometry.
+- **Hand sensor (XIAO onboard LSM6DS3)**: reads `az ≈ -0.98 g` with the glove
+  lying flat, palm down — i.e. its **Z axis points down** in that pose, the
+  opposite sense from the finger sensors' Z. The hand IMU and the finger
+  MPU-6050/clones are different chips with different internal axis
+  conventions; do not assume they share a frame.
+- **Consequence**: `tools/handrig_dashboard.html`'s 3D model uses
+  `+Z = forward (fingertip), +Y = up`, which does not match either sensor's
+  raw frame directly. A per-sensor axis remap is needed before the data feeds
+  Madgwick — **not yet implemented**, tracked in
+  `firmware/08_ble_dashboard/README.md` and `DECISIONS.md` (2026-07-19).
+- Leukoplast tape used to mount the finger sensors was checked and ruled out
+  as a source of bad *initial* readings (non-conductive, can't cause a stuck
+  digital register) — see `DECISIONS.md` for the actual root cause found that
+  session. Tape can still cause *intermittent* dropouts if it strains a wire
+  during finger flex; distinguish the two by checking the firmware boot
+  diagnostic with the glove flat and untouched.
+
 ## Change log
 
 | Date | Change | Changed by |
 |---|---|---|
+| 2026-07-19 | All 6 IMUs mounted and wired on the glove; mux channel map confirmed against physical build (thumb=ch0 `SD0/SC0`, pinky=ch4 `SD4/SC4`, matching the table above). Confirmed finger sensor axis convention (`-Y`=fingertip, `+Z`=up) and that the hand IMU uses a different Z sense (`az≈-0.98g` flat, palm down). Axis remap to the visualization's model frame flagged as an open item, not yet applied. | Piyush |
 | 2026-07-16 | Added Phase 3/4 mux + 5-finger-IMU bench wiring (breadboard, no finger identity assigned yet). Mux channel switching verified via `scanChannels()` — 0x68 on channels 0-4, no cross-talk. | Piyush |
 | 2026-07-14 | Added Phase 2 single-sensor direct-connect diagram (MPU-6050 → D4/D5, AD0→GND = 0x68). Verified on the bench. | Piyush |
