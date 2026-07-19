@@ -62,6 +62,22 @@ python plot_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv --save
 
 ---
 
+### `handrig_dashboard.html`  *(Phase 7.5)*
+Live BLE dashboard — no build step, no server, open the file directly in
+Chrome or Edge (desktop or Android, needs Web Bluetooth). Connects to the
+glove's Nordic UART service, decodes the 79-byte binary frame streamed by
+`firmware/08_ble_dashboard/08_ble_dashboard.ino`, runs Madgwick fusion
+per-sensor client-side in JS, and renders a live Three.js 3D hand plus raw
+accel/gyro trace canvases and a 10-second gyro-bias calibration per sensor.
+Flags a sensor "bad" and freezes it in the 3D view if its calibrated accel
+magnitude, gyro bias, or gyro noise falls outside a healthy-at-rest range,
+so a broken finger sensor can't make the whole hand look broken.
+- Dependency: none (vanilla JS + Three.js from CDN).
+- Frame format and the clone-IMU init bug this uncovered are documented in
+  `firmware/08_ble_dashboard/README.md`.
+- **Known gap:** the dashboard does not yet remap raw sensor axes into the
+  3D model's frame before fusion — see `DECISIONS.md` (2026-07-19).
+
 ## Planned scripts
 
 ### `plot_raw.py`
