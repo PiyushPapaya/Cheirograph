@@ -19,6 +19,36 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-07-25 | Verify-by-readback + a runtime stuck watchdog, over trusting a correct init sequence
+
+**Alternatives:** (a) keep v3's approach — write the correct clone-init register sequence and trust that it landed, catching problems with the one-shot boot diagnostic; (b) check every I²C write's ACK, read the config registers back and compare, retry on failure, and additionally run a continuous per-sensor stuck detector that drops frozen channels from the frame's validity mask and re-initialises them live.
+
+**Choice:** (b).
+
+**Rationale:** v3 fixed the *right* registers but every `wReg()` return value was discarded, so a NACKed write — including a NACKed **mux** select, which silently sends the next finger's config to whichever channel was still latched — was indistinguishable from success. An ACK only proves something on the bus answered; a matching readback of `PWR_MGMT_1/2`, `GYRO_CONFIG`, `ACCEL_CONFIG` proves *that* chip stored what we sent, which is the difference between "init ran" and "init worked." The runtime watchdog exists because the boot check only ever saw boot: the original failure was silent frozen output registers, and a sensor that freezes ten minutes into a wear session was completely invisible. Detection is bit-identity across all six axes for 50 consecutive frames — at ±4 g / 8192 LSB/g one LSB is 122 µg against a ~2–3 mg RMS noise floor (~20 LSB), so a working sensor cannot repeat exactly even sitting motionless. That is a strictly stronger test than "|a| ≈ 1 g", which the original stuck thumb passed. Trade-off: a live re-init stalls the sample loop for ~30–250 ms, which shows as a visible rate dip — kept deliberately visible rather than hidden, because silent self-healing would mask a hardware fault you want to know about.
+
+---
+
+### 2026-07-25 | Frame checksum over sync-byte-only framing
+
+**Alternatives:** (a) keep the 79-byte frame and rely on the `0xAB` sync byte alone to find frame boundaries; (b) add a trailing XOR checksum (80-byte frame) and have the parser reject and re-hunt on mismatch.
+
+**Choice:** (b).
+
+**Rationale:** `0xAB` is not a rare byte — it appears inside int16 accel/gyro payload constantly, so a single dropped byte on the BLE link lets the parser latch onto a false sync and emit an entire screen of plausible-looking-but-wrong sensor values. That is the same *symptom* as the clone-init bug and would have been diagnosed the same slow way. A one-byte XOR costs ~1.3% bandwidth, is trivially verifiable by hand, and turns a silent corruption into a counter on the dashboard. Rejected a CRC-8/16 as unnecessary: the failure being defended against is framing misalignment, not subtle bit-rot, and XOR catches misalignment essentially always.
+
+---
+
+### 2026-07-25 | Axis remap in the dashboard, never in the firmware; hand's forward axis chosen empirically at runtime
+
+**Alternatives:** (a) apply the sensor→viewer axis remap on the MCU so the stream is already in a common frame; (b) apply it client-side in `tools/handrig_dashboard.html` and keep the firmware emitting raw sensor-frame data; and separately, for the hand IMU's unmeasured forward axis: (c) hard-code a best guess vs. (d) expose the candidate remaps in the UI.
+
+**Choice:** (b) + (d).
+
+**Rationale:** Remapping in firmware would bake a viewing convention into every capture in `data/`, making old datasets un-reinterpretable the first time a sensor is re-mounted — the raw stream is the archival artifact and must stay least-processed. Client-side, the remap is one small auditable function applied before Madgwick, so fusion and the eventual `q_rel = conj(q_hand) ⊗ q_finger` all operate in one consistent frame. For the hand sensor, only *one* fact was actually measured (`az ≈ −0.98 g` flat palm-down ⇒ up = `−sZ`); which horizontal axis points at the fingers was never checked, so hard-coding it would have been a guess indistinguishable in the source from the finger remap that *is* empirical. Instead the four candidates satisfying the measured constraint are offered in a dropdown and resolved by tilting the hand — ten seconds of experiment beating an assumption. All remaps are constrained to proper rotations (det +1) so the gyro, a pseudovector, transforms with the same matrix as the accelerometer; a mirrored remap would need separate gyro sign flips and would show up as fusion that fights itself.
+
+---
+
 ### 2026-07-19 | Sensor-frame axis remap over re-deriving the model from the sensor's frame
 
 **Alternatives:** (a) rebuild the 3D model's rest geometry so its local axes match each sensor's physical mounting frame directly; (b) apply a fixed per-sensor axis remap `(x, y, z) → (x, z, −y)` to raw accel/gyro before they hit Madgwick, so every sensor's data lands in one common "model frame" (`+Z`=forward/fingertip, `+Y`=up) before any fusion math runs.

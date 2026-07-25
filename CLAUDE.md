@@ -146,6 +146,19 @@ recorded in DECISIONS.md. **Understanding stays with the human.**
   not 0x68. Adafruit's library refuses the mismatch; `MPU6050_light` is lenient and works.
   See DECISIONS.md (2026-07-14). Run `firmware/02_single_mpu6050_test/diagnostics/i2c_scan/`
   to confirm the address and read WHO_AM_I yourself before blaming wiring.
+- **A sensor reads a perfectly plausible ~1 g but the hand won't move / a value never
+  changes** → frozen output register, not physics. `|a| ≈ 1 g` does **not** prove a sensor
+  is live; the original stuck thumb passed that test. The real test is bit-identity: a
+  working IMU dithers by ~20 LSB (noise floor ≫ 1 LSB), so six axes repeating *exactly*
+  for 50 frames is impossible. v4 firmware checks this continuously and reports `stuck=`
+  on the periodic serial line.
+- **An I²C write "succeeded" but the chip behaves as if it didn't** → an ACK only proves
+  *something* on the bus answered. Read the config register back and compare. This
+  especially bites on the mux: a NACKed `tcaSelect` sends the next write to whichever
+  channel was still latched, so finger N gets configured with finger M's settings.
+- **All six sensors read garbage at once** → suspect a wedged bus, not six dead IMUs. A
+  slave reset mid-byte can hold SDA low forever. Fix is to bit-bang 9 clocks on SCL plus a
+  STOP to release it (`i2cRecover()` in `firmware/08_ble_dashboard/`).
 - **A finger's angle changes when you rotate your whole hand** → you're reading absolute,
   not relative orientation. Apply `conjugate(q_hand) ⊗ q_finger`.
 - **I²C reads garbage / hangs** → check pull-ups, the active mux channel, and that you

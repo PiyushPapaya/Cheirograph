@@ -34,6 +34,34 @@ Rules:
 
 ---
 
+### 2026-07-25 | Phase 7.5 — Hardening the IMU path: v4 firmware (verify-by-readback + stuck watchdog) and the axis remap
+
+**Plan:** Before reflashing, review the v3 fix written last session and close the gaps in it. The question that started the session was "would buying new IMUs fix the bad readings?" — answering that properly (no: the chips are fine, the init sequence was the fault) turned into a full hardening pass over the firmware and the dashboard.
+
+**Achieved:**
+- **Established that new hardware would not have helped.** The finger modules are MPU-6500/9250-family clones (`WHO_AM_I=0x72`) and replacements from the same market would overwhelmingly be the same clone, reproducing the identical bug. The fault was the init sequence, not the silicon. Worth recording because "replace the part" is the tempting and wrong first instinct here.
+- **Rewrote `firmware/08_ble_dashboard/08_ble_dashboard.ino` as v4.** v3 wrote the right registers but discarded every `wReg()` return value, so a NACK was indistinguishable from success — including a NACKed *mux* select, which would silently write one finger's config to whichever channel was still latched. v4 adds, in order of how much each one was actually hiding:
+  - **Config readback verification.** After init, `PWR_MGMT_1/2`, `GYRO_CONFIG`, `ACCEL_CONFIG` are read back and compared. An ACK only proves *something* answered; a matching readback proves *that chip* stored it. This is what makes "init succeeded" mean anything.
+  - **Runtime stuck watchdog.** The boot check only ever saw boot — a sensor freezing ten minutes into a wear test was invisible. Now all six raw int16s are compared frame to frame; 50 consecutive bit-identical frames (~1 s) means frozen. Justification is numeric, not vibes: at ±4 g / 8192 LSB/g one LSB is 122 µg against the part's ~2–3 mg RMS noise floor (~20 LSB), so a working sensor physically cannot repeat exactly, even motionless on a table. Strictly stronger than the `|a| ≈ 1 g` check — **the original stuck thumb passed that test.**
+  - **Full 6500-family reset**: poll `DEVICE_RESET` until it self-clears instead of a blind `delay(100)`, then `SIGNAL_PATH_RESET` + `USER_CTRL.SIG_COND_RST`, plus `ACCEL_CONFIG_2` (`0x1D`, a register that doesn't exist on a genuine 6050 — reserved there, so the write is a harmless no-op and one sequence serves both chip types).
+  - **Checked writes and checked mux selects**, 3× init retry, and **I²C bus recovery** (bit-bang 9 clocks + STOP) for the case where a slave holds SDA low and wedges the bus — which makes all six sensors read garbage and looks like catastrophic hardware failure.
+  - **Honest validity mask.** v3 zero-filled a failed read while leaving the mask bit set, so the dashboard fused a `(0,0,0)` accel vector — not a neutral value, but a claim that gravity has vanished. The bit now means "this frame's data is real."
+  - **Frame checksum** (frame 79 → 80 B). `0xAB` is not a rare byte; it appears inside int16 payload constantly, so one dropped byte can false-sync the parser and render a full screen of plausible garbage — the same *symptom* as the clone bug, and it would have cost another CSV-forensics session to find.
+  - Also fixed a latent indexing bug: `whoami[]` was indexed by mux channel while everything else used sensor id. Harmless only because `CH[i] == i` today.
+- **Implemented the axis remap in `tools/handrig_dashboard.html`** — designed last session, never written. Raw sensor data was going straight into Madgwick. Fingers use the empirically confirmed `(x,y,z)→(x,z,−y)` (sensor `−Y`→fingertip, `+Z`→up).
+- **Did *not* guess the hand sensor's forward axis.** Only one fact was measured (`az ≈ −0.98 g` flat palm-down ⇒ up = `−sZ`); which horizontal axis points at the fingers was never checked. Rather than bake a guess into source where it would be indistinguishable from the finger remap that *is* empirical, the four candidates satisfying the measured constraint are exposed in a **hand axes** dropdown — tilt the hand forward, pick the one where the model tips forward. All remaps are constrained to proper rotations (det +1) so the gyro (a pseudovector) transforms with the same matrix as the accel.
+- Dashboard also now validates the checksum and re-hunts on mismatch, counts rejected frames in the header telemetry, skips fusion for mask-cleared sensors, and calibrates gyro bias in the *remapped* frame (bias must be measured in the frame it's later subtracted in). CSV export still records the **raw** sensor frame with a header comment saying so — the capture must stay re-interpretable if the remap changes.
+
+**Problems & blockers:**
+- **None of this is verified on hardware.** v4 is written and reviewed; the JS parses clean; the firmware has not been compiled or flashed, and the glove was not connected this session. This is the *same* state v3 was left in last session, and it is worth naming plainly rather than letting two unverified versions stack up.
+- The hand remap default (`fwd +Y, up −Z`) is a starting guess by analogy with the finger mounting, not a measurement. It is expected to need changing via the dropdown on first connect.
+- The stuck threshold (50 frames) and recovery interval (2 s) are reasoned from the noise floor but not empirically tuned against a real session; a false positive would show as a channel flickering out and re-initing.
+- The frame length change (79 → 80 B) means **v4 firmware and the updated dashboard must be used together** — an old dashboard against v4 firmware will fail to sync entirely.
+
+**Next:** Compile and flash `firmware/08_ble_dashboard/08_ble_dashboard.ino`, read the boot diagnostic on Serial (115200) with the glove flat and still, and confirm `6/6 sensors initialised` with every channel `OK`. Any channel reporting `STUCK`/`RAMP`/`BAD ACCEL`/`NOT FOUND` is now electrical — the init path is verified by readback, so go straight to that channel's solder joints, pull-ups and mux wiring. Then connect the dashboard, resolve the hand axes dropdown empirically (tilt forward, pick the option that tips the model forward), verify spread/abduction tracks correctly in the 3D view, and log the winning hand remap in `DECISIONS.md`. Watch `stuck=` in the periodic serial line and `bad frames` in the dashboard header across a full session before calling Phase 7.5 done.
+
+---
+
 ### 2026-07-19 | Phase 7.5 — BLE live dashboard, found & fixed clone-IMU init bug
 
 **Plan:** With all hardware now mounted on the glove (XIAO, mux, all 5 finger IMUs, power rails — from the 2026-07-18 session), build a live wireless dashboard: the XIAO streams all 6 IMUs over BLE, and a browser page shows the post-Madgwick-fusion 3D hand alongside each sensor's raw accel/gyro, so I can actually *see* my hand tracked live and confirm the whole chain works end to end (Phase 7.5 in `GENERAL_PLAN.md`).
