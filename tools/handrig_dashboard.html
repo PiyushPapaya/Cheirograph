@@ -62,6 +62,8 @@
   .seg{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
   .seg button{border:0;border-radius:0;background:transparent;padding:7px 12px;font-size:12px;color:var(--mut)}
   .seg button.on{background:var(--panel2);color:var(--tx)}
+  select{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--tx);background:var(--panel2);
+    border:1px solid var(--line2);border-radius:7px;padding:6px 8px;cursor:pointer}
 
   /* calibration banner */
   .calbanner{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:8;
@@ -124,6 +126,7 @@
     <div><div class="k">rate</div><div class="v mono"><span id="thz">0</span> Hz</div></div>
     <div><div class="k">throughput</div><div class="v mono"><span id="tkb">0.0</span> KB/s</div></div>
     <div><div class="k">loss</div><div class="v mono" id="tlossv"><span id="tloss">0.0</span>%</div></div>
+    <div><div class="k">bad frames</div><div class="v mono" id="tbadv"><span id="tbad">0</span></div></div>
   </div>
   <button class="primary" id="conn">Connect</button>
 </header>
@@ -137,6 +140,9 @@
       <button class="ref" id="cal" disabled>Calibrate (10 s)</button>
       <button class="mini" id="zero" disabled>Zero orient.</button>
       <div class="ctrl">smoothing <input type="range" id="beta" min="0.02" max="0.3" step="0.01" value="0.06"><span class="mono" id="betav">0.06</span></div>
+      <div class="ctrl" title="Which sensor axis points at the fingers was never measured for the hand IMU. Tilt your hand forward: pick the option where the model tips forward too.">hand axes
+        <select id="handmap"></select>
+      </div>
       <div class="spacer"></div>
       <div class="seg" id="traceview">
         <button data-v="gyro" class="on">gyro trace</button>
@@ -157,7 +163,7 @@
     <div class="veil" id="veil">
       <div class="box">
         <h2>Connect your glove</h2>
-        <p>Flash <b>handrig_ble.ino</b>, power the rig, connect. Then run <b>Calibrate (10 s)</b> with the glove lying flat and still — that removes gyro bias so the fingers stop drifting.</p>
+        <p>Flash <b>firmware/08_ble_dashboard</b> (v4), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (10&nbsp;s)</b> still lying flat — that removes gyro bias so the fingers stop drifting.</p>
         <button class="primary" id="conn2">Connect over Bluetooth</button>
         <div class="warn" id="unsupported"></div>
       </div>
@@ -172,7 +178,8 @@
 
 const NUS="6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const TX ="6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-const SYNC=0xAB, FRAME_LEN=79, ACC_SCALE=8192.0, GYR_SCALE=65.536, DEG=Math.PI/180;
+// v4 frame: 80 B, last byte is an XOR checksum over bytes 0..78.
+const SYNC=0xAB, FRAME_LEN=80, ACC_SCALE=8192.0, GYR_SCALE=65.536, DEG=Math.PI/180;
 const HLEN=400;              // trace history length
 const REC_CAP=300000;       // recording row cap
 
@@ -180,6 +187,48 @@ const META=[
   {id:0,name:"HAND",role:"palm"},
   {id:1,name:"THUMB"},{id:2,name:"INDEX"},{id:3,name:"MIDDLE"},{id:4,name:"RING"},{id:5,name:"PINKY"},
 ];
+
+/* ===== axis remap: sensor frame -> viewer frame =========================
+ *
+ * The firmware deliberately streams RAW sensor-frame data, so every capture in
+ * data/ stays re-interpretable. The remap into the 3D viewer's frame belongs
+ * here, and until now it was missing entirely — raw sensor data was fed
+ * straight into Madgwick, which is why finger curl looked roughly right (that
+ * rotation axis happened to line up) but spread/abduction did not.
+ *
+ * Viewer frame: +Z forward (out of the fingertips), +Y up, +X right.
+ *
+ * Measured on the glove 2026-07-19:
+ *   fingers — sensor -Y points at the fingertip, sensor +Z points up
+ *             => viewerZ = -sY,  viewerY = +sZ,  viewerX = +sX
+ *   hand    — reads az ~ -0.98 g lying flat palm-down, so sensor +Z points
+ *             DOWN => viewerY = -sZ. Which horizontal sensor axis points at
+ *             the fingers was never measured, so the four candidates that all
+ *             satisfy "up = -sZ" are offered below and picked from the UI.
+ *
+ * Each spec is [srcIndex, sign] per viewer axis. All of them are PROPER
+ * rotations (determinant +1). That matters: the gyro is a pseudovector, and it
+ * transforms with the same matrix as the accel only when the determinant is
+ * +1. A mirrored remap would need the gyro signs flipped separately — so if
+ * you ever hand-edit these, keep them proper or the fusion will fight itself.
+ */
+const REMAPS={
+  // fingers (empirically confirmed)
+  finger:      {label:"finger: -Y->tip, +Z->up", m:[[0,1],[2,1],[1,-1]]},
+  // hand candidates: all have up = -sensorZ, differing only in "forward"
+  hand_fwd_pY: {label:"hand: fwd +Y, up -Z", m:[[0,1],[2,-1],[1,1]]},
+  hand_fwd_nY: {label:"hand: fwd -Y, up -Z", m:[[0,-1],[2,-1],[1,-1]]},
+  hand_fwd_pX: {label:"hand: fwd +X, up -Z", m:[[1,-1],[2,-1],[0,1]]},
+  hand_fwd_nX: {label:"hand: fwd -X, up -Z", m:[[1,1],[2,-1],[0,-1]]},
+  identity:    {label:"raw sensor frame (no remap)", m:[[0,1],[1,1],[2,1]]},
+};
+// active remap per sensor id; fingers are settled, hand starts on a guess
+let REMAP_OF=[ "hand_fwd_pY", "finger","finger","finger","finger","finger" ];
+
+function applyRemap(key,v){
+  const m=REMAPS[key].m;
+  return [ v[m[0][0]]*m[0][1], v[m[1][0]]*m[1][1], v[m[2][0]]*m[2][1] ];
+}
 
 // ===== Madgwick (accel+gyro) =====
 class Madgwick{
@@ -218,7 +267,7 @@ const S=META.map(()=>({
   amag:0,
   bias:[0,0,0], noise:[0,0,0], calibrated:false, flag:"", bad:false,
   qRef:new THREE.Quaternion(), rel:new THREE.Quaternion(),
-  last:0, alive:false,
+  last:0, alive:false, dropCount:0,
   hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
 }));
 
@@ -300,7 +349,7 @@ function render(){
 
 // ===== BLE =====
 let device=null,rxBuf=new Uint8Array(0);
-let lastSeq=-1,framesWin=0,bytesWin=0,lostWin=0,totWin=0,winT=0,lastT=0;
+let lastSeq=-1,framesWin=0,bytesWin=0,lostWin=0,totWin=0,winT=0,lastT=0,badFrames=0;
 
 function supportOk(){return "bluetooth" in navigator;}
 async function connect(){
@@ -343,6 +392,11 @@ function onNotify(e){
   let i=0;
   while(rxBuf.length-i>=FRAME_LEN){
     if(rxBuf[i]!==SYNC){i++;continue;}
+    // 0xAB is NOT a rare byte — it shows up inside int16 payload constantly.
+    // Without the checksum, one dropped byte false-syncs the parser here and
+    // every sensor renders convincing garbage. Verify before trusting the sync.
+    let ck=0; for(let k=0;k<FRAME_LEN-1;k++) ck^=rxBuf[i+k];
+    if(ck!==rxBuf[i+FRAME_LEN-1]){ badFrames++; i++; continue; }  // advance 1, keep hunting
     parseFrame(rxBuf.subarray(i,i+FRAME_LEN));i+=FRAME_LEN;
   }
   rxBuf=rxBuf.subarray(i);
@@ -366,29 +420,48 @@ function parseFrame(f){
     const ax=dv.getInt16(off,true)/ACC_SCALE, ay=dv.getInt16(off+2,true)/ACC_SCALE, az=dv.getInt16(off+4,true)/ACC_SCALE;
     const gx=dv.getInt16(off+6,true)/GYR_SCALE, gy=dv.getInt16(off+8,true)/GYR_SCALE, gz=dv.getInt16(off+10,true)/GYR_SCALE;
     off+=12;
+    // CSV always stores the RAW sensor frame, never the remapped one — the
+    // remap is a viewing convention and may change; the capture must not.
     if(recRow)recRow.push(ax,ay,az,gx,gy,gz);
-    if(!(mask&(1<<sid)))continue;
+
     const st=S[sid];
-    st.a=[ax,ay,az];st.g=[gx,gy,gz];st.amag=Math.hypot(ax,ay,az);
+    // v4: a clear mask bit means the firmware itself does not trust this
+    // sample (read failed, or its stuck-watchdog tripped). Previously the
+    // firmware sent zeros with the bit still set and we fused a 0 g gravity
+    // vector as though it were real data. Skip it and say so on the card.
+    if(!(mask&(1<<sid))){
+      st.dropCount++;
+      if(st.dropCount>25){st.flag="no valid data (firmware dropped it)";st.bad=true;}
+      continue;
+    }
+    st.dropCount=0;
+
+    // remap sensor frame -> viewer frame BEFORE fusion, so the Madgwick
+    // quaternion is already expressed in the frame the 3D rig uses.
+    const [rax,ray,raz]=applyRemap(REMAP_OF[sid],[ax,ay,az]);
+    const [rgx,rgy,rgz]=applyRemap(REMAP_OF[sid],[gx,gy,gz]);
+
+    st.a=[rax,ray,raz];st.g=[rgx,rgy,rgz];st.amag=Math.hypot(rax,ray,raz);
     st.alive=true;st.last=performance.now();
 
-    // calibration collection (raw gyro/accel while "still")
+    // calibration collection (remapped gyro/accel while "still").
+    // Bias must be measured in the SAME frame it is later subtracted in.
     if(calState==="run"){
       const c=calAcc[sid];c.n++;
-      c.gs[0]+=gx;c.gs[1]+=gy;c.gs[2]+=gz;
-      c.gq[0]+=gx*gx;c.gq[1]+=gy*gy;c.gq[2]+=gz*gz;
-      c.as[0]+=ax;c.as[1]+=ay;c.as[2]+=az;
+      c.gs[0]+=rgx;c.gs[1]+=rgy;c.gs[2]+=rgz;
+      c.gq[0]+=rgx*rgx;c.gq[1]+=rgy*rgy;c.gq[2]+=rgz*rgz;
+      c.as[0]+=rax;c.as[1]+=ray;c.as[2]+=raz;
     }
 
-    // apply bias + deadband -> calibrated gyro
-    const gc=[gx-st.bias[0],gy-st.bias[1],gz-st.bias[2]];
+    // apply bias + deadband -> calibrated gyro (all in the viewer frame)
+    const gc=[rgx-st.bias[0],rgy-st.bias[1],rgz-st.bias[2]];
     for(let k=0;k<3;k++){const db=Math.max(0.6,3*st.noise[k]);if(Math.abs(gc[k])<db)gc[k]=0;}
     st.gc=gc;
 
-    st.fil.update(gc[0],gc[1],gc[2],ax,ay,az,dt);
+    st.fil.update(gc[0],gc[1],gc[2],rax,ray,raz,dt);
     st.rel.copy(st.qRef).invert().multiply(st.fil.three());
 
-    pushHist(st.hist,gc[0],gc[1],gc[2],ax,ay,az);
+    pushHist(st.hist,gc[0],gc[1],gc[2],rax,ray,raz);
   }
   if(recRow){recFrames.push(recRow);if(recFrames.length>REC_CAP)recording=false;}
 }
@@ -422,7 +495,6 @@ function finishCalibration(){
   calState="done";
   capRefAt=performance.now()+600;   // let filters settle, then capture orientation ref
   document.getElementById("calbanner").classList.remove("show");
-  document.getElementById("csv"); // no-op keep
 }
 function zeroOrient(){S.forEach(st=>st.qRef.copy(st.fil.three()));}
 
@@ -438,9 +510,12 @@ function toggleRec(){
 }
 function exportCSV(){
   if(!recFrames.length)return;
+  // RAW sensor frame, g and deg/s, no remap and no bias correction applied —
+  // deliberately the least-processed thing we have, so a capture stays valid
+  // even if the remap or the calibration scheme changes later.
   let head="t_ms";
   META.forEach(m=>{["ax","ay","az","gx","gy","gz"].forEach(c=>head+=","+m.name.toLowerCase()+"_"+c);});
-  const lines=[head];
+  const lines=["# raw sensor frame (no axis remap, no bias correction)",head];
   for(const row of recFrames){
     lines.push(row.map((v,i)=>i===0?v:(+v).toFixed(4)).join(","));
   }
@@ -553,6 +628,10 @@ function refreshCards(){
     const loss=totWin?((lostWin/(totWin+lostWin))*100):0;
     document.getElementById("tloss").textContent=loss.toFixed(1);
     document.getElementById("tlossv").classList.toggle("warnv",loss>15);
+    // steadily climbing bad frames = checksum rejections, i.e. a link problem.
+    // Before v4 these were silently accepted and rendered as sensor garbage.
+    document.getElementById("tbad").textContent=badFrames;
+    document.getElementById("tbadv").classList.toggle("warnv",badFrames>50);
     framesWin=0;bytesWin=0;lostWin=0;totWin=0;winT=now;
     document.getElementById("csv").disabled=recording||recFrames.length===0;
   }
@@ -576,6 +655,25 @@ document.getElementById("beta").addEventListener("input",e=>{
   document.getElementById("betav").textContent=b.toFixed(2);
   S.forEach(s=>s.fil.beta=b);
 });
+// hand-axis picker: the finger remap is measured and fixed, but which sensor
+// axis points forward on the back of the hand was never checked. Rather than
+// hard-code a guess, offer the four candidates that all satisfy the one thing
+// we DID measure (+Z points down) and resolve it empirically in 10 seconds.
+(function(){
+  const sel=document.getElementById("handmap");
+  Object.keys(REMAPS).filter(k=>k.startsWith("hand_")||k==="identity").forEach(k=>{
+    const o=document.createElement("option");
+    o.value=k;o.textContent=REMAPS[k].label;
+    if(k===REMAP_OF[0])o.selected=true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change",e=>{
+    REMAP_OF[0]=e.target.value;
+    S[0].fil.q=[1,0,0,0];          // frame changed: restart fusion, drop the ref
+    S[0].qRef=new THREE.Quaternion();
+  });
+})();
+
 document.getElementById("conn").addEventListener("click",()=>{
   if(device&&device.gatt.connected)disconnect();else connect();});
 document.getElementById("conn2").addEventListener("click",connect);
