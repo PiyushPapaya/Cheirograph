@@ -493,7 +493,17 @@ function finishCalibration(){
     st.fil.q=[1,0,0,0];   // re-settle from bias-free gravity
   });
   calState="done";
-  capRefAt=performance.now()+600;   // let filters settle, then capture orientation ref
+  // Every filter was just reset to identity (fil.q=[1,0,0,0] above) and must
+  // re-converge to gravity before its orientation means anything. At the
+  // default smoothing (0.06) that's fast; drag the slider toward its low end
+  // (weaker accel correction, more drift resistance) and convergence gets
+  // much slower. A short fixed wait captures qRef mid-convergence, baking a
+  // large wrong offset into the "zero" reference — which then looks like the
+  // model slowly spinning on its own even though the glove is dead still, as
+  // the filter keeps correcting toward the true orientation out from under a
+  // qRef that was never right. 2.5 s comfortably covers the whole slider range.
+  capRefAt=performance.now()+2500;
+
   document.getElementById("calbanner").classList.remove("show");
 }
 function zeroOrient(){S.forEach(st=>st.qRef.copy(st.fil.three()));}

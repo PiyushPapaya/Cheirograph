@@ -19,7 +19,14 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
-### 2026-07-25 | Verify-by-readback + a runtime stuck watchdog, over trusting a correct init sequence
+### 2026-08-07 | BLE peripheral bandwidth config, over shrinking the frame or dropping the rate
+
+**Alternatives:** (a) reduce sample rate or frame size so the default nRF52 BLE peripheral config (small ATT MTU, small notification queue, short per-connection-event packet budget) could keep up; (b) widen the BLE link itself — bigger MTU and a deeper notification queue via `Bluefruit.configPrphBandwidth(BANDWIDTH_MAX)` before `Bluefruit.begin()`, plus a slightly relaxed connection interval — and keep the 80 B/50 Hz frame as designed.
+
+**Choice:** (b).
+
+**Rationale:** The first live BLE session showed `hz` collapsing 50 → 8.3 while `write_us` (time inside `bleuart.write()`) rose past 100 ms, with `read_us` (sensor+fusion) flat the whole time — the bottleneck was purely the BLE link's ability to drain notifications, not the data rate being inherently too high for the hardware. Shrinking the frame would have been treating the symptom (not enough bandwidth to send it) rather than the cause (the link was configured far below what the nRF52840 can actually do), and would have meant giving up sensor fields or resolution for no real reason. Widening the link's own config fixed it directly and confirmed live at ~47 Hz / 3.7 KB/s. Also dropped the requested connection interval from the BLE spec-floor (6,12 = 7.5–15 ms) to (12,24 = 15–30 ms) — the ~4 KB/s requirement never needed sub-15ms intervals, and the aggressive floor may have been part of what a Windows host was renegotiating around.
+ + a runtime stuck watchdog, over trusting a correct init sequence
 
 **Alternatives:** (a) keep v3's approach — write the correct clone-init register sequence and trust that it landed, catching problems with the one-shot boot diagnostic; (b) check every I²C write's ACK, read the config registers back and compare, retry on failure, and additionally run a continuous per-sensor stuck detector that drops frozen channels from the frame's validity mask and re-initialises them live.
 

@@ -34,6 +34,69 @@ Rules:
 
 ---
 
+### 2026-08-07 | Phase 7.5 — First live BLE session: throughput fix, calibration-settle fix, and new issues surfaced
+
+**Plan:** Flash v4 and finally get a live BLE session end to end — this was the first
+time the hardened firmware from the previous session actually touched the glove.
+
+**Achieved:**
+- **BLE throughput collapse, root-caused and fixed.** First connect showed the dashboard
+  stuck at 0 Hz / 0.0 KB/s with bad-frames climbing. The Serial report line already added
+  in v4 made the diagnosis immediate: `read_us` (all 6 sensors) stayed flat at ~5.9 ms the
+  whole time, while `write_us` (time inside `bleuart.write()`) ballooned from 0 to
+  114,000+ µs and `hz` collapsed 50 → 8.3 in lockstep — the sensors and fusion loop were
+  never the problem, `bleuart.write()` was blocking on a starved BLE link. Fixed in
+  `firmware/08_ble_dashboard/08_ble_dashboard.ino` with `Bluefruit.configPrphBandwidth(BANDWIDTH_MAX)`
+  before `Bluefruit.begin()` (wider MTU + notification queue), a relaxed connection
+  interval (12,24 instead of the spec-floor 6,12), and connect/disconnect callbacks that
+  log the negotiated MTU/interval so future sessions get hard numbers instead of
+  guesswork. **Confirmed working live**: dashboard now holds ~47 Hz / 3.7 KB/s.
+- **Calibration-settle bug fixed (probably).** With the smoothing slider dragged to its
+  minimum (0.02), the hand's roll/pitch showed large, slowly-changing values (pitch
+  50°→87° between two flat-and-still snapshots) — not noise, but the fusion filter still
+  converging toward true gravity-referenced orientation out from under a `qRef` that was
+  captured too early. Root cause: `finishCalibration()` in `tools/handrig_dashboard.html`
+  resets every filter to identity then waits a fixed 600 ms before capturing the "zero"
+  reference — fine at the default beta (0.06), nowhere near enough at 0.02. Bumped the
+  wait to 2.5 s. **Not yet independently re-confirmed** — the next report from the user
+  was about a *different* pose (tilted, not flat), so it's unclear yet whether the
+  original flat-and-still case is actually fixed or just untested since the change.
+- Live session also surfaced several real, distinct new issues, not yet fixed:
+  1. **Pinky accel reads ~25-28% low in magnitude** (`|a| ≈ 0.72-0.77g` where a
+     stationary sensor should read ~1.00g regardless of orientation) across every pose
+     tested. Per-axis ratios against a working finger aren't a clean proportional scale,
+     so it doesn't cleanly match a single known failure mode (not obviously one dead
+     axis, not obviously a full-scale/config mismatch). The dashboard's existing
+     `|a|` sanity check correctly flags it `bad accel` and freezes that finger's model
+     segment straight rather than rendering garbage — the flagging logic is doing its
+     job; the sensor itself is the open question. Intermittent: sometimes registers/moves
+     after a recalibration, sometimes doesn't.
+  2. **Thumb doesn't visually abduct (point sideways) at rest** — it renders pointing the
+     same direction as the other fingers instead of the anatomically expected sideways
+     angle. Suspect the hard-coded cosmetic "rest yaw" baked into the 3D rig
+     (`tools/handrig_dashboard.html`, `anchors.THUMB.yaw`) is now double-counting or
+     conflicting with the real sensor-derived relative rotation now that live thumb data
+     actually works — not yet root-caused.
+  3. **Hand orientation keeps drifting/rotating on its own when tilted palm-down
+     (near-vertical)**, reported as still happening after the calibration-settle fix.
+     Possibly the same convergence issue at a different beta setting, possibly a distinct
+     weakness of gradient-descent Madgwick near-vertical (gimbal-adjacent) orientations —
+     not yet distinguished; needs a controlled retest (flat vs. tilted, confirmed beta
+     value) before touching code again.
+  4. **No curl/flex indicator per finger yet** — requested as a new feature, not started.
+
+**Problems & blockers:** Several genuinely new problems surfaced in the same session
+(pinky accel magnitude, thumb rest pose, tilt-drift) that need to be diagnosed
+independently rather than all being one bug — resisted the urge to guess-fix all of them
+in one pass without controlled retests.
+
+**Next:** Get controlled test data for the tilt-drift question (flat vs. tilted, with a
+known beta value) before changing the fusion/rig code again. Root-cause the thumb
+rest-pose rig math. Design and add the curl/flex readout. Physically inspect the pinky
+connector/solder at the knuckle next time the glove is off-hand.
+
+---
+
 ### 2026-07-25 | Phase 7.5 — Hardening the IMU path: v4 firmware (verify-by-readback + stuck watchdog) and the axis remap
 
 **Plan:** Before reflashing, review the v3 fix written last session and close the gaps in it. The question that started the session was "would buying new IMUs fix the bad readings?" — answering that properly (no: the chips are fine, the init sequence was the fault) turned into a full hardening pass over the firmware and the dashboard.
