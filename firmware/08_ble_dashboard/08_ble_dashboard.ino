@@ -74,6 +74,18 @@
  *   changes later.
  *
  * 3.3 V ONLY.
+ *
+ * ---------------------------------------------------------------------------
+ * 2026-07-26 patch — BLE throughput collapse fixed
+ *   All of the above was verified on hardware and correct; the read/init path
+ *   was never the problem. First connect showed hz collapsing 50 -> 8.3 with
+ *   write_us (time inside bleuart.write()) ballooning past 100 ms while
+ *   read_us stayed flat at ~5.9 ms — the default peripheral BLE config (small
+ *   ATT MTU + notification queue) couldn't drain 80 B/20 ms. Fixed with
+ *   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX) before begin(), a relaxed
+ *   connection interval (12,24 instead of the spec-floor 6,12), and
+ *   connect/disconnect callbacks that log the negotiated MTU/interval so this
+ *   is verified by readback too, not just assumed fixed.
  */
 
 #include <bluefruit.h>
@@ -462,6 +474,26 @@ void sendFrame(){
   accReadUs += (r1 - r0); accWriteUs += (r2 - r1); accN++;
 }
 
+/*
+ * BLE throughput diagnosis (2026-07-26): the periodic report line already in
+ * this sketch showed read_us flat (~5.9 ms, sensors/fusion are fine) while
+ * write_us ballooned from 0 to 100ms+ and hz collapsed 50 -> 8.3 in lockstep.
+ * That pins bleuart.write() itself as the bottleneck: it blocks until the
+ * SoftDevice's notification queue has room, and the default peripheral config
+ * (23 B ATT MTU, a tiny HVN queue, a short per-connection-event packet budget)
+ * can't drain an 80 B frame every 20 ms (~4 KB/s). Fix is BLE link config, not
+ * the sensor/fusion loop.
+ */
+void connect_callback(uint16_t conn_handle){
+  BLEConnection* c = Bluefruit.Connection(conn_handle);
+  Serial.print("# BLE connected: mtu="); Serial.print(c->getMtu());
+  Serial.print(" interval="); Serial.print(c->getConnectionInterval() * 1.25f, 1);
+  Serial.println(" ms");
+}
+void disconnect_callback(uint16_t conn_handle, uint8_t reason){
+  Serial.print("# BLE disconnected, HCI reason=0x"); Serial.println(reason, HEX);
+}
+
 void startAdv(){
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
@@ -511,8 +543,16 @@ void setup(){
   Serial.println("# mux channel wiring) — the firmware init path is verified by readback.");
   Serial.println("# ---------------------------------------------------------");
 
+  // must be called BEFORE begin(): widens the MTU and the notification queue
+  // so bleuart.write() has somewhere to put data instead of blocking on it.
+  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin(); Bluefruit.setTxPower(4); Bluefruit.setName(DEV_NAME);
-  Bluefruit.Periph.setConnInterval(6, 12);
+  // (12,24) = 15-30 ms. Our ~4 KB/s need doesn't require the spec-floor 7.5 ms
+  // interval this used to request — that aggressiveness bought nothing and
+  // some host controllers renegotiate around it rather than honouring it.
+  Bluefruit.Periph.setConnInterval(12, 24);
+  Bluefruit.Periph.setConnectCallback(connect_callback);
+  Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
   bleuart.begin(); startAdv();
   Serial.print("# advertising as "); Serial.println(DEV_NAME);
 }
