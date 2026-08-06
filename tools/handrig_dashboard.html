@@ -104,6 +104,7 @@
   .bar{position:relative;height:4px;background:#0b1017;border-radius:3px;overflow:hidden}
   .bar i{position:absolute;top:0;bottom:0;left:50%;width:0;border-radius:3px}
   .bar.x i{background:var(--x)}.bar.y i{background:var(--y)}.bar.z i{background:var(--z)}
+  .bar.curl i{background:var(--live);left:0}
   .val{font-family:"JetBrains Mono";font-size:12px;text-align:right}
   canvas.trace{width:100%;height:52px;margin-top:10px;border-radius:6px;background:#0a0f16;display:block}
   .rpy{display:flex;gap:14px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
@@ -123,6 +124,7 @@
   <div class="status" id="status">not connected</div>
   <div class="spacer"></div>
   <div class="telem">
+    <div><div class="k">gesture</div><div class="v mono" id="gest">—</div></div>
     <div><div class="k">rate</div><div class="v mono"><span id="thz">0</span> Hz</div></div>
     <div><div class="k">throughput</div><div class="v mono"><span id="tkb">0.0</span> KB/s</div></div>
     <div><div class="k">loss</div><div class="v mono" id="tlossv"><span id="tloss">0.0</span>%</div></div>
@@ -139,7 +141,7 @@
     <div class="stagefoot">
       <button class="ref" id="cal" disabled>Calibrate (10 s)</button>
       <button class="mini" id="zero" disabled>Zero orient.</button>
-      <div class="ctrl">smoothing <input type="range" id="beta" min="0.02" max="0.3" step="0.01" value="0.06"><span class="mono" id="betav">0.06</span></div>
+      <div class="ctrl" title="Lower = smoother but weaker gravity correction, so residual gyro bias drifts more over time, even sitting still. Higher = snappier and more drift-resistant, slightly noisier instant readings. The floor is set at 0.1 because lower values visibly drift within seconds even when perfectly still — that's the filter converging too slowly to trust the accelerometer, not noise.">smoothing <input type="range" id="beta" min="0.1" max="0.3" step="0.01" value="0.1"><span class="mono" id="betav">0.10</span></div>
       <div class="ctrl" title="Which sensor axis points at the fingers was never measured for the hand IMU. Tilt your hand forward: pick the option where the model tips forward too.">hand axes
         <select id="handmap"></select>
       </div>
@@ -262,11 +264,12 @@ class Madgwick{
 
 // ===== per-sensor state =====
 const S=META.map(()=>({
-  fil:new Madgwick(0.06),
+  fil:new Madgwick(0.1),
   a:[0,0,0], g:[0,0,0], gc:[0,0,0],       // raw accel, raw gyro, calibrated gyro
-  amag:0,
-  bias:[0,0,0], noise:[0,0,0], calibrated:false, flag:"", bad:false,
-  qRef:new THREE.Quaternion(), rel:new THREE.Quaternion(),
+  aSmooth:null,                            // low-passed accel actually fed to the filter
+  amag:0, curlRad:0,
+  bias:[0,0,0], noise:[0,0,0], accBias:[0,0,0], calibrated:false, flag:"", bad:false,
+  qRef:new THREE.Quaternion(), rel:new THREE.Quaternion(), localQ:new THREE.Quaternion(),
   last:0, alive:false, dropCount:0,
   hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
 }));
@@ -294,24 +297,59 @@ function buildScene(){
     new THREE.MeshStandardMaterial({color:0x3ad0c4,emissive:0x0d4c47,roughness:.4}));
   mk.position.set(0,0.34,-0.2);palm.add(mk);
 
+  // "bend" is a STATIC rest-pose pitch (about local X), baked in the same way as "yaw" —
+  // tuned by eye for a relaxed hand where the thumb curls up and in against the index
+  // finger rather than sitting out as a straight stick. Only the thumb uses it; nudge
+  // yaw/bend here if the resting pose still doesn't look right on your hand.
   const anchors={
-    THUMB :{x: 1.35,z: 0.15,len:1.5,rad:0.20,yaw: 0.9},
-    INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06},
-    MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0},
-    RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05},
-    PINKY :{x:-0.80,z: 1.10,len:1.7,rad:0.16,yaw:-0.12},
+    THUMB :{x: 1.35,z: 0.15,len:1.5,rad:0.20,yaw: 0.45,bend:-0.85},
+    INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06,bend:0},
+    MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0, bend:0},
+    RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05,bend:0},
+    PINKY :{x:-0.80,z: 1.10,len:1.7,rad:0.16,yaw:-0.12,bend:0},
   };
   const finMat=new THREE.MeshStandardMaterial({color:0x2b3d4e,roughness:.6,metalness:.12});
   META.forEach(m=>{
     if(m.role==="palm"){fingerGroups[0]=null;return;}
     const a=anchors[m.name];
+    // g's rotation.y=a.yaw is the STATIC anatomical rest pose (thumb sideways, others
+    // near-forward) and is set ONCE here, never touched per-frame. It used to get
+    // overwritten every frame in render() by folding it into the same quaternion as the
+    // live sensor motion (g.quaternion = local.multiply(rest)) — that combined a fixed
+    // base orientation with a live rotation using plain quaternion multiplication, which
+    // applies the live rotation's axes in world space rather than relative to the
+    // already-sideways-rotated mesh. For the thumb specifically that meant a real curl
+    // could end up rotating around the wrong axis relative to what's on screen. Keeping
+    // "rest" as this group's static parent transform and driving only the CHILD segments
+    // from live data (below) makes curl/spread apply correctly relative to whichever
+    // direction this finger's rest pose actually points.
     const g=new THREE.Group();g.position.set(a.x,0.1,a.z);g.rotation.y=a.yaw;
-    const seg=new THREE.Group();
-    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(a.rad*0.8,a.rad,a.len,16),finMat);
-    cyl.rotation.x=Math.PI/2;cyl.position.z=a.len/2;seg.add(cyl);
-    const tip=new THREE.Mesh(new THREE.SphereGeometry(a.rad*0.8,16,12),finMat);tip.position.z=a.len;seg.add(tip);
-    seg.add(new THREE.Mesh(new THREE.SphereGeometry(a.rad*1.05,16,12),finMat));
-    g.add(seg);g.userData={restYaw:a.yaw};palm.add(g);fingerGroups[m.id]=g;
+
+    // Only ONE IMU per finger (middle phalanx / thumb proximal phalanx) — there is no
+    // independent per-joint data. segBase gets the full measured relative rotation;
+    // segTip is a child of segBase and additionally re-applies a fraction of that SAME
+    // curl angle (see render()) purely so a curling finger reads visually as a curl
+    // instead of one rigid stick pivoting at the base. It is a cosmetic split of one
+    // real measurement, not a second sensor.
+    const baseLen=a.len*0.55, tipLen=a.len*0.45;
+    const segBase=new THREE.Group();
+    const cylB=new THREE.Mesh(new THREE.CylinderGeometry(a.rad*0.9,a.rad,baseLen,16),finMat);
+    cylB.rotation.x=Math.PI/2;cylB.position.z=baseLen/2;segBase.add(cylB);
+    segBase.add(new THREE.Mesh(new THREE.SphereGeometry(a.rad*1.05,16,12),finMat));   // knuckle
+    const segTip=new THREE.Group();segTip.position.z=baseLen;
+    const cylT=new THREE.Mesh(new THREE.CylinderGeometry(a.rad*0.7,a.rad*0.9,tipLen,16),finMat);
+    cylT.rotation.x=Math.PI/2;cylT.position.z=tipLen/2;segTip.add(cylT);
+    const tip=new THREE.Mesh(new THREE.SphereGeometry(a.rad*0.75,16,12),finMat);tip.position.z=tipLen;segTip.add(tip);
+    segBase.add(segTip);
+
+    // restBend sits BETWEEN g (static yaw) and segBase (live rotation, overwritten every
+    // frame) — a second static parent so the baked-in bend survives render() the same way
+    // the yaw does, instead of being clobbered by the per-frame quaternion assignment.
+    const restBend=new THREE.Group();restBend.rotation.x=a.bend||0;
+    restBend.add(segBase);
+    g.add(restBend);
+    g.userData={restYaw:a.yaw,segBase,segTip};
+    palm.add(g);fingerGroups[m.id]=g;
   });
 
   addEventListener("resize",resize);resize();
@@ -331,20 +369,61 @@ function resize(){const s=document.querySelector(".stage");const w=s.clientWidth
   renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 
 const _tmp=new THREE.Quaternion();
+const _ce=new THREE.Euler();          // scratch, curl extraction only
+const CURL_MAX_DEG=90;                // reference full-curl angle for the % readout
+const TIP_CURL_FRAC=0.4;              // extra cosmetic bend re-applied at segTip
 function render(){
   camera.position.set(camDist*Math.cos(camPitch)*Math.sin(camYaw),camDist*Math.sin(camPitch),camDist*Math.cos(camPitch)*Math.cos(camYaw));
   camera.lookAt(0,0,0);
   const palmQ=S[0].bad?new THREE.Quaternion():S[0].rel;
   palm.quaternion.copy(palmQ);
+  S[0].localQ.copy(palmQ);   // the hand IS the reference frame, so its own readout stays absolute
   const invPalm=_tmp.copy(palmQ).invert();
   META.forEach(m=>{
     if(m.role==="palm")return;const g=fingerGroups[m.id];if(!g)return;
-    const local=S[m.id].bad ? new THREE.Quaternion()               // frozen straight
-              : new THREE.Quaternion().copy(invPalm).multiply(S[m.id].rel);
-    const rest=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,g.userData.restYaw,0));
-    g.quaternion.copy(local).multiply(rest);
+    const st=S[m.id];
+    const local=st.bad ? new THREE.Quaternion()                    // frozen straight
+              : new THREE.Quaternion().copy(invPalm).multiply(st.rel);
+    st.localQ.copy(local);   // cache: card readout below must match what's actually rendered
+    g.userData.segBase.quaternion.copy(local);
+
+    // curl = the pitch component of the SAME "local" rotation already driving the whole
+    // finger; a bent finger has real forward-pitch, an extended one doesn't. Re-applied
+    // at reduced weight on segTip only (see buildScene comment) — not new data.
+    _ce.setFromQuaternion(local,"YXZ");
+    const curlRad=st.bad?0:_ce.x;
+    st.curlRad=curlRad;
+    g.userData.segTip.quaternion.setFromEuler(new THREE.Euler(curlRad*TIP_CURL_FRAC,0,0));
   });
+  detectGesture();
   renderer.render(scene,camera);
+}
+
+// ===== first threshold-based gesture rule =====
+// "thumb bent up, pressed against index" — a proximity + orientation check on
+// geometry the rig already computes, not a real classifier (there is no ML
+// model in this repo yet). Two conditions, both must hold:
+//   1. thumb tip world position is close to index tip world position
+//   2. the thumb's own forward axis (local +Z) points mostly UP in world space
+//      (Y component), not flat/forward — distinguishes "thumb folded up against
+//      the index" from "thumb resting alongside the index" at the same distance.
+// Thresholds are geometry-scaled guesses (segment lengths are ~1.5-2.1 world
+// units) tuned by eye against the rig, not measured on a real hand — expect to
+// nudge TOUCH_DIST / UP_MIN after trying it live.
+const TOUCH_DIST=0.9, UP_MIN=0.35;
+const _gThumbTip=new THREE.Vector3(), _gIndexTip=new THREE.Vector3();
+const _gThumbQ=new THREE.Quaternion(), _gDir=new THREE.Vector3();
+let GESTURE={active:false,dist:0,up:0};
+function detectGesture(){
+  const thumb=fingerGroups[1],index=fingerGroups[2];
+  if(!thumb||!index||S[1].bad||S[2].bad||!S[1].alive||!S[2].alive){GESTURE.active=false;return;}
+  scene.updateMatrixWorld(true);
+  thumb.userData.segTip.getWorldPosition(_gThumbTip);
+  index.userData.segTip.getWorldPosition(_gIndexTip);
+  const dist=_gThumbTip.distanceTo(_gIndexTip);
+  thumb.userData.segTip.getWorldQuaternion(_gThumbQ);
+  _gDir.set(0,0,1).applyQuaternion(_gThumbQ);
+  GESTURE={active:dist<TOUCH_DIST&&_gDir.y>UP_MIN,dist,up:_gDir.y};
 }
 
 // ===== BLE =====
@@ -444,6 +523,18 @@ function parseFrame(f){
     st.a=[rax,ray,raz];st.g=[rgx,rgy,rgz];st.amag=Math.hypot(rax,ray,raz);
     st.alive=true;st.last=performance.now();
 
+    // Accel noise (~0.02g/sample) fed straight into Madgwick's gradient-descent
+    // correction shows up as small but constant roll/pitch/yaw jitter even with the
+    // hand dead still — every sample nudges the quaternion a little in a new random
+    // direction. An EMA low-pass on the accel BEFORE fusion (not on the orientation
+    // output) removes that noise floor without adding the lag a post-filter smooth
+    // would. gc (gyro) is deliberately left alone — this is an accel-only fix.
+    if(!st.aSmooth)st.aSmooth=[rax,ray,raz];
+    else{const k=0.35;
+      st.aSmooth[0]+=(rax-st.aSmooth[0])*k;
+      st.aSmooth[1]+=(ray-st.aSmooth[1])*k;
+      st.aSmooth[2]+=(raz-st.aSmooth[2])*k;}
+
     // calibration collection (remapped gyro/accel while "still").
     // Bias must be measured in the SAME frame it is later subtracted in.
     if(calState==="run"){
@@ -458,7 +549,7 @@ function parseFrame(f){
     for(let k=0;k<3;k++){const db=Math.max(0.6,3*st.noise[k]);if(Math.abs(gc[k])<db)gc[k]=0;}
     st.gc=gc;
 
-    st.fil.update(gc[0],gc[1],gc[2],rax,ray,raz,dt);
+    st.fil.update(gc[0],gc[1],gc[2],st.aSmooth[0],st.aSmooth[1],st.aSmooth[2],dt);
     st.rel.copy(st.qRef).invert().multiply(st.fil.three());
 
     pushHist(st.hist,gc[0],gc[1],gc[2],rax,ray,raz);
@@ -467,7 +558,7 @@ function parseFrame(f){
 }
 
 // ===== calibration =====
-let calState="idle", calEnd=0, calAcc=null, capRefAt=0;
+let calState="idle", calEnd=0, calAcc=null;
 function startCalibration(){
   calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));
   calState="run";calEnd=performance.now()+10000;
@@ -480,6 +571,14 @@ function finishCalibration(){
     for(let k=0;k<3;k++){
       const mean=c.gs[k]/c.n; st.bias[k]=mean;
       st.noise[k]=Math.sqrt(Math.max(0,c.gq[k]/c.n-mean*mean));
+      // Accel bias is a DISPLAY-relative offset only — the value each axis read
+      // while held still during calibration. Subtracting it from later readings
+      // (see refreshCards) makes the accel cards read ~0 in the calibration pose
+      // and show real deviation from it afterward, mirroring the gyro bias-corr
+      // readout. It must NOT be subtracted before Madgwick fusion: gravity's
+      // magnitude+direction in the raw accel is the only thing that corrects
+      // roll/pitch, so zeroing it there would blind the filter to "up".
+      st.accBias[k]=c.as[k]/c.n;
     }
     const am=Math.hypot(c.as[0]/c.n,c.as[1]/c.n,c.as[2]/c.n);
     const maxNoise=Math.max(Math.abs(st.noise[0]),Math.abs(st.noise[1]),Math.abs(st.noise[2]));
@@ -490,20 +589,39 @@ function finishCalibration(){
     else if(maxBias>40)   { st.flag="bias "+maxBias.toFixed(0)+"°/s · bad gyro"; st.bad=true; }
     else if(maxNoise>15)  { st.flag="noisy "+maxNoise.toFixed(0)+"°/s"; st.bad=true; }
     st.calibrated=true;
-    st.fil.q=[1,0,0,0];   // re-settle from bias-free gravity
+
+    // Re-settle the filter's orientation from the calibration-average gravity
+    // vector, not from a blind reset + a hope-it-converged-by-now wait.
+    //
+    // The OLD code reset fil.q to identity, then waited a fixed 2.5 s wall-clock
+    // for live frames to converge it back to gravity via the normal beta-scaled
+    // correction, then captured that as qRef ("zero"). At the user's chosen
+    // smoothing (beta as low as 0.1) that convergence is genuinely slower than
+    // 2.5 s whenever the calibration pose isn't already near-flat — capturing
+    // qRef mid-convergence bakes in a wrong offset, and because the filter keeps
+    // correcting toward the true orientation AFTER qRef was grabbed, the model
+    // visibly keeps rotating on its own (this is the "hand still slowly rotating
+    // downward" bug) even though the glove itself is dead still.
+    //
+    // Fix: solve for the settled orientation directly, synchronously, using the
+    // SAME update() math (so the axis convention can't drift from the live
+    // path) but fed the calibration-average accel (not live per-frame noisy
+    // samples) with zero gyro input and beta cranked to 1.0. A few dozen
+    // synthetic steps converge a gradient-descent correction to the same fixed
+    // point live frames would eventually reach — just in ~0ms instead of
+    // however long the slider's beta happens to take.
+    st.fil.q=[1,0,0,0];
+    const axAvg=c.as[0]/c.n, ayAvg=c.as[1]/c.n, azAvg=c.as[2]/c.n;
+    const savedBeta=st.fil.beta;
+    st.fil.beta=1.0;
+    for(let i=0;i<40;i++)st.fil.update(0,0,0,axAvg,ayAvg,azAvg,0.02);
+    st.fil.beta=savedBeta;
+
+    // Zero immediately — no deferred timer, no window where the model can drift
+    // away from a reference that was captured before the filter actually settled.
+    st.qRef.copy(st.fil.three());
   });
   calState="done";
-  // Every filter was just reset to identity (fil.q=[1,0,0,0] above) and must
-  // re-converge to gravity before its orientation means anything. At the
-  // default smoothing (0.06) that's fast; drag the slider toward its low end
-  // (weaker accel correction, more drift resistance) and convergence gets
-  // much slower. A short fixed wait captures qRef mid-convergence, baking a
-  // large wrong offset into the "zero" reference — which then looks like the
-  // model slowly spinning on its own even though the glove is dead still, as
-  // the filter keeps correcting toward the true orientation out from under a
-  // qRef that was never right. 2.5 s comfortably covers the whole slider range.
-  capRefAt=performance.now()+2500;
-
   document.getElementById("calbanner").classList.remove("show");
 }
 function zeroOrient(){S.forEach(st=>st.qRef.copy(st.fil.three()));}
@@ -559,7 +677,14 @@ function buildCards(){
         <div>roll<b class="mono" id="r${m.id}">—</b></div>
         <div>pitch<b class="mono" id="p${m.id}">—</b></div>
         <div>yaw<b class="mono" id="w${m.id}">—</b></div>
-      </div>`;
+      </div>
+      ${m.role==="palm" ? "" : `
+      <div class="blabel" title="Derived from this finger's own pitch — one IMU per finger, this is not an independent per-joint measurement.">
+        curl <span class="mag mono" id="clpct${m.id}">— %</span> <span class="cflag mono" id="cllab${m.id}"></span>
+      </div>
+      <div class="row"><span class="axl">C</span>
+        <span class="bar curl"><i id="clb${m.id}"></i></span>
+        <span class="val" id="clv${m.id}">0°</span></div>`}`;
     wrap.appendChild(c);
   });
 }
@@ -603,7 +728,6 @@ function refreshCards(){
     document.getElementById("calcount").textContent=Math.max(0,rem);
     if(now>=calEnd)finishCalibration();
   }
-  if(calState==="done"&&capRefAt&&now>=capRefAt){zeroOrient();capRefAt=0;}
 
   META.forEach(m=>{
     const st=S[m.id],card=document.getElementById("card"+m.id);
@@ -622,14 +746,38 @@ function refreshCards(){
     fe.style.color=st.bad?"var(--bad)":"var(--ref)";
     document.getElementById("am"+m.id).textContent="|a| "+(fresh?st.amag.toFixed(2):"—");
     document.getElementById("bias"+m.id).textContent=st.calibrated?"bias-corr":"raw";
-    setAxis("a",m.id,st.a,2.0,3);
+    // post-calibration: show accel relative to the pose captured at Calibrate
+    // time (raw - accBias), same idea as gyro's bias-corr — reads ~0 in that
+    // pose, and the true raw signed value away from it (e.g. -0.9 if the axis
+    // has since flipped sign relative to the calibration hold).
+    const aDisp=st.calibrated?[st.a[0]-st.accBias[0],st.a[1]-st.accBias[1],st.a[2]-st.accBias[2]]:st.a;
+    setAxis("a",m.id,aDisp,2.0,3);
     setAxis("g",m.id,st.gc,250,1);      // show CALIBRATED gyro (post-bias, deadbanded)
-    _e.setFromQuaternion(st.rel,"YXZ");
+    // localQ is hand-relative for fingers (matches the 3D model exactly) and absolute
+    // for the hand itself, which IS the reference frame. Using st.rel here directly used
+    // to show each finger's absolute tilt, not its bend relative to the hand — so tilting
+    // the whole hand (not curling anything) showed up identically on every finger card.
+    _e.setFromQuaternion(st.localQ,"YXZ");
     document.getElementById("r"+m.id).textContent=fresh?deg(_e.z):"—";
     document.getElementById("p"+m.id).textContent=fresh?deg(_e.x):"—";
     document.getElementById("w"+m.id).textContent=fresh?deg(_e.y):"—";
+    if(m.role!=="palm"){
+      // Same pitch value driving the visual bend in render() — one IMU per finger,
+      // so this is a curl reading, not per-joint flexion.
+      const curlDeg=fresh&&!st.bad?Math.abs(st.curlRad)/DEG:0;
+      const pct=Math.max(0,Math.min(100,(curlDeg/CURL_MAX_DEG)*100));
+      const lab=!fresh?"—":pct<20?"extended":pct>65?"curled":"bending";
+      document.getElementById("clpct"+m.id).textContent=fresh?pct.toFixed(0)+" %":"— %";
+      document.getElementById("cllab"+m.id).textContent=lab;
+      document.getElementById("clv"+m.id).textContent=fresh?curlDeg.toFixed(0)+"°":"—";
+      document.getElementById("clb"+m.id).style.width=pct+"%";
+    }
     drawTrace(m.id);
   });
+
+  const ge=document.getElementById("gest");
+  ge.textContent=GESTURE.active?"thumb·index":"—";
+  ge.classList.toggle("warnv",GESTURE.active);
 
   const dt=now-winT;
   if(dt>=500){
