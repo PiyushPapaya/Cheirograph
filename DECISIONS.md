@@ -19,6 +19,16 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-08-07 | Synchronous analytic settle for calibration zero-reference, over a longer wall-clock wait
+
+**Alternatives:** (a) keep extending the fixed wait after resetting the filter to identity (already bumped once, 600 ms → 2.5 s, in the previous session) and hope a longer number covers every case; (b) derive a closed-form quaternion directly from the calibration-average gravity vector using a hand-written formula; (c) run the existing `Madgwick.update()` synchronously, ~40 times, against the calibration-average accel with zero gyro input and beta forced to 1.0, then capture the result immediately as the zero reference.
+
+**Choice:** (c).
+
+**Rationale:** (a) had already failed twice at two different wait lengths, because convergence time from identity back to true orientation depends on both the user's smoothing slider and how far the calibration pose was from flat — there is no fixed wall-clock number that's provably enough, only ones that happen to work for whatever pose/beta was tested last. (b) would need a hand-derived formula matching the exact reference-axis convention already implicit in the existing `s0..s3` gradient-descent equations, risking a subtle sign/axis mismatch that nothing else in the file would catch. (c) reuses the identical, already-trusted `update()` method the live path uses, so the axis convention cannot diverge between the two, and forcing beta to 1.0 for a fixed ~40 synthetic iterations converges to the same fixed point live frames would eventually reach — deterministically, in ~0 ms, regardless of pose or the user's chosen smoothing. Confirmed working live on the real glove after the change.
+
+---
+
 ### 2026-08-07 | BLE peripheral bandwidth config, over shrinking the frame or dropping the rate
 
 **Alternatives:** (a) reduce sample rate or frame size so the default nRF52 BLE peripheral config (small ATT MTU, small notification queue, short per-connection-event packet budget) could keep up; (b) widen the BLE link itself — bigger MTU and a deeper notification queue via `Bluefruit.configPrphBandwidth(BANDWIDTH_MAX)` before `Bluefruit.begin()`, plus a slightly relaxed connection interval — and keep the 80 B/50 Hz frame as designed.

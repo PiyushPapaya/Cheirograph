@@ -34,6 +34,88 @@ Rules:
 
 ---
 
+### 2026-08-07 | Phase 7.5 — Calibration-settle root-caused for real, curl readout, thumb rig fix, first gesture rule
+
+**Plan:** Follow up on the previous session's "probably fixed (not yet independently
+re-confirmed)" calibration-settle bug, and pick up the open issues it left behind: no
+curl/flex readout, thumb rest-pose rig looking wrong, tilt-drift not yet distinguished
+from the settle bug.
+
+**Achieved:**
+- **Calibration-settle bug actually root-caused and fixed.** The previous session's fix
+  (waiting 600 ms → 2.5 s after resetting the filter to identity, then capturing that as
+  the model's "zero" orientation) was still not enough — reported live as the hand model
+  continuing to slowly rotate/point downward on its own even with the glove dead still.
+  Root cause: that approach depended on live frames re-converging the filter from
+  identity back to true gravity-referenced orientation within the fixed wait, and
+  convergence time depends on both the smoothing slider and how far the calibration pose
+  was from flat — no fixed wall-clock wait can cover every case, which is exactly why the
+  first attempt (600 ms) and the second (2.5 s) both eventually failed the same way.
+  Fixed for real in `tools/handrig_dashboard.html` `finishCalibration()`: instead of
+  resetting to identity and waiting, it now runs the *existing* `Madgwick.update()` method
+  synchronously ~40 times against the calibration-average gravity vector (zero rotation,
+  beta forced to 1.0), which converges to the same fixed point live frames eventually
+  would — in effectively 0 ms instead of an unverifiable wall-clock guess — then captures
+  `qRef` immediately. No more timing window where the model can drift out from under a
+  reference grabbed mid-convergence. **User-confirmed working live** after this change.
+  See DECISIONS.md (2026-08-07) for why the synchronous-solve approach was chosen over
+  just extending the wait again.
+- **Accel jitter reduced before fusion.** Separately from the settle bug, the hand model
+  showed small continuous "random" rotation even once calibrated and still — raw accel
+  noise (~0.02 g/sample) was being fed straight into Madgwick's per-frame gravity
+  correction, nudging the orientation a little in a new direction every sample. Added an
+  EMA low-pass on the accel *before* fusion (not on the orientation output, to avoid
+  adding lag) — gyro path is untouched.
+- **Accel calibration-relative readout added.** `Calibrate (10 s)` now also captures each
+  sensor's mean accel alongside the existing gyro bias, and the accel cards display
+  `raw − accBias` post-calibration (reads ~0 in the calibration pose, signed deviation
+  away from it afterward) — mirrors the gyro `bias-corr` readout. Raw accel (with real
+  gravity) still feeds Madgwick unchanged; zeroing it there would blind the filter to
+  "up".
+- **Curl/flex readout added** (was open item #4 from the previous session) — each
+  finger card now shows a curl bar, curl percentage, and a label (extended / bending /
+  curled), derived from the same relative pitch already driving the 3D model, not a new
+  measurement.
+- **Thumb rig restructured** (relates to open item #2, thumb not resting/abducting
+  correctly) — found the actual bug: the per-frame render loop was overwriting each
+  finger's static rest-pose transform every frame by folding it into the same quaternion
+  multiply as the live sensor rotation (`g.quaternion = local.multiply(rest)`), which
+  applies the live rotation in world space rather than relative to the already-rotated
+  rest pose. Split the rig into a static parent (yaw + a new baked-in "bend" for the
+  thumb) and a live-driven child (`segBase`/`segTip`), so the thumb's curled-up-against-
+  index rest pose survives instead of being clobbered each frame.
+- **First gesture-detection rule added**, at the user's request (a specific pose: thumb
+  bent up and pressed against the index finger). No ML classifier exists in this repo
+  yet, so this is a plain threshold rule on geometry the 3D rig already computes: thumb
+  tip world-position close to index tip, and the thumb's own forward axis pointing
+  mostly upward (distinguishes "folded up against the index" from "resting alongside
+  it" at the same distance). Shown live as a "gesture" pill in the header. Thresholds
+  (`TOUCH_DIST=0.9`, `UP_MIN=0.35`) are geometry-scaled guesses, not yet tuned against a
+  real hand.
+
+**Problems & blockers:**
+- The calibration-settle bug took **two sessions and two wrong fixes** (600 ms, then
+  2.5 s) before the actual root cause (blind reset + hope-it-converged timing, not a
+  "needs more time" problem) was found — worth remembering: a wall-clock wait tied to a
+  physics convergence process that depends on user-controlled parameters is not a fix,
+  it's a bigger gamble.
+- **Pinky accel magnitude issue (from the previous session) is still open** — not
+  touched this session, no new information.
+- The gesture rule, accel jitter smoothing, accel calibration-relative readout, curl
+  readout, and thumb rig fix were **not independently re-tested live** in this session
+  the way the calibration-settle fix was — only the calibration-settle fix got explicit
+  user confirmation ("good working") on the real glove. The others should be treated as
+  implemented-but-unverified until tried live.
+
+**Next:** Live-test the remaining unverified items above on the actual glove (curl
+readout accuracy, thumb visual rest pose, gesture rule thresholds, whether the accel
+jitter fix actually reads as smoother). Physically inspect the pinky connector/solder at
+the knuckle — still outstanding from the previous session. If the gesture rule proves
+noisy in practice, that's the point where collecting labeled data for the real TinyML
+classifier (still not started) becomes the better investment over more threshold-tuning.
+
+---
+
 ### 2026-08-07 | Phase 7.5 — First live BLE session: throughput fix, calibration-settle fix, and new issues surfaced
 
 **Plan:** Flash v4 and finally get a live BLE session end to end — this was the first
