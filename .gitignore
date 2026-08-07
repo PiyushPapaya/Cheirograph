@@ -68,3 +68,6 @@ secrets.json
 
 # Claude Code local config (personal, not project state)
 .claude/settings.local.json
+
+# Social media kit — brand assets, content backlog, agents: local-only, never pushed
+social/
