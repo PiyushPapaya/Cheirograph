@@ -19,6 +19,16 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-08-07 | Gestura branding extended to the public `tools/handrig_dashboard.html`, over keeping it Cheirograph-only
+
+**Alternatives:** (a) keep `tools/handrig_dashboard.html` under the neutral "HandRig" identity, matching the standing convention that repo/engineering surfaces (README, DOCUMENTATION.md, DECISIONS.md, `tools/`) stay Cheirograph-branded while "Gestura" is scoped to the gitignored `social/` kit; (b) rebrand the dashboard outright as "Gestura" — title, header wordmark/logo, copper accent palette, brand-token pipeline into the Three.js scene — dropping the "HandRig" name entirely, accepting that this public, tracked file now carries the Gestura identity to anyone who opens it (including on GitHub).
+
+**Choice:** (b), by explicit user decision when the conflict with the standing convention was flagged — the tool is to be called Gestura, not HandRig.
+
+**Rationale:** The dashboard is a portfolio-facing demo, not internal-only tooling, so the user chose to let it carry the public brand rather than keep the split rigid, and to drop the internal "HandRig" working name in favor of the real product name. This is a deliberate, scoped exception to the "engineering docs stay Cheirograph" rule — it applies to this one live-demo UI, not to README/DOCUMENTATION.md/DECISIONS.md or firmware, which remain Cheirograph-branded.
+
+---
+
 ### 2026-08-07 | Synchronous analytic settle for calibration zero-reference, over a longer wall-clock wait
 
 **Alternatives:** (a) keep extending the fixed wait after resetting the filter to identity (already bumped once, 600 ms → 2.5 s, in the previous session) and hope a longer number covers every case; (b) derive a closed-form quaternion directly from the calibration-average gravity vector using a hand-written formula; (c) run the existing `Madgwick.update()` synchronously, ~40 times, against the calibration-average accel with zero gyro input and beta forced to 1.0, then capture the result immediately as the zero reference.

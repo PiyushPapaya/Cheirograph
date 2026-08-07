@@ -34,6 +34,53 @@ Rules:
 
 ---
 
+### 2026-08-07 | Gestura social pipeline agents + live dashboard rebrand/UI pass
+
+**Plan:** Two unrelated pieces of housekeeping/polish, not a firmware milestone: stand up
+the tooling for the Gestura social-media content pipeline, and give
+`tools/handrig_dashboard.html` a visual pass now that it's stable enough to demo.
+
+**Achieved:**
+- **Nine project-scoped subagents added** (`.claude/agents/gestura-*.md`): story-scout →
+  ideator → strategist → brand-designer → prompt-smith → producer → repurposer →
+  copywriter → brand-guardian. Together they run the Gestura content pipeline end to end
+  — mining the repo for filmable beats, turning them into scheduled ideas, producing and
+  repurposing renders, writing captions, and a final scope-safety QA pass before
+  anything posts. The `social/` folder they operate on (brand kit, content backlog,
+  renders) is gitignored — local-only, deliberately never pushed to this public repo.
+- **`tools/handrig_dashboard.html` restyled and rebranded as Gestura.** Full visual pass:
+  copper/graphite brand palette driven from a single `BRAND` token object (kept in sync
+  with the CSS custom properties at startup so canvas/Three.js and CSS can't drift),
+  Gestura wordmark + hand-topology SVG mark in the header, animated grain/ambient
+  background, redesigned instrument-style telemetry cluster and finger cards (visible
+  bar tracks with a centre tick — the old near-black track read as broken/empty), a
+  hero treatment for card S0 (the hand/reference sensor), card entrance animation, and a
+  warm copper rim light + point light on the hand-reference cube in the Three.js scene
+  so the 3D model picks up the same accent. Functionally unchanged — same BLE parsing,
+  calibration, curl/gesture logic from the previous session; this was UI only.
+- Decided, on being asked, to drop the internal "HandRig" name entirely from this file in
+  favor of "Gestura" — this is a scoped exception to the standing convention that
+  engineering-facing docs stay Cheirograph-branded and Gestura stays confined to
+  `social/`; the dashboard alone now carries the public brand since it's a portfolio-
+  facing demo. Everything else (README, this file, DECISIONS.md, firmware) stays
+  Cheirograph. See DECISIONS.md (2026-08-07).
+
+**Problems & blockers:**
+- The CSS/JS diff was large (~440 lines) and mixes true UI/UX fixes (fixed an invisible
+  bar-track color, fixed a grid-row-height clipping bug via `grid-auto-rows:max-content`)
+  with pure rebrand changes — worth remembering these were bundled in one working-tree
+  edit rather than two separate commits.
+- Not independently re-tested live on the glove after the restyle — the previous
+  session's functional confirmation (calibration-settle fix, BLE throughput) still
+  stands, but the visual changes themselves haven't been eyeballed against real hardware
+  yet.
+
+**Next:** Open the dashboard against the live glove once to confirm nothing about the
+restyle (new grid-auto-rows behavior, animation timing, palette swap) broke readability
+or introduced layout regressions under real streaming data.
+
+---
+
 ### 2026-08-07 | Phase 7.5 — Calibration-settle root-caused for real, curl readout, thumb rig fix, first gesture rule
 
 **Plan:** Follow up on the previous session's "probably fixed (not yet independently
