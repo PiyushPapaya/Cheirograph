@@ -673,7 +673,20 @@ function parseFrame(f){
 
     // calibration collection (remapped gyro/accel while "still").
     // Bias must be measured in the SAME frame it is later subtracted in.
-    if(calState==="run"){
+    // Stillness gate — see STILL_DEV_DPS comment above. Track a rolling EMA of this
+    // sensor's OWN raw gyro (reset fresh at calibration start, see startCalibration) and
+    // only admit a sample when it's close to that recent trend. This is bias-agnostic: a
+    // sensor sitting still at a raw reading of, say, 8°/s (its own fixed offset) has
+    // near-zero DEVIATION from its own rolling average and is correctly admitted; a
+    // sensor that's actually rotating diverges from its own trend and gets excluded,
+    // regardless of what its baseline happens to be.
+    if(!st.calGyroEMA)st.calGyroEMA=[rgx,rgy,rgz];
+    const devX=Math.abs(rgx-st.calGyroEMA[0]),devY=Math.abs(rgy-st.calGyroEMA[1]),devZ=Math.abs(rgz-st.calGyroEMA[2]);
+    const emaK=0.2;
+    st.calGyroEMA[0]+=(rgx-st.calGyroEMA[0])*emaK;
+    st.calGyroEMA[1]+=(rgy-st.calGyroEMA[1])*emaK;
+    st.calGyroEMA[2]+=(rgz-st.calGyroEMA[2])*emaK;
+    if(calState==="run" && devX<STILL_DEV_DPS && devY<STILL_DEV_DPS && devZ<STILL_DEV_DPS){
       const c=calAcc[sid];c.n++;
       c.gs[0]+=rgx;c.gs[1]+=rgy;c.gs[2]+=rgz;
       c.gq[0]+=rgx*rgx;c.gq[1]+=rgy*rgy;c.gq[2]+=rgz*rgz;
@@ -694,9 +707,25 @@ function parseFrame(f){
 }
 
 // ===== calibration =====
+// STILL_DEV_DPS: gates the calibration average on stillness, but critically on DEVIATION
+// FROM A ROLLING AVERAGE (st.calGyroEMA, set up where it's used in parseFrame), not on
+// the raw gyro's absolute value. A prior version of this gate used an absolute threshold
+// ("reject any sample where raw gyro > 6 deg/s") which is WRONG: a genuinely stationary
+// MPU-6050 does not read near zero, it reads near its own fixed per-chip bias, and that
+// bias is explicitly expected to run up to ~40 deg/s elsewhere in this file (see the
+// maxBias>40 "bad gyro" check in finishCalibration). One real unit's bias exceeded 6
+// deg/s, so the absolute gate rejected every frame from it for the entire 10s hold,
+// c.n never reached 5, and finishCalibration's `if(c.n<5){bad=true;return}` left that
+// sensor permanently uncalibrated (stuck on raw/uncorrected gyro, reading nonsense
+// roll/pitch/yaw) — a regression, not a fix. Deviation-from-trend is bias-agnostic: a
+// sensor sitting still at ANY fixed offset has near-zero deviation from its own recent
+// average and is correctly admitted; only genuine motion (which diverges from the recent
+// trend) is excluded, regardless of that sensor's baseline.
+const STILL_DEV_DPS=3;
 let calState="idle", calEnd=0, calAcc=null;
 function startCalibration(){
   calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));
+  S.forEach(st=>st.calGyroEMA=null);   // fresh trend baseline each hold, not stale pre-hold motion
   calState="run";calEnd=performance.now()+10000;
   document.getElementById("calbanner").classList.add("show");
 }
