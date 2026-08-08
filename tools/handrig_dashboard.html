@@ -107,6 +107,18 @@
   .calbanner .lab{margin-top:10px;font-size:15px;color:var(--tx);letter-spacing:.02em;font-family:var(--font-body)}
   .calbanner .sub{margin-top:4px;font-size:12px;color:var(--mut);font-family:var(--font-body)}
 
+  /* batch capture */
+  input[type=text]{font-family:var(--font-mono);font-size:12px;color:var(--tx);background:var(--panel2);
+    border:1px solid var(--line2);border-radius:7px;padding:6px 10px;width:64px;text-transform:uppercase}
+  .batchcount{font-family:var(--font-mono);font-size:12px;color:var(--mut);white-space:nowrap}
+  button.ref.active{background:var(--warn);color:#1a1400}
+  .batchhint{position:absolute;top:16px;right:18px;color:var(--good);font-size:12px;font-family:var(--font-body);
+    letter-spacing:.02em;display:none;z-index:2}
+  .batchhint.show{display:block}
+  .batchflash{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:0;transition:opacity .18s}
+  .batchflash.ok{background:radial-gradient(circle at 50% 50%,rgba(76,128,100,.4),transparent 70%);opacity:1;transition:none}
+  .batchflash.bad{background:radial-gradient(circle at 50% 50%,rgba(192,57,43,.4),transparent 70%);opacity:1;transition:none}
+
   .veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(10,14,20,.55);backdrop-filter:blur(2px);z-index:6}
   .veil .box{text-align:center;max-width:360px}
@@ -232,13 +244,22 @@
       </div>
       <button class="rec mini" id="rec" disabled>● Record</button>
       <button class="mini" id="csv" disabled>Export CSV</button>
+      <div class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps — no need to stop the batch to switch letters.">label
+        <input type="text" id="batchLabel" maxlength="12" value="A">
+      </div>
+      <button class="ref" id="batchToggle" disabled title="20s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5s between reps to fight drift.">Batch Capture</button>
+      <span class="mono batchcount" id="batchCount">0 reps captured</span>
+      <button class="mini" id="batchCsv" disabled>Export Batch CSV</button>
     </div>
+
+    <div class="batchhint" id="batchhint">● ARMED — hold the pose, press <b>Space</b> to save · <b>Esc</b> to stop</div>
+    <div class="batchflash" id="batchflash"></div>
 
     <div class="calbanner" id="calbanner">
       <div class="c">
         <div class="big" id="calcount">20</div>
         <div class="lab">Hold your hand flat &amp; still</div>
-        <div class="sub">measuring gyro bias on all sensors…</div>
+        <div class="sub" id="calsub">measuring gyro bias on all sensors…</div>
       </div>
     </div>
 
@@ -585,16 +606,17 @@ function onConnected(){
   document.getElementById("dot").className="dot on";
   document.getElementById("veil").style.display="none";
   document.getElementById("conn").textContent="Disconnect";
-  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
+  ["cal","zero","rec","batchToggle"].forEach(id=>document.getElementById(id).disabled=false);
   document.getElementById("cards").classList.add("in");
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
 }
 function onDisc(){
   document.getElementById("dot").className="dot err";
   document.getElementById("conn").textContent="Connect";
-  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
+  ["cal","zero","rec","batchToggle"].forEach(id=>document.getElementById(id).disabled=true);
   document.getElementById("veil").style.display="flex";
   setStatus("disconnected","err");S.forEach(s=>s.alive=false);
+  stopBatchCapture();
 }
 function disconnect(){if(device&&device.gatt.connected)device.gatt.disconnect();}
 
@@ -702,6 +724,11 @@ function parseFrame(f){
     st.rel.copy(st.qRef).invert().multiply(st.fil.three());
 
     pushHist(st.hist,gc[0],gc[1],gc[2],rax,ray,raz);
+    // TRUE raw (unremapped, uncalibrated) window for Batch Capture — kept separate from
+    // st.hist (which is already remapped+bias-corrected) so batch-captured samples stay
+    // exactly as re-interpretable as the freeform raw CSV export, per the firmware's own
+    // "raw stays reinterpretable" convention (see 08_ble_dashboard.ino SENSOR AXES note).
+    pushBatchRaw(st,ax,ay,az,gx,gy,gz);
   }
   if(recRow){recFrames.push(recRow);if(recFrames.length>REC_CAP)recording=false;}
 }
@@ -727,11 +754,14 @@ const CAL_RECAL_MS=5000;      // Batch Capture's between-rep drift recheck (see 
 let calState="idle", calEnd=0, calAcc=null, calOnDone=null;
 // durationMs/onDone let Batch Capture (below) reuse the exact same averaging/gating
 // logic for its short between-rep recalibration instead of re-deriving it.
-function startCalibration(durationMs=CAL_INITIAL_MS, onDone=null){
+function startCalibration(durationMs=CAL_INITIAL_MS, onDone=null, kind="initial"){
   calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));
   S.forEach(st=>st.calGyroEMA=null);   // fresh trend baseline each hold, not stale pre-hold motion
   calState="run";calEnd=performance.now()+durationMs;calOnDone=onDone;
   document.getElementById("calcount").textContent=Math.ceil(durationMs/1000);
+  document.getElementById("calsub").textContent=kind==="recal"
+    ? "quick refresh between reps — fighting bias drift…"
+    : "measuring gyro bias on all sensors…";
   document.getElementById("calbanner").classList.add("show");
 }
 function finishCalibration(){
@@ -825,6 +855,158 @@ function exportCSV(){
   a.href=url;a.download="handrig_raw_"+Date.now()+".csv";a.click();
   URL.revokeObjectURL(url);
 }
+
+// ===== batch capture =====
+// Static-pose collection loop for Phase 8: 20s calibration once, then
+// ARMED -> [Space] -> save a noise-reduced sample -> 5s recalibration -> ARMED,
+// so many labelled reps can be captured back-to-back without re-running the
+// full calibrate/record/export cycle by hand for each one. Fingerspelling is a
+// STATIC hand-shape per CLAUDE.md's scope boundary, so a "rep" is one held
+// pose, not a motion trajectory.
+const BATCH_HLEN=30;        // ~0.6s window at 50Hz -- long enough to average out sensor noise,
+                             // short enough that a genuinely held pose stays included start-to-end
+const BATCH_MIN_SAMPLES=15; // window must have this many samples before a capture is trusted
+// std-dev over the window is bias-agnostic for the same reason STILL_DEV_DPS's EMA-deviation
+// gate is (see the comment above STILL_DEV_DPS): a sensor sitting still at any fixed offset
+// has near-zero spread around its own mean, so this rejects genuine motion, not per-chip bias.
+const BATCH_STILL_DPS=3;
+
+let batchActive=false, batchState="idle", batchRows=[], batchRepCounts={};
+
+function pushBatchRaw(st,ax,ay,az,gx,gy,gz){
+  if(!st.rawHist)st.rawHist={ax:[],ay:[],az:[],gx:[],gy:[],gz:[]};
+  const rh=st.rawHist;
+  rh.ax.push(ax);rh.ay.push(ay);rh.az.push(az);rh.gx.push(gx);rh.gy.push(gy);rh.gz.push(gz);
+  if(rh.ax.length>BATCH_HLEN){rh.ax.shift();rh.ay.shift();rh.az.shift();rh.gx.shift();rh.gy.shift();rh.gz.shift();}
+}
+function median(arr){
+  const a=arr.slice().sort((x,y)=>x-y),n=a.length;
+  return n%2 ? a[(n-1)/2] : (a[n/2-1]+a[n/2])/2;
+}
+function windowStd(a){
+  if(a.length<2)return Infinity;
+  const m=a.reduce((s,v)=>s+v,0)/a.length;
+  return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/a.length);
+}
+
+function startBatchCapture(){
+  if(batchActive)return;
+  batchActive=true;batchState="calibrating";
+  updateBatchUI();
+  startCalibration(CAL_INITIAL_MS,()=>{
+    if(!batchActive)return;
+    batchState="armed";updateBatchUI();
+  },"initial");
+}
+function stopBatchCapture(){
+  batchActive=false;batchState="idle";
+  updateBatchUI();
+}
+
+function captureBatchSample(){
+  const label=(document.getElementById("batchLabel").value||"").trim();
+  if(!label){flashBatch(false);return;}
+
+  // require every sensor to be alive and not flagged bad -- a sample missing a
+  // finger is worse than no sample, since Phase 9's feature vector needs all 6
+  const active=META.filter(m=>{const st=S[m.id];return st.alive&&!st.bad;});
+  if(active.length<META.length){flashBatch(false);return;}
+
+  const ready=active.every(m=>{const rh=S[m.id].rawHist;return rh&&rh.gx.length>=BATCH_MIN_SAMPLES;});
+  if(!ready){flashBatch(false);return;}
+
+  const stillOk=active.every(m=>{
+    const rh=S[m.id].rawHist;
+    return Math.max(windowStd(rh.gx),windowStd(rh.gy),windowStd(rh.gz))<=BATCH_STILL_DPS;
+  });
+  if(!stillOk){flashBatch(false);return;}   // in-transition pose -- reject, stay ARMED, try again
+
+  const idx=(batchRepCounts[label]||0)+1;
+  const sample={label,idx,t:Date.now()};
+  META.forEach(m=>{
+    const st=S[m.id],rh=st.rawHist;
+    sample[m.name]={
+      // median over the window, not one instantaneous frame -- this is the actual
+      // noise-reduction step: cuts the per-sample noise floor roughly by sqrt(N)
+      raw:["ax","ay","az","gx","gy","gz"].map(k=>median(rh[k])),
+      // fused relative orientation at capture time (viewer frame, bias-corrected).
+      // An instantaneous read is fine here: the stillness gate above already
+      // guarantees the filter wasn't mid-motion when this was grabbed. Order
+      // (w,x,y,z) per CLAUDE.md's quaternion convention.
+      relQuat:[st.rel.w,st.rel.x,st.rel.y,st.rel.z],
+    };
+  });
+  batchRows.push(sample);
+  batchRepCounts[label]=idx;
+  flashBatch(true);
+
+  batchState="recal";
+  updateBatchUI();
+  startCalibration(CAL_RECAL_MS,()=>{
+    if(!batchActive)return;
+    batchState="armed";updateBatchUI();
+  },"recal");
+}
+
+function flashBatch(ok){
+  const el=document.getElementById("batchflash");
+  el.className="batchflash "+(ok?"ok":"bad");
+  clearTimeout(flashBatch._t);
+  flashBatch._t=setTimeout(()=>{el.className="batchflash";},260);
+}
+
+function updateBatchUI(){
+  const btn=document.getElementById("batchToggle");
+  btn.textContent=batchActive?"■ Stop Batch":"Batch Capture";
+  btn.classList.toggle("active",batchActive);
+  document.getElementById("batchhint").classList.toggle("show",batchState==="armed");
+  document.getElementById("batchLabel").disabled=false; // always editable, even mid-session
+
+  const label=(document.getElementById("batchLabel").value||"").trim()||"?";
+  const n=batchRepCounts[label]||0;
+  if(batchActive){
+    const stateTxt={calibrating:"calibrating…",armed:"ARMED",recal:"recal…"}[batchState]||batchState;
+    document.getElementById("batchCount").textContent=
+      `${stateTxt} · "${label}": ${n} reps · ${batchRows.length} total`;
+  } else {
+    document.getElementById("batchCount").textContent=`${batchRows.length} reps captured`;
+  }
+  document.getElementById("batchCsv").disabled=batchActive||batchRows.length===0;
+}
+
+function exportBatchCSV(){
+  if(!batchRows.length)return;
+  let head="label,rep,t_ms";
+  META.forEach(m=>["ax","ay","az","gx","gy","gz"].forEach(c=>head+=","+m.name.toLowerCase()+"_"+c));
+  META.forEach(m=>["qw","qx","qy","qz"].forEach(c=>head+=","+m.name.toLowerCase()+"_"+c));
+  const lines=[
+    "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
+    "# q* = fused relative orientation (viewer frame, bias-corrected) at capture time, order (w,x,y,z).",
+    head,
+  ];
+  for(const s of batchRows){
+    const row=[s.label,s.idx,s.t];
+    META.forEach(m=>row.push(...s[m.name].raw.map(v=>v.toFixed(5))));
+    META.forEach(m=>row.push(...s[m.name].relQuat.map(v=>v.toFixed(6))));
+    lines.push(row.join(","));
+  }
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="handrig_batch_"+Date.now()+".csv";a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.addEventListener("keydown",e=>{
+  if(!batchActive)return;
+  const tag=(e.target&&e.target.tagName)||"";
+  if(tag==="INPUT"||tag==="SELECT")return;   // don't steal typing out of the label field
+  if(e.code==="Space"){
+    if(batchState==="armed"){e.preventDefault();captureBatchSample();}
+  } else if(e.code==="Escape"){
+    stopBatchCapture();
+  }
+});
 
 function setStatus(t,cls){document.getElementById("status").textContent=t;
   if(cls==="err")document.getElementById("dot").className="dot err";}
@@ -1019,10 +1201,15 @@ document.getElementById("beta").addEventListener("input",e=>{
 document.getElementById("conn").addEventListener("click",()=>{
   if(device&&device.gatt.connected)disconnect();else connect();});
 document.getElementById("conn2").addEventListener("click",connect);
-document.getElementById("cal").addEventListener("click",startCalibration);
+document.getElementById("cal").addEventListener("click",()=>startCalibration());
 document.getElementById("zero").addEventListener("click",zeroOrient);
 document.getElementById("rec").addEventListener("click",toggleRec);
 document.getElementById("csv").addEventListener("click",exportCSV);
+document.getElementById("batchToggle").addEventListener("click",()=>{
+  if(batchActive)stopBatchCapture();else startBatchCapture();
+});
+document.getElementById("batchCsv").addEventListener("click",exportBatchCSV);
+document.getElementById("batchLabel").addEventListener("input",updateBatchUI);
 document.querySelectorAll("#traceview button").forEach(b=>{
   b.addEventListener("click",()=>{
     traceMode=b.dataset.v;
