@@ -19,6 +19,24 @@ Keep entries short (~3 sentences each). Log a decision the moment it's made.
 
 ## Decisions
 
+### 2026-08-08 | Thumb rig: straight segment over a kinked two-axis joint
+
+**Alternatives:** (a) a two-segment thumb with a real kink at the tip joint (X-axis flex + Y-axis inward sweep) so it visibly bends and touches the index, matching a relaxed-hand reference photo closely; (b) a straight segment, same design as the other four fingers, angled and positioned near the index but not actually touching it.
+
+**Choice:** (b).
+
+**Rationale:** (a) was tried and verified to look right at its two endpoints, but a full path check (200-step walk through the segment) showed 22.8% of its length rendered hidden inside the solid palm box — that's what produced the "broken/twisted" look reported live. The palm is a simple box, not a real hand mesh, so a bent digit reaching toward the box's own footprint will generally clip it; a straight digit (7.5% clip, only at the very tip, same as the other fingers already tolerate) reliably renders clean at the cost of not literally touching the index. Revisit with a proper multi-joint rig if the plain thumb reads as anatomically insufficient later.
+
+### 2026-08-08 | Calibration stillness gate: deviation-from-rolling-average over absolute gyro threshold
+
+**Alternatives:** (a) reject calibration samples where a sensor's raw gyro exceeds a fixed absolute threshold (e.g. 6°/s), on the theory that a still sensor reads near zero; (b) reject samples based on deviation from that sensor's own recent rolling average, regardless of its absolute level.
+
+**Choice:** (b), after (a) was tried first and broke live hardware.
+
+**Rationale:** A stationary MPU-6050 reads near its own fixed per-chip gyro bias, not near zero — this file's own `finishCalibration()` already tolerates bias up to ~40°/s. (a)'s fixed 6°/s cutoff silently locked one real sensor (pinky, whose bias exceeded that) out of calibration for the entire 10 s hold, leaving it permanently stuck on raw/uncalibrated gyro. (b) is bias-agnostic — it correctly admits a still sensor at any fixed offset while still excluding genuine motion, which is what "still" actually means for this purpose.
+
+---
+
 ### 2026-08-07 | Gestura branding extended to the public `tools/handrig_dashboard.html`, over keeping it Cheirograph-only
 
 **Alternatives:** (a) keep `tools/handrig_dashboard.html` under the neutral "HandRig" identity, matching the standing convention that repo/engineering surfaces (README, DOCUMENTATION.md, DECISIONS.md, `tools/`) stay Cheirograph-branded while "Gestura" is scoped to the gitignored `social/` kit; (b) rebrand the dashboard outright as "Gestura" — title, header wordmark/logo, copper accent palette, brand-token pipeline into the Three.js scene — dropping the "HandRig" name entirely, accepting that this public, tracked file now carries the Gestura identity to anyone who opens it (including on GitHub).

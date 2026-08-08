@@ -34,6 +34,69 @@ Rules:
 
 ---
 
+### 2026-08-08 | Live dashboard: thumb rig geometry + calibration stillness-gate fix
+
+**Plan:** Fix two live-dashboard (`tools/handrig_dashboard.html`) bugs found while wearing
+the glove: the rendered thumb didn't match a real relaxed hand, and all four fingers read
+a fixed nonzero pitch (~20-29°) right after a 10 s calibration hold on a hand the wearer
+insists never moved.
+
+**Achieved:**
+- **Thumb rig**, several iterations, each verified with actual matrix math in a scratch
+  Node script instead of eyeballing screenshots after the first two guesses went wrong:
+  1. First bug: the thumb's static rest-pose "bend" rotated about local X (pitch), which
+     pops it out of the flat plane the other four fingers rest in. Root cause of "why does
+     the thumb look broken even before any BLE data arrives."
+  2. Second bug, after switching bend to a Y-axis (in-plane) rotation: got the sign
+     backwards — positive yaw sweeps the pointing direction toward +X, and the thumb's
+     anchor already sits on the +X side, so it was flaring further away from the hand
+     instead of curling in toward the index.
+  3. Third bug, after fixing the sign: the anchor position itself sat *inside* the solid
+     palm box (`BoxGeometry(2.4,0.55,2.6)`, solid x:[-1.2,1.2] y:[-0.275,0.275]
+     z:[-1.3,1.3]) — most of the segment rendered hidden inside opaque geometry, only a
+     stray sliver visible (the "floating disconnected stub" screenshot).
+  4. Fourth bug: redesigned with a two-axis kink at the segTip joint (restCurl + new
+     restSweep) to reach the index's base — checked that the *endpoint* cleared the box,
+     but never walked the *path* to it. A full 200-step path check found 22.8% of the
+     digit's total length was still buried inside the box — the "twisted broken blob"
+     screenshot. Final fix: dropped the kink entirely, went back to a straight segment
+     (same proven zero-clip design as the other four fingers), anchored outside the box's
+     x-edge with a small inward yaw. Verified clip fraction: 7.5%, all at the tip end,
+     same negligible-overlap category the real fingers already have at their own base.
+- **Calibration stillness gate**: root-caused the fixed post-calibration pitch offset to
+  the calibration average including whatever motion happened in the first moment(s) of
+  the 10 s hold (before the hand was actually still), which bakes a wrong reference into
+  every subsequent reading. First attempt gated the calibration average on *absolute* raw
+  gyro magnitude (`<6°/s`) — this was WRONG and it was a live regression, not a fix: a
+  stationary MPU-6050 reads near its own fixed per-chip bias, not near zero, and this
+  file's own `finishCalibration()` already expects bias up to ~40°/s per axis. One real
+  sensor (pinky) has a bias over 6°/s, so the absolute gate rejected every frame from it
+  for the entire hold, it never reached the 5-sample minimum, and `finishCalibration`'s
+  own `c.n<5` bailout left it permanently stuck on raw, uncalibrated gyro (`roll:-105°
+  yaw:-100°` on a still hand). Fixed by gating on deviation from a rolling per-sensor
+  EMA of its own raw gyro instead of an absolute threshold — bias-agnostic, correctly
+  admits a still sensor at any fixed bias level while still excluding real motion.
+
+**Problems & blockers:** Iterating on 3D rig geometry from user-taken phone screenshots of
+a live BLE-connected render is slow and error-prone — several rounds of plausible-looking
+fixes failed because the reasoning covered the wrong failure mode (direction sign, box
+clipping at the endpoint vs. along the whole path, etc.). Verifying with actual coordinate
+math in a throwaway Node script before touching the file again was far more productive
+than continuing to eyeball screenshots, and should be the default approach going forward
+for anything geometric in this file. Also: any future "only average frames where X is
+below a threshold" style filter needs a second look for whether X has a legitimate nonzero
+baseline (bias) before picking that threshold — the first calibration fix attempt is a
+concrete example of that mistake causing a real regression on live hardware.
+
+**Next:** Verify the straight-thumb rig and the recalibrated stillness gate on the actual
+glove across a few calibration cycles (not just one), including intentionally moving
+during the hold to confirm real motion still gets excluded. If the thumb's straight
+segment reads as anatomically too plain, consider a proper multi-joint thumb model later
+rather than another single-kink patch — this session's failures suggest the two-segment
+rig can't cleanly express both "in that box" and "touches the index" at once.
+
+---
+
 ### 2026-08-07 | Gestura social pipeline agents + live dashboard rebrand/UI pass
 
 **Plan:** Two unrelated pieces of housekeeping/polish, not a firmware milestone: stand up
