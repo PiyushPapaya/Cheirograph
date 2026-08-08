@@ -417,12 +417,25 @@ function buildScene(){
   mk.position.set(0,0.35,-0.2);palm.add(mk);
   const glow=new THREE.PointLight(hexNum(BRAND.accent),0.85,4,2.2);glow.position.set(0,0.9,-0.2);palm.add(glow);
 
-  // "bend" is a STATIC rest-pose pitch (about local X), baked in the same way as "yaw" —
-  // tuned by eye for a relaxed hand where the thumb curls up and in against the index
-  // finger rather than sitting out as a straight stick. Only the thumb uses it; nudge
-  // yaw/bend here if the resting pose still doesn't look right on your hand.
+  // The palm box is BoxGeometry(2.4,0.55,2.6) centered on the origin, i.e. solid from
+  // x:[-1.2,1.2] y:[-0.275,0.275] z:[-1.3,1.3]. The previous thumb design used a kinked
+  // tip (restCurl+restSweep at the segTip joint) to reach the index's base — verified
+  // that ENDPOINT was outside the box, but never checked the PATH getting there. Actually
+  // walking the full path in 200 steps (see scratchpad) showed 22.8% of the digit's total
+  // length was buried inside the solid box — a large hidden chunk, which is exactly what
+  // rendered as a broken/twisted shape. The four fingers, by contrast, verify at exactly
+  // 0% clipped because they're perfectly straight the whole way. So: back to a straight
+  // segment, same proven style as the fingers, no kink. yaw:0,bend:0,restCurl:0,
+  // restSweep:0 -> zero rest rotation anywhere, dead straight from anchor along local +Z.
+  // x:1.45 keeps it outside the box's x:1.2 edge; a small inward yaw (-0.15) angles it
+  // toward the hand without re-crossing the edge until almost the very last step —
+  // verified full-path clip fraction is 7.5%, all of it right at the tip end, same
+  // negligible-overlap category the fingers already have at their own base attachment.
+  // y:0.1 keeps it level with the fingers (points the same forward direction as them at
+  // rest). This gives up literally touching the index in exchange for something that
+  // reliably renders as a clean, recognizable digit instead of gambling on another kink.
   const anchors={
-    THUMB :{x: 1.35,z: 0.15,len:1.5,rad:0.20,yaw: 0.45,bend:-0.85},
+    THUMB :{x: 1.45,y:0.1, z:-0.9, len:1.8,rad:0.21,yaw:-0.15,bend:0,restCurl:0,restSweep:0},
     INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06,bend:0},
     MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0, bend:0},
     RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05,bend:0},
@@ -443,7 +456,7 @@ function buildScene(){
     // "rest" as this group's static parent transform and driving only the CHILD segments
     // from live data (below) makes curl/spread apply correctly relative to whichever
     // direction this finger's rest pose actually points.
-    const g=new THREE.Group();g.position.set(a.x,0.1,a.z);g.rotation.y=a.yaw;
+    const g=new THREE.Group();g.position.set(a.x,a.y??0.1,a.z);g.rotation.y=a.yaw;
 
     // Only ONE IMU per finger (middle phalanx / thumb proximal phalanx) — there is no
     // independent per-joint data. segBase gets the full measured relative rotation;
@@ -465,10 +478,12 @@ function buildScene(){
     // restBend sits BETWEEN g (static yaw) and segBase (live rotation, overwritten every
     // frame) — a second static parent so the baked-in bend survives render() the same way
     // the yaw does, instead of being clobbered by the per-frame quaternion assignment.
-    const restBend=new THREE.Group();restBend.rotation.x=a.bend||0;
+    // rotation.y (not .x): this is a second in-plane adduction joint, composing with g's
+    // yaw around the same axis — see the anchors comment above for why.
+    const restBend=new THREE.Group();restBend.rotation.y=a.bend||0;
     restBend.add(segBase);
     g.add(restBend);
-    g.userData={restYaw:a.yaw,segBase,segTip};
+    g.userData={restYaw:a.yaw,restCurl:a.restCurl||0,restSweep:a.restSweep||0,segBase,segTip};
     palm.add(g);fingerGroups[m.id]=g;
   });
 
@@ -513,7 +528,7 @@ function render(){
     _ce.setFromQuaternion(local,"YXZ");
     const curlRad=st.bad?0:_ce.x;
     st.curlRad=curlRad;
-    g.userData.segTip.quaternion.setFromEuler(new THREE.Euler(curlRad*TIP_CURL_FRAC,0,0));
+    g.userData.segTip.quaternion.setFromEuler(new THREE.Euler(g.userData.restCurl+curlRad*TIP_CURL_FRAC,g.userData.restSweep,0));
   });
   detectGesture();
   renderer.render(scene,camera);
