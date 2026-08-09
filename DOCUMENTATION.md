@@ -34,6 +34,31 @@ Rules:
 
 ---
 
+### 2026-08-09 | Pre-Phase-8 checklist hardening (1/2): enforceable exit code
+
+**Plan:** The pre-Phase-8 noise QA checklist (`firmware/08_ble_dashboard/README.md`,
+just committed) says `analyze_noise_baseline.py` "must print GO" before real
+Phase 8 collection starts — but the script always exited `0` regardless of
+verdict, so that rule was advisory text a tired future-me has to remember to
+read correctly, not something enforceable.
+
+**Achieved:** `analyze_noise_baseline.py` now exits `0` on GO and `1` on
+NO-GO (`sys.exit(0 if all_ok else 1)`). Verified with two throwaway
+synthetic 6-sensor CSVs before touching real hardware data: an all-still
+noisy-but-clean capture (GO, exit 0) and a constant-value capture that
+trips the stuck-frame detector on every sensor (NO-GO, exit 1). This makes
+the checklist's step 3 gate scriptable
+(`analyze_noise_baseline.py ... && <start batch capture>`) instead of
+relying on someone reading the printed verdict correctly every time.
+
+**Problems & blockers:** None — additive change to an already-working
+script.
+
+**Next:** Add a capture-duration sanity check (the checklist mandates a
+60 s hold; the script never verified the CSV actually covers that window).
+
+---
+
 ### 2026-08-08 | Live dashboard: thumb rig geometry + calibration stillness-gate fix
 
 **Plan:** Fix two live-dashboard (`tools/handrig_dashboard.html`) bugs found while wearing
