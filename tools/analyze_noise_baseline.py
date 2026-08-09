@@ -47,6 +47,8 @@ MAX_NOISE_DPS = 15.0     # max gyro std > this -> noisy
 DROPPED_AMAG_THRESH = 0.05   # g; below this, treat the frame as a dropped/zeroed read
 STUCK_RUN = 50                # consecutive bit-identical frames = stuck (matches STUCK_FRAMES)
 
+MIN_DURATION_S = 50.0   # checklist mandates a 60s hold; flag anything meaningfully short
+
 
 def load(path: Path):
     """Returns (t_ms array, {sensor_name: Nx6 array of ax,ay,az,gx,gy,gz})."""
@@ -108,7 +110,9 @@ def main():
 
     t, sensors = load(args.csv)
     duration_s = (t[-1] - t[0]) / 1000.0 if len(t) > 1 else 0.0
-    print(f"# {args.csv.name} - {len(t)} frames, {duration_s:.1f}s\n")
+    short_capture = duration_s < MIN_DURATION_S
+    print(f"# {args.csv.name} - {len(t)} frames, {duration_s:.1f}s"
+          f"{'  [SHORT CAPTURE]' if short_capture else ''}\n")
 
     header = (f"{'sensor':<8}{'n_ok':>6}{'dropped':>9}{'stuck':>7}   "
               f"{'aX':>7}{'aY':>7}{'aZ':>7}  {'|a|':>6}   "
@@ -158,8 +162,15 @@ def main():
               f"{g_mean[0]:9.2f}{g_mean[1]:9.2f}{g_mean[2]:9.2f}   "
               f"{g_std[0]:8.2f}{g_std[1]:8.2f}{g_std[2]:8.2f}  {verdict}")
 
+    if short_capture:
+        all_ok = False
+
     print()
-    if all_ok:
+    if short_capture:
+        print(f"NO-GO — capture is only {duration_s:.1f}s, checklist requires holding "
+              f"still for ~60s (minimum {MIN_DURATION_S:.0f}s). Re-run the 60s baseline "
+              "capture before trusting this verdict.")
+    elif all_ok:
         print("GO - all sensors within calibration-agreed thresholds. Safe to start Batch Capture.")
     else:
         print("NO-GO — at least one sensor failed. Re-seat wiring / re-run boot diagnostic "
