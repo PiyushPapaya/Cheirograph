@@ -32,6 +32,7 @@ Usage:
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -163,6 +164,8 @@ def main():
     else:
         print("NO-GO — at least one sensor failed. Re-seat wiring / re-run boot diagnostic "
               "before starting Phase 8 capture (see CLAUDE.md gotchas for the usual causes).")
+
+    sys.exit(0 if all_ok else 1)
 
 
 if __name__ == "__main__":
