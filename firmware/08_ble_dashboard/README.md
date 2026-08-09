@@ -184,3 +184,31 @@ digital register values. It remains a real, separate risk for **intermittent**
 dropouts if it pulls on a wire during flex; the boot diagnostic with the
 glove flat and still is the way to tell the two failure modes apart (bad at
 boot = init/electrical; fine at boot, degrades while worn = wire strain).
+
+## Pre-Phase-8 checklist (run before any real labelled-data session)
+
+Bad data collected now is bad data trained on in Phase 9 — cheaper to catch
+here than to notice as an unexplained confusion-matrix problem later.
+
+1. Flash the current firmware, glove flat and still, watch the **boot
+   diagnostic** over Serial at 115200 — all 6 sensors must report `OK`
+   (see `bootCheck()` in `08_ble_dashboard.ino`). Anything else (`STUCK`,
+   `RAMP`, `BAD ACCEL`, `NOT FOUND`) is electrical — fix it before going
+   further, don't try to average it away in software.
+2. Connect the dashboard, run **Calibrate (20 s)** once, glove flat and
+   still, to confirm every sensor calibrates clean (no red "bad" flag on
+   any card).
+3. Hit **● Record**, hold the glove flat and still for 60 s, **Export
+   CSV**, then run:
+   ```
+   python tools/analyze_noise_baseline.py handrig_raw_<timestamp>.csv
+   ```
+   It must print **GO**. If it prints **NO-GO**, re-seat the flagged
+   sensor's wiring / mux channel and repeat from step 1 — don't proceed
+   to real collection on a NO-GO.
+4. Only once that passes: use **Batch Capture** (label input + button in
+   the dashboard) to collect the actual Phase 8 reps. Type a letter,
+   start Batch Capture, hold each pose and press Space to save — it
+   recalibrates for 5 s between reps automatically to keep bias drift
+   from accumulating across a long session. Export the batch CSV and
+   move it into `data/phase8_labelled_gestures/`.
