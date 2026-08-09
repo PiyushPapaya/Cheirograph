@@ -34,6 +34,31 @@ Rules:
 
 ---
 
+### 2026-08-09 | Pre-Phase-8 checklist hardening (2/2): capture-duration gate
+
+**Plan:** Follow-up to the exit-code change above. The checklist mandates
+holding the glove flat and still for 60 s before running
+`analyze_noise_baseline.py`, but the script never verified the exported CSV
+actually covered that window — a short capture (dropped BLE connection,
+early export click) could still print a clean per-sensor GO built on far
+too few seconds to be a meaningful noise baseline.
+
+**Achieved:** Added `MIN_DURATION_S = 50.0` and a `short_capture` check:
+if the CSV's timestamp span is under 50 s, the script now forces NO-GO
+(exit 1) with an explicit "capture is only Xs, re-run the 60s baseline"
+message, regardless of how clean the per-sensor stats look. Verified with
+two throwaway synthetic CSVs: a 10 s capture with otherwise-clean sensor
+stats now correctly reports NO-GO / exit 1 (previously would have been a
+false GO), and a full 60 s capture still reports GO / exit 0 unchanged.
+
+**Problems & blockers:** None.
+
+**Next:** Run the full pre-Phase-8 checklist for real on the glove (boot
+diagnostic -> calibrate -> 60 s baseline -> `analyze_noise_baseline.py`)
+before starting actual Phase 8 labelled-data collection.
+
+---
+
 ### 2026-08-09 | Pre-Phase-8 checklist hardening (1/2): enforceable exit code
 
 **Plan:** The pre-Phase-8 noise QA checklist (`firmware/08_ble_dashboard/README.md`,
