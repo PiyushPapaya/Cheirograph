@@ -255,6 +255,7 @@
       </div>
       <button class="rec mini" id="rec" disabled>● Record</button>
       <button class="mini" id="csv" disabled>Export CSV</button>
+      <button class="mini" id="noisecheck" disabled title="GO/NO-GO check on the current recorded buffer: stuck-frame + dropped-frame detection, per-sensor gyro bias/noise vs. calibration thresholds, and a 50s minimum-duration guard.">Noise Check</button>
       <div class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps — no need to stop the batch to switch letters.">label
         <input type="text" id="batchLabel" maxlength="12" value="A">
       </div>
@@ -271,6 +272,14 @@
         <div class="big" id="calcount">20</div>
         <div class="lab">Hold your hand flat &amp; still</div>
         <div class="sub" id="calsub">measuring gyro bias on all sensors…</div>
+      </div>
+    </div>
+
+    <div class="noisepanel" id="noisePanel">
+      <div class="c">
+        <b>—</b>
+        <pre></pre>
+        <button class="mini" id="noiseClose">Close</button>
       </div>
     </div>
 
@@ -848,7 +857,7 @@ function toggleRec(){
   b.textContent=recording?"■ Stop":"● Record";
   if(recording){recFrames=[];}
   document.getElementById("csv").disabled=recording||recFrames.length===0;
-  const nc=document.getElementById("noisecheck");if(nc)nc.disabled=recording||recFrames.length===0;
+  document.getElementById("noisecheck").disabled=recording||recFrames.length===0;
 }
 function exportCSV(){
   if(!recFrames.length)return;
