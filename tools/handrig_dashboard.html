@@ -848,6 +848,7 @@ function toggleRec(){
   b.textContent=recording?"■ Stop":"● Record";
   if(recording){recFrames=[];}
   document.getElementById("csv").disabled=recording||recFrames.length===0;
+  const nc=document.getElementById("noisecheck");if(nc)nc.disabled=recording||recFrames.length===0;
 }
 function exportCSV(){
   if(!recFrames.length)return;
@@ -983,6 +984,30 @@ function nbAnalyze(frames){
   }
 
   return {durationS,shortCapture,sensors,allOk,go:allOk,message};
+}
+
+// Console/scratch-testable API, independent of BLE/DOM state.
+window.NoiseBaseline={analyze:nbAnalyze,findDropped:nbFindDropped,findStuck:nbFindStuck,
+  analyzeSensor:nbAnalyzeSensor,SENSOR_NAMES:NB_SENSOR_NAMES};
+
+function runNoiseBaselineCheck(){
+  const report=nbAnalyze(recFrames);
+  const lines=[report.message,""];
+  report.sensors.forEach(s=>{
+    if(!s.ok&&s.nOk<5){lines.push(`${s.name}: FAIL (only ${s.nOk} clean samples)`);return;}
+    lines.push(`${s.name}: ${s.verdict}  |a|=${s.aMag?.toFixed(3)}  `+
+      `max gyro bias=${s.maxBias?.toFixed(1)}°/s  max gyro std=${s.maxNoise?.toFixed(1)}°/s  `+
+      `(dropped=${s.dropped}, stuck=${s.stuck})`);
+  });
+  showNoisePanel(report.go,lines.join("\n"));
+  return report;
+}
+function showNoisePanel(go,text){
+  const panel=document.getElementById("noisePanel");
+  panel.querySelector(".c b").textContent=go?"GO":"NO-GO";
+  panel.querySelector(".c b").style.color=go?"var(--good)":"var(--bad)";
+  panel.querySelector("pre").textContent=text;
+  panel.classList.add("show");
 }
 
 // ===== batch capture =====
