@@ -119,6 +119,17 @@
   .batchflash.ok{background:radial-gradient(circle at 50% 50%,rgba(76,128,100,.4),transparent 70%);opacity:1;transition:none}
   .batchflash.bad{background:radial-gradient(circle at 50% 50%,rgba(192,57,43,.4),transparent 70%);opacity:1;transition:none}
 
+  /* noise-baseline GO/NO-GO panel — same overlay language as .veil, dismissible */
+  .noisepanel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:9;
+    background:rgba(8,11,16,.86);backdrop-filter:blur(3px)}
+  .noisepanel.show{display:flex}
+  .noisepanel .c{text-align:center;max-width:520px}
+  .noisepanel .c b{font-size:clamp(32px,6vw,44px);font-weight:700;font-family:var(--font-mono);line-height:1;display:block;margin-bottom:8px}
+  .noisepanel pre{text-align:left;white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);
+    font-size:11px;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    padding:12px 14px;max-height:40vh;overflow:auto;margin:0 0 14px}
+  .noisepanel button{margin-top:0}
+
   .veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(10,14,20,.55);backdrop-filter:blur(2px);z-index:6}
   .veil .box{text-align:center;max-width:360px}
@@ -1158,6 +1169,7 @@ function refreshCards(){
     document.getElementById("tbadv").classList.toggle("warnv",badFrames>50);
     framesWin=0;bytesWin=0;lostWin=0;totWin=0;winT=now;
     document.getElementById("csv").disabled=recording||recFrames.length===0;
+  document.getElementById("noisecheck").disabled=recording||recFrames.length===0;
   }
   requestAnimationFrame(refreshCards);
 }
@@ -1205,6 +1217,9 @@ document.getElementById("cal").addEventListener("click",()=>startCalibration());
 document.getElementById("zero").addEventListener("click",zeroOrient);
 document.getElementById("rec").addEventListener("click",toggleRec);
 document.getElementById("csv").addEventListener("click",exportCSV);
+document.getElementById("noisecheck").addEventListener("click",runNoiseBaselineCheck);
+document.getElementById("noiseClose").addEventListener("click",
+  ()=>document.getElementById("noisePanel").classList.remove("show"));
 document.getElementById("batchToggle").addEventListener("click",()=>{
   if(batchActive)stopBatchCapture();else startBatchCapture();
 });
