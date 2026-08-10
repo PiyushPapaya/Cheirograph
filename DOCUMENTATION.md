@@ -34,6 +34,47 @@ Rules:
 
 ---
 
+### 2026-08-10 | Phase 7.5 — GO/NO-GO noise-baseline logic ported into the dashboard
+
+**Plan:** Port `tools/analyze_noise_baseline.py`'s GO/NO-GO checks (stuck-frame
+detector, per-sensor gyro bias/noise vs. calibration thresholds, the 50 s
+minimum-duration guard) directly into `tools/handrig_dashboard.html`, so the
+QA check can run in-browser on a just-recorded buffer instead of requiring an
+export-CSV round trip through the Python script first.
+
+**Achieved:** Added a pure-math `nbAnalyze(frames)` (plus `nbFindDropped`,
+`nbFindStuck`, `nbAnalyzeSensor` helpers) that operates directly on
+`recFrames`-shaped rows — `[t_ms, hand_ax,...,pinky_gz]`, the same layout
+`exportCSV()` already writes — with zero DOM/BLE dependency, exposed as
+`window.NoiseBaseline` for console/scratch testing. Thresholds are duplicated
+from `finishCalibration()` as named constants (`NB_ACCEL_MAG_TOL=0.25`,
+`NB_MAX_BIAS_DPS=40`, `NB_MAX_NOISE_DPS=15`, `NB_DROPPED_AMAG_THRESH=0.05`,
+`NB_STUCK_RUN=50`, `NB_MIN_DURATION_S=50`) so the two never silently drift out
+of sync. Wired a "Noise Check" button next to Export CSV that runs the
+analysis on the current recorded buffer and shows a GO/NO-GO overlay with the
+same per-sensor breakdown the Python script prints.
+
+Verified with the same throwaway-synthetic-array method already used on the
+Python side — three hand-built `recFrames`-shaped arrays fed straight to
+`nbAnalyze()`: a clean-noisy-still 60 s capture (GO), an all-bit-identical 60 s
+capture (NO-GO via the stuck-frame detector), and a clean-but-5 s capture
+(NO-GO via the duration guard). Captured as a permanent throwaway test at
+`tools/verify_noise_baseline_js.mjs` (`node tools/verify_noise_baseline_js.mjs`)
+rather than a one-off scratch file, since it's cheap to keep and catches a
+regression the next time the ported logic or the thresholds change.
+
+**Problems & blockers:** None — this was a straight port of already-decided
+threshold logic, no new engineering fork. The only wrinkle was making sure the
+sensor-block slicing matched `recFrames`' actual column order (verified
+against `parseFrame()`'s `recRow.push(ax,ay,az,gx,gy,gz)` loop, which iterates
+`META` in HAND,THUMB,INDEX,MIDDLE,RING,PINKY order).
+
+**Next:** Run a real 60 s flat-and-still capture through the new in-browser
+Noise Check and confirm it agrees with `analyze_noise_baseline.py` on the same
+exported CSV, then proceed with the rest of the pre-Phase-8 noise QA checklist.
+
+---
+
 ### 2026-08-09 | Pre-Phase-8 checklist hardening (2/2): capture-duration gate
 
 **Plan:** Follow-up to the exit-code change above. The checklist mandates
