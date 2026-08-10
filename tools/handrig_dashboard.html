@@ -945,6 +945,46 @@ function nbAnalyzeSensor(name,block){
     aMean,aMag,gMean,gStd,maxBias,maxNoise,verdict,ok:ok_};
 }
 
+// Top-level entry point: frames -> full GO/NO-GO report. Exposed on
+// window.NoiseBaseline (below) for console/scratch-script testing:
+//   NoiseBaseline.analyze(cleanNoisyStillFrames) -> {go:true, ...}
+//   NoiseBaseline.analyze(constantValueFrames)   -> {go:false, ...}  (stuck)
+//   NoiseBaseline.analyze(shortFrames)            -> {go:false, ...}  (duration)
+function nbAnalyze(frames){
+  if(!frames||frames.length<2){
+    return {durationS:0,shortCapture:true,sensors:[],allOk:false,go:false,
+      message:"NO-GO — not enough frames to evaluate (need at least 2)."};
+  }
+  const durationS=(frames[frames.length-1][0]-frames[0][0])/1000;
+  const shortCapture=durationS<NB_MIN_DURATION_S;
+
+  const nSensors=Math.floor((frames[0].length-1)/6);
+  const sensors=[];
+  let allOk=true;
+  for(let i=0;i<nSensors;i++){
+    const name=NB_SENSOR_NAMES[i]||("s"+i);
+    const block=nbSensorBlock(frames,i);
+    const res=nbAnalyzeSensor(name,block);
+    if(!res.ok)allOk=false;
+    sensors.push(res);
+  }
+  if(shortCapture)allOk=false;
+
+  let message;
+  if(shortCapture){
+    message=`NO-GO — capture is only ${durationS.toFixed(1)}s, checklist requires holding `+
+      `still for ~60s (minimum ${NB_MIN_DURATION_S.toFixed(0)}s). Re-run the 60s baseline `+
+      "capture before trusting this verdict.";
+  }else if(allOk){
+    message="GO - all sensors within calibration-agreed thresholds. Safe to start Batch Capture.";
+  }else{
+    message="NO-GO — at least one sensor failed. Re-seat wiring / re-run boot diagnostic "+
+      "before starting Phase 8 capture (see CLAUDE.md gotchas for the usual causes).";
+  }
+
+  return {durationS,shortCapture,sensors,allOk,go:allOk,message};
+}
+
 // ===== batch capture =====
 // Static-pose collection loop for Phase 8: 20s calibration once, then
 // ARMED -> [Space] -> save a noise-reduced sample -> 5s recalibration -> ARMED,
