@@ -867,6 +867,53 @@ function exportCSV(){
   URL.revokeObjectURL(url);
 }
 
+// ===== noise baseline GO/NO-GO (ported from tools/analyze_noise_baseline.py) =====
+// Pure math over a buffer of recorded frames — no DOM, no BLE — so it can be
+// unit-tested with hand-built synthetic frame arrays (see the console/scratch
+// examples in DOCUMENTATION.md's 2026-08-10 entry). Frame shape matches
+// recFrames exactly: [t_ms, hand_ax,hand_ay,hand_az,hand_gx,hand_gy,hand_gz,
+// thumb_ax,...,pinky_gz] — the same row exportCSV() already writes, so any
+// recorded capture (or its exported CSV, reparsed) can be fed straight in.
+// Thresholds are the SAME constants finishCalibration() already uses above;
+// duplicated here as named constants (not re-read from st.*) so this stays
+// pure and independently testable without a live sensor state.
+const NB_SENSOR_NAMES=["hand","thumb","index","middle","ring","pinky"];
+const NB_ACCEL_MAG_TOL=0.25;     // |am - 1| > this -> bad accel
+const NB_MAX_BIAS_DPS=40.0;      // max |gyro mean| > this -> bad gyro
+const NB_MAX_NOISE_DPS=15.0;     // max gyro std > this -> noisy
+const NB_DROPPED_AMAG_THRESH=0.05; // g; below this, treat as a dropped/zeroed read
+const NB_STUCK_RUN=50;             // consecutive bit-identical frames = stuck
+const NB_MIN_DURATION_S=50.0;      // checklist mandates ~60s; flag anything meaningfully short
+
+// Slice one sensor's Nx6 [ax,ay,az,gx,gy,gz] block out of the wide frame rows.
+function nbSensorBlock(frames,sensorIdx){
+  const off=1+sensorIdx*6;
+  return frames.map(row=>row.slice(off,off+6));
+}
+
+// dropped (heuristic): |a| < 0.05g for a sensor's block in a frame -- mirrors
+// the firmware sending all-zero when its validity-mask bit was clear.
+function nbFindDropped(block){
+  return block.map(r=>Math.hypot(r[0],r[1],r[2])<NB_DROPPED_AMAG_THRESH);
+}
+
+// stuck (heuristic): >= NB_STUCK_RUN consecutive bit-identical rows -- same
+// test the firmware's own STUCK_FRAMES watchdog uses, re-applied here against
+// a recorded buffer instead of live registers.
+function nbFindStuck(block){
+  const n=block.length,stuck=new Array(n).fill(false);
+  if(n<2)return stuck;
+  let run=0;
+  for(let i=1;i<n;i++){
+    const same=block[i].every((v,k)=>v===block[i-1][k]);
+    run=same?run+1:0;
+    if(run>=NB_STUCK_RUN-1){
+      for(let j=i-(NB_STUCK_RUN-2);j<=i;j++)stuck[j]=true;
+    }
+  }
+  return stuck;
+}
+
 // ===== batch capture =====
 // Static-pose collection loop for Phase 8: 20s calibration once, then
 // ARMED -> [Space] -> save a noise-reduced sample -> 5s recalibration -> ARMED,
