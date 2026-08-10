@@ -914,6 +914,37 @@ function nbFindStuck(block){
   return stuck;
 }
 
+function nbMean(rows,k){return rows.reduce((s,r)=>s+r[k],0)/rows.length;}
+function nbStd(rows,k){const m=nbMean(rows,k);
+  return Math.sqrt(rows.reduce((s,r)=>s+(r[k]-m)*(r[k]-m),0)/rows.length);}
+
+// Per-sensor stats + verdict, mirroring analyze_noise_baseline.py's per-row output.
+function nbAnalyzeSensor(name,block){
+  const dropped=nbFindDropped(block);
+  const stuck=nbFindStuck(block);
+  const ok=block.filter((_,i)=>!dropped[i]&&!stuck[i]);
+  const nOk=ok.length;
+  if(nOk<5){
+    return {name,nOk,dropped:dropped.filter(Boolean).length,stuck:stuck.filter(Boolean).length,
+      verdict:"FAIL",ok:false};
+  }
+  const aMean=[0,1,2].map(k=>nbMean(ok,k));
+  const aMag=Math.hypot(...aMean);
+  const gMean=[3,4,5].map(k=>nbMean(ok,k));
+  const gStd=[3,4,5].map(k=>nbStd(ok,k));
+  const maxBias=Math.max(...gMean.map(Math.abs));
+  const maxNoise=Math.max(...gStd);
+
+  let verdict="OK",ok_=true;
+  if(Math.abs(aMag-1)>NB_ACCEL_MAG_TOL){verdict="BAD ACCEL";ok_=false;}
+  else if(maxBias>NB_MAX_BIAS_DPS){verdict="BAD GYRO (bias)";ok_=false;}
+  else if(maxNoise>NB_MAX_NOISE_DPS){verdict="NOISY";ok_=false;}
+  else if(dropped.some(Boolean)||stuck.some(Boolean)){verdict="OK (had drops/stuck)";}
+
+  return {name,nOk,dropped:dropped.filter(Boolean).length,stuck:stuck.filter(Boolean).length,
+    aMean,aMag,gMean,gStd,maxBias,maxNoise,verdict,ok:ok_};
+}
+
 // ===== batch capture =====
 // Static-pose collection loop for Phase 8: 20s calibration once, then
 // ARMED -> [Space] -> save a noise-reduced sample -> 5s recalibration -> ARMED,
