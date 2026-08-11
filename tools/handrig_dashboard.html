@@ -1014,6 +1014,8 @@ function runNoiseBaselineCheck(){
       `(dropped=${s.dropped}, stuck=${s.stuck})`);
   });
   showNoisePanel(report.go,lines.join("\n"));
+  window.BatchGate.setGo(report.go); // flips the batch-capture gate flag on GO
+  applyBatchGate();
   return report;
 }
 function showNoisePanel(go,text){
