@@ -1036,6 +1036,21 @@ const BATCH_STILL_DPS=3;
 
 let batchActive=false, batchState="idle", batchRows=[], batchRepCounts={};
 
+// ===== batch-capture gate: requires a GO noise-baseline check this session =====
+// Pure state machine, no DOM/BLE -- a boolean/timestamp flag flipped only by a
+// GO result (never cleared by a later NO-GO: "a GO baseline was recorded this
+// session" stays true even if a subsequent check regresses). Reset happens on
+// disconnect since a new BLE connection starts a new session. Kept separate
+// from applyBatchGate() (below) so the flag logic itself is testable without a
+// document -- same throwaway-eval approach as window.NoiseBaseline.
+let baselineGoAt=null;
+window.BatchGate={
+  hasBaseline:()=>baselineGoAt!==null,
+  satisfied:(connected)=>connected&&baselineGoAt!==null,
+  setGo:(go)=>{if(go)baselineGoAt=Date.now();},
+  reset:()=>{baselineGoAt=null;},
+};
+
 function pushBatchRaw(st,ax,ay,az,gx,gy,gz){
   if(!st.rawHist)st.rawHist={ax:[],ay:[],az:[],gx:[],gy:[],gz:[]};
   const rh=st.rawHist;
