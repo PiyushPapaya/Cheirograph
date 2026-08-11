@@ -626,14 +626,19 @@ function onConnected(){
   document.getElementById("dot").className="dot on";
   document.getElementById("veil").style.display="none";
   document.getElementById("conn").textContent="Disconnect";
-  ["cal","zero","rec","batchToggle"].forEach(id=>document.getElementById(id).disabled=false);
+  // batchToggle is excluded here -- its enabled state is owned by applyBatchGate()
+  // (below), which additionally requires a GO noise-baseline check this session.
+  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
+  applyBatchGate();
   document.getElementById("cards").classList.add("in");
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
 }
 function onDisc(){
   document.getElementById("dot").className="dot err";
   document.getElementById("conn").textContent="Connect";
-  ["cal","zero","rec","batchToggle"].forEach(id=>document.getElementById(id).disabled=true);
+  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
+  window.BatchGate.reset(); // a new BLE connection is a new session
+  applyBatchGate();
   document.getElementById("veil").style.display="flex";
   setStatus("disconnected","err");S.forEach(s=>s.alive=false);
   stopBatchCapture();
@@ -1009,6 +1014,8 @@ function runNoiseBaselineCheck(){
       `(dropped=${s.dropped}, stuck=${s.stuck})`);
   });
   showNoisePanel(report.go,lines.join("\n"));
+  window.BatchGate.setGo(report.go); // flips the batch-capture gate flag on GO
+  applyBatchGate();
   return report;
 }
 function showNoisePanel(go,text){
@@ -1036,6 +1043,34 @@ const BATCH_STILL_DPS=3;
 
 let batchActive=false, batchState="idle", batchRows=[], batchRepCounts={};
 
+// ===== batch-capture gate: requires a GO noise-baseline check this session =====
+// Pure state machine, no DOM/BLE -- a boolean/timestamp flag flipped only by a
+// GO result (never cleared by a later NO-GO: "a GO baseline was recorded this
+// session" stays true even if a subsequent check regresses). Reset happens on
+// disconnect since a new BLE connection starts a new session. Kept separate
+// from applyBatchGate() (below) so the flag logic itself is testable without a
+// document -- same throwaway-eval approach as window.NoiseBaseline.
+let baselineGoAt=null;
+window.BatchGate={
+  hasBaseline:()=>baselineGoAt!==null,
+  satisfied:(connected)=>connected&&baselineGoAt!==null,
+  setGo:(go)=>{if(go)baselineGoAt=Date.now();},
+  reset:()=>{baselineGoAt=null;},
+};
+const BATCH_ARMED_TITLE="20s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5s between reps to fight drift.";
+const BATCH_GATED_TITLE="Run Noise Check and get a GO result first — Batch Capture needs a verified-clean noise baseline recorded this session.";
+// Single point of truth for batchToggle's enabled state -- called after every
+// connect/disconnect and after every noise-check result, so the button can
+// never drift out of sync with (connected && a GO was recorded this session).
+function applyBatchGate(){
+  const connected=!!(device&&device.gatt&&device.gatt.connected);
+  const ok=window.BatchGate.satisfied(connected);
+  const btn=document.getElementById("batchToggle");
+  if(!ok&&batchActive)stopBatchCapture(); // gate revoked (disconnect) mid-batch -> stop cleanly
+  btn.disabled=!ok;
+  btn.title=ok?BATCH_ARMED_TITLE:BATCH_GATED_TITLE;
+}
+
 function pushBatchRaw(st,ax,ay,az,gx,gy,gz){
   if(!st.rawHist)st.rawHist={ax:[],ay:[],az:[],gx:[],gy:[],gz:[]};
   const rh=st.rawHist;
@@ -1054,6 +1089,10 @@ function windowStd(a){
 
 function startBatchCapture(){
   if(batchActive)return;
+  // Defense in depth: applyBatchGate() already disables the button, but this
+  // guard keeps the function itself safe against any other caller (keyboard
+  // shortcut, console, future UI) that bypasses the DOM disabled state.
+  if(!window.BatchGate.satisfied(!!(device&&device.gatt&&device.gatt.connected)))return;
   batchActive=true;batchState="calibrating";
   updateBatchUI();
   startCalibration(CAL_INITIAL_MS,()=>{
