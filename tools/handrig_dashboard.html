@@ -1055,6 +1055,19 @@ window.BatchGate={
   setGo:(go)=>{if(go)baselineGoAt=Date.now();},
   reset:()=>{baselineGoAt=null;},
 };
+const BATCH_ARMED_TITLE="20s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5s between reps to fight drift.";
+const BATCH_GATED_TITLE="Run Noise Check and get a GO result first — Batch Capture needs a verified-clean noise baseline recorded this session.";
+// Single point of truth for batchToggle's enabled state -- called after every
+// connect/disconnect and after every noise-check result, so the button can
+// never drift out of sync with (connected && a GO was recorded this session).
+function applyBatchGate(){
+  const connected=!!(device&&device.gatt&&device.gatt.connected);
+  const ok=window.BatchGate.satisfied(connected);
+  const btn=document.getElementById("batchToggle");
+  if(!ok&&batchActive)stopBatchCapture(); // gate revoked (disconnect) mid-batch -> stop cleanly
+  btn.disabled=!ok;
+  btn.title=ok?BATCH_ARMED_TITLE:BATCH_GATED_TITLE;
+}
 
 function pushBatchRaw(st,ax,ay,az,gx,gy,gz){
   if(!st.rawHist)st.rawHist={ax:[],ay:[],az:[],gx:[],gy:[],gz:[]};
