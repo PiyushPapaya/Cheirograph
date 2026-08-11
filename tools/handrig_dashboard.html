@@ -626,14 +626,19 @@ function onConnected(){
   document.getElementById("dot").className="dot on";
   document.getElementById("veil").style.display="none";
   document.getElementById("conn").textContent="Disconnect";
-  ["cal","zero","rec","batchToggle"].forEach(id=>document.getElementById(id).disabled=false);
+  // batchToggle is excluded here -- its enabled state is owned by applyBatchGate()
+  // (below), which additionally requires a GO noise-baseline check this session.
+  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
+  applyBatchGate();
   document.getElementById("cards").classList.add("in");
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
 }
 function onDisc(){
   document.getElementById("dot").className="dot err";
   document.getElementById("conn").textContent="Connect";
-  ["cal","zero","rec","batchToggle"].forEach(id=>document.getElementById(id).disabled=true);
+  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
+  window.BatchGate.reset(); // a new BLE connection is a new session
+  applyBatchGate();
   document.getElementById("veil").style.display="flex";
   setStatus("disconnected","err");S.forEach(s=>s.alive=false);
   stopBatchCapture();
