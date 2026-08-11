@@ -1089,6 +1089,10 @@ function windowStd(a){
 
 function startBatchCapture(){
   if(batchActive)return;
+  // Defense in depth: applyBatchGate() already disables the button, but this
+  // guard keeps the function itself safe against any other caller (keyboard
+  // shortcut, console, future UI) that bypasses the DOM disabled state.
+  if(!window.BatchGate.satisfied(!!(device&&device.gatt&&device.gatt.connected)))return;
   batchActive=true;batchState="calibrating";
   updateBatchUI();
   startCalibration(CAL_INITIAL_MS,()=>{
