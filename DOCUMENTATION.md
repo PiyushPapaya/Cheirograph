@@ -34,6 +34,41 @@ Rules:
 
 ---
 
+### 2026-08-11 | Phase 7.5 — gate Batch Capture on a GO noise baseline
+
+**Plan:** Wire the Noise Check GO/NO-GO result (added 2026-08-10) into the
+Batch Capture button so it can't be used to collect training data before the
+noise floor has been verified clean this session. Pure UI state machine: a
+boolean/timestamp flag flipped by the Noise Check result, checked before the
+button is enabled.
+
+**Achieved:** Added `window.BatchGate` to `tools/handrig_dashboard.html` — a
+DOM/BLE-free state machine (`hasBaseline`, `satisfied(connected)`, `setGo`,
+`reset`) tracking whether a GO has been recorded this session. A single
+`applyBatchGate()` now owns `batchToggle`'s disabled state and tooltip;
+`runNoiseBaselineCheck()` is the sole writer of the flag; `onDisc()` resets it
+(a new BLE connection is a new session); `startBatchCapture()` re-checks the
+gate directly as a defense-in-depth guard. A later NO-GO does not clear an
+earlier GO — the flag tracks "a GO baseline was recorded this session," not
+"the most recent check passed."
+
+Shipped as two merged PRs (5 commits gate implementation, 2 commits test +
+docs) instead of pushing straight to master, to keep review-sized diffs.
+Verified with `tools/verify_batch_gate_js.mjs` (same throwaway-eval pattern as
+`verify_noise_baseline_js.mjs`): no-baseline-yet, GO-recorded, NO-GO-doesn't-
+clear-a-prior-GO, and reset-on-disconnect — all 8 checks pass against the
+merged code, plus a `new Function(...)` syntax check on the full extracted
+`<script>` block.
+
+**Problems & blockers:** None — this was pure UI wiring on top of the
+2026-08-10 `nbAnalyze()`/`window.NoiseBaseline` work, no new math.
+
+**Next:** Item 1 from the same plan (recording/surfacing the GO baseline
+result more persistently, e.g. across page reloads) and the remaining items
+in the batch-capture safety-gate plan.
+
+---
+
 ### 2026-08-10 | Phase 7.5 — GO/NO-GO noise-baseline logic ported into the dashboard
 
 **Plan:** Port `tools/analyze_noise_baseline.py`'s GO/NO-GO checks (stuck-frame
