@@ -119,6 +119,20 @@
   .batchflash.ok{background:radial-gradient(circle at 50% 50%,rgba(76,128,100,.4),transparent 70%);opacity:1;transition:none}
   .batchflash.bad{background:radial-gradient(circle at 50% 50%,rgba(192,57,43,.4),transparent 70%);opacity:1;transition:none}
 
+  /* per-letter batch coverage grid — A-Z, colored once a letter clears the rep goal */
+  .batchgrid{position:absolute;top:46px;right:18px;z-index:2;display:none;
+    grid-template-columns:repeat(13,20px);gap:3px;
+    background:rgba(17,17,17,.78);border:1px solid var(--line);border-radius:8px;padding:8px;
+    backdrop-filter:blur(3px)}
+  .batchgrid.show{display:grid}
+  .batchgrid .cell{width:20px;height:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border-radius:4px;background:var(--track);font-family:var(--font-mono);line-height:1;gap:2px}
+  .batchgrid .cell span{font-size:8px;color:var(--dim);letter-spacing:.02em}
+  .batchgrid .cell b{font-size:9px;font-weight:600;color:var(--mut)}
+  .batchgrid .cell.done{background:var(--good);box-shadow:0 0 6px -1px var(--good)}
+  .batchgrid .cell.done span{color:#0b1a12;opacity:.75}
+  .batchgrid .cell.done b{color:#0b1a12}
+
   /* noise-baseline GO/NO-GO panel — same overlay language as .veil, dismissible */
   .noisepanel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:9;
     background:rgba(8,11,16,.86);backdrop-filter:blur(3px)}
@@ -266,6 +280,7 @@
 
     <div class="batchhint" id="batchhint">● ARMED — hold the pose, press <b>Space</b> to save · <b>Esc</b> to stop</div>
     <div class="batchflash" id="batchflash"></div>
+    <div class="batchgrid" id="batchgrid" title="Reps captured per letter this session — green once a letter reaches the coverage goal."></div>
 
     <div class="calbanner" id="calbanner">
       <div class="c">
@@ -631,6 +646,7 @@ function onConnected(){
   ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
   applyBatchGate();
   document.getElementById("cards").classList.add("in");
+  document.getElementById("batchgrid").classList.add("show");
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
 }
 function onDisc(){
@@ -639,6 +655,7 @@ function onDisc(){
   ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
   window.BatchGate.reset(); // a new BLE connection is a new session
   applyBatchGate();
+  document.getElementById("batchgrid").classList.remove("show");
   document.getElementById("veil").style.display="flex";
   setStatus("disconnected","err");S.forEach(s=>s.alive=false);
   stopBatchCapture();
@@ -1043,6 +1060,33 @@ const BATCH_STILL_DPS=3;
 
 let batchActive=false, batchState="idle", batchRows=[], batchRepCounts={};
 
+// ===== batch-capture crash resilience =====
+// A tab crash/reload mid-session can lose every rep captured since the last
+// manual "Export Batch CSV" click -- for a long labelling session that's the
+// single biggest risk. These mirror batchRows/batchRepCounts into
+// localStorage; wiring them into the capture/export/startup flow happens in
+// a follow-up change so each piece lands as its own reviewable commit.
+const BATCH_STORAGE_KEY="gestura_batchRows_v1";
+function persistBatchRows(){
+  try{
+    localStorage.setItem(BATCH_STORAGE_KEY,JSON.stringify({rows:batchRows,repCounts:batchRepCounts}));
+  }catch(e){ /* quota / unavailable -- capture continues in-memory, just not backed up */ }
+}
+function restoreBatchRows(){
+  try{
+    const raw=localStorage.getItem(BATCH_STORAGE_KEY);
+    if(!raw)return;
+    const data=JSON.parse(raw);
+    if(data&&Array.isArray(data.rows)&&data.rows.length){
+      batchRows=data.rows;
+      batchRepCounts=data.repCounts||{};
+    }
+  }catch(e){ /* corrupt/old-shape backup -- ignore, start fresh */ }
+}
+function clearPersistedBatchRows(){
+  try{localStorage.removeItem(BATCH_STORAGE_KEY);}catch(e){}
+}
+
 // ===== batch-capture gate: requires a GO noise-baseline check this session =====
 // Pure state machine, no DOM/BLE -- a boolean/timestamp flag flipped only by a
 // GO result (never cleared by a later NO-GO: "a GO baseline was recorded this
@@ -1106,7 +1150,7 @@ function stopBatchCapture(){
 }
 
 function captureBatchSample(){
-  const label=(document.getElementById("batchLabel").value||"").trim();
+  const label=(document.getElementById("batchLabel").value||"").trim().toUpperCase();
   if(!label){flashBatch(false);return;}
 
   // require every sensor to be alive and not flagged bad -- a sample missing a
@@ -1140,6 +1184,7 @@ function captureBatchSample(){
   });
   batchRows.push(sample);
   batchRepCounts[label]=idx;
+  persistBatchRows();
   flashBatch(true);
 
   batchState="recal";
@@ -1164,7 +1209,7 @@ function updateBatchUI(){
   document.getElementById("batchhint").classList.toggle("show",batchState==="armed");
   document.getElementById("batchLabel").disabled=false; // always editable, even mid-session
 
-  const label=(document.getElementById("batchLabel").value||"").trim()||"?";
+  const label=(document.getElementById("batchLabel").value||"").trim().toUpperCase()||"?";
   const n=batchRepCounts[label]||0;
   if(batchActive){
     const stateTxt={calibrating:"calibrating…",armed:"ARMED",recal:"recal…"}[batchState]||batchState;
@@ -1174,6 +1219,33 @@ function updateBatchUI(){
     document.getElementById("batchCount").textContent=`${batchRows.length} reps captured`;
   }
   document.getElementById("batchCsv").disabled=batchActive||batchRows.length===0;
+  updateBatchGrid();
+}
+
+// ===== per-letter coverage grid =====
+// batchRepCounts already tracks reps per label in memory; this surfaces it
+// as an A-Z grid so coverage gaps across the fingerspelling alphabet are
+// visible at a glance instead of tallying exported CSVs by hand.
+const BATCH_ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+const BATCH_GOAL_REPS=30;   // ~3 sessions x ~10 reps/session, per the phase-8 target
+function buildBatchGrid(){
+  const wrap=document.getElementById("batchgrid");
+  BATCH_ALPHABET.forEach(letter=>{
+    const cell=document.createElement("div");
+    cell.className="cell";
+    cell.id="bg-"+letter;
+    cell.innerHTML=`<span>${letter}</span><b>0</b>`;
+    wrap.appendChild(cell);
+  });
+}
+function updateBatchGrid(){
+  BATCH_ALPHABET.forEach(letter=>{
+    const cell=document.getElementById("bg-"+letter);
+    if(!cell)return;
+    const n=batchRepCounts[letter]||0;
+    cell.querySelector("b").textContent=n;
+    cell.classList.toggle("done",n>=BATCH_GOAL_REPS);
+  });
 }
 
 function exportBatchCSV(){
@@ -1197,6 +1269,7 @@ function exportBatchCSV(){
   const a=document.createElement("a");
   a.href=url;a.download="handrig_batch_"+Date.now()+".csv";a.click();
   URL.revokeObjectURL(url);
+  clearPersistedBatchRows(); // safely on disk now -- don't keep re-restoring an exported session
 }
 
 document.addEventListener("keydown",e=>{
@@ -1429,5 +1502,7 @@ if(!supportOk()){
   document.getElementById("conn").disabled=true;
 }
 
-buildScene();buildCards();refreshCards();
+buildScene();buildCards();buildBatchGrid();
+restoreBatchRows();updateBatchUI();
+refreshCards();
 </script>
