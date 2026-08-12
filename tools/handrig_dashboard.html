@@ -1167,6 +1167,7 @@ function captureBatchSample(){
   });
   batchRows.push(sample);
   batchRepCounts[label]=idx;
+  persistBatchRows();
   flashBatch(true);
 
   batchState="recal";
