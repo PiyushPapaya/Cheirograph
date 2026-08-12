@@ -34,6 +34,35 @@ Rules:
 
 ---
 
+### 2026-08-12 | Phase 8 — batch-capture crash resilience
+
+**Plan:** De-risk a long Phase 8 labelling session against a tab crash or
+accidental reload. Right now a crash between "Export Batch CSV" clicks loses
+every rep captured since the last export — for a session aiming at ≥30 reps
+x 3 sessions per letter, that's the single biggest risk to the whole
+collection effort.
+
+**Achieved:** Added `persistBatchRows()`/`restoreBatchRows()`/
+`clearPersistedBatchRows()` to `tools/handrig_dashboard.html`, mirroring
+`batchRows`/`batchRepCounts` into `localStorage`. `persistBatchRows()` now
+runs after every successful `captureBatchSample()`, not just at export.
+`restoreBatchRows()` runs at startup so a crashed/reloaded tab picks the
+session back up instead of starting from zero, and `exportBatchCSV()` clears
+the backup once the CSV is safely on disk so a finished session doesn't
+silently reappear on the next load. Also uppercased batch labels at capture
+time (`"a"` -> `"A"`) for consistency with how labels are displayed and
+compared elsewhere.
+
+**Problems & blockers:** None — additive change on top of the existing
+Batch Capture flow from 2026-08-10/11, no changes to the fusion/calibration
+math.
+
+**Next:** A per-letter coverage readout in the dashboard (A–Z grid over
+`batchRepCounts`) and the `data/phase8_labelled_gestures/` drop-in folder
+with a naming convention for the exported CSVs.
+
+---
+
 ### 2026-08-11 | Phase 7.5 — gate Batch Capture on a GO noise baseline
 
 **Plan:** Wire the Noise Check GO/NO-GO result (added 2026-08-10) into the

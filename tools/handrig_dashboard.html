@@ -1133,7 +1133,7 @@ function stopBatchCapture(){
 }
 
 function captureBatchSample(){
-  const label=(document.getElementById("batchLabel").value||"").trim();
+  const label=(document.getElementById("batchLabel").value||"").trim().toUpperCase();
   if(!label){flashBatch(false);return;}
 
   // require every sensor to be alive and not flagged bad -- a sample missing a
@@ -1192,7 +1192,7 @@ function updateBatchUI(){
   document.getElementById("batchhint").classList.toggle("show",batchState==="armed");
   document.getElementById("batchLabel").disabled=false; // always editable, even mid-session
 
-  const label=(document.getElementById("batchLabel").value||"").trim()||"?";
+  const label=(document.getElementById("batchLabel").value||"").trim().toUpperCase()||"?";
   const n=batchRepCounts[label]||0;
   if(batchActive){
     const stateTxt={calibrating:"calibrating…",armed:"ARMED",recal:"recal…"}[batchState]||batchState;
