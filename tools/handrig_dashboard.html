@@ -1043,6 +1043,33 @@ const BATCH_STILL_DPS=3;
 
 let batchActive=false, batchState="idle", batchRows=[], batchRepCounts={};
 
+// ===== batch-capture crash resilience =====
+// A tab crash/reload mid-session can lose every rep captured since the last
+// manual "Export Batch CSV" click -- for a long labelling session that's the
+// single biggest risk. These mirror batchRows/batchRepCounts into
+// localStorage; wiring them into the capture/export/startup flow happens in
+// a follow-up change so each piece lands as its own reviewable commit.
+const BATCH_STORAGE_KEY="gestura_batchRows_v1";
+function persistBatchRows(){
+  try{
+    localStorage.setItem(BATCH_STORAGE_KEY,JSON.stringify({rows:batchRows,repCounts:batchRepCounts}));
+  }catch(e){ /* quota / unavailable -- capture continues in-memory, just not backed up */ }
+}
+function restoreBatchRows(){
+  try{
+    const raw=localStorage.getItem(BATCH_STORAGE_KEY);
+    if(!raw)return;
+    const data=JSON.parse(raw);
+    if(data&&Array.isArray(data.rows)&&data.rows.length){
+      batchRows=data.rows;
+      batchRepCounts=data.repCounts||{};
+    }
+  }catch(e){ /* corrupt/old-shape backup -- ignore, start fresh */ }
+}
+function clearPersistedBatchRows(){
+  try{localStorage.removeItem(BATCH_STORAGE_KEY);}catch(e){}
+}
+
 // ===== batch-capture gate: requires a GO noise-baseline check this session =====
 // Pure state machine, no DOM/BLE -- a boolean/timestamp flag flipped only by a
 // GO result (never cleared by a later NO-GO: "a GO baseline was recorded this
