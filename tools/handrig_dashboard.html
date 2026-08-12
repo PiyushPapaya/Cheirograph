@@ -1225,6 +1225,7 @@ function exportBatchCSV(){
   const a=document.createElement("a");
   a.href=url;a.download="handrig_batch_"+Date.now()+".csv";a.click();
   URL.revokeObjectURL(url);
+  clearPersistedBatchRows(); // safely on disk now -- don't keep re-restoring an exported session
 }
 
 document.addEventListener("keydown",e=>{
@@ -1457,5 +1458,7 @@ if(!supportOk()){
   document.getElementById("conn").disabled=true;
 }
 
-buildScene();buildCards();refreshCards();
+buildScene();buildCards();
+restoreBatchRows();updateBatchUI();
+refreshCards();
 </script>
