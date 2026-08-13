@@ -34,6 +34,36 @@ Rules:
 
 ---
 
+### 2026-08-13 | Phase 8 — per-letter coverage grid + data drop-in folder
+
+**Plan:** Finish the two remaining items from the 2026-08-12 session: a
+per-letter coverage readout in the dashboard so gaps in the A–Z alphabet are
+visible at a glance, and the `data/phase8_labelled_gestures/` drop-in folder
+with a naming convention so exported CSVs don't collide across the ~3
+sessions/class collection target.
+
+**Achieved:** Added an A–Z `.batchgrid` overlay to
+`tools/handrig_dashboard.html` (top-right of the 3D stage, shown while
+connected): one cell per letter, `batchRepCounts[letter]` as the count,
+turns green (`.done`) at `BATCH_GOAL_REPS = 30`. Built once at startup
+(`buildBatchGrid`), refreshed from the existing `updateBatchUI()` choke
+point (`updateBatchGrid`) so it can't drift from the batch-count label next
+to it. Created `data/phase8_labelled_gestures/` with a README documenting
+`handrig_batch_<letter>_<session#>_<timestamp>.csv` and gitignored the
+CSVs dropped there. Added `tools/verify_batch_persist_js.mjs` (same
+throwaway-eval pattern as `verify_batch_gate_js.mjs`) covering both
+yesterday's localStorage persist/restore/clear round trip and today's grid
+count/done-threshold math — all 12 checks pass.
+
+**Problems & blockers:** None — additive UI/tooling on top of the existing
+Batch Capture flow, no firmware or fusion-math changes.
+
+**Next:** Actually run a real Phase 8 labelling session with the glove and
+start filling in the A–Z grid for real; revisit whether `BATCH_GOAL_REPS`
+should be tunable from the UI once real session lengths are known.
+
+---
+
 ### 2026-08-12 | Phase 8 — batch-capture crash resilience
 
 **Plan:** De-risk a long Phase 8 labelling session against a tab crash or
