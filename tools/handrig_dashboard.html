@@ -1219,6 +1219,23 @@ function updateBatchUI(){
   document.getElementById("batchCsv").disabled=batchActive||batchRows.length===0;
 }
 
+// ===== per-letter coverage grid =====
+// batchRepCounts already tracks reps per label in memory; this surfaces it
+// as an A-Z grid so coverage gaps across the fingerspelling alphabet are
+// visible at a glance instead of tallying exported CSVs by hand.
+const BATCH_ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+const BATCH_GOAL_REPS=30;   // ~3 sessions x ~10 reps/session, per the phase-8 target
+function buildBatchGrid(){
+  const wrap=document.getElementById("batchgrid");
+  BATCH_ALPHABET.forEach(letter=>{
+    const cell=document.createElement("div");
+    cell.className="cell";
+    cell.id="bg-"+letter;
+    cell.innerHTML=`<span>${letter}</span><b>0</b>`;
+    wrap.appendChild(cell);
+  });
+}
+
 function exportBatchCSV(){
   if(!batchRows.length)return;
   let head="label,rep,t_ms";
@@ -1473,7 +1490,7 @@ if(!supportOk()){
   document.getElementById("conn").disabled=true;
 }
 
-buildScene();buildCards();
+buildScene();buildCards();buildBatchGrid();
 restoreBatchRows();updateBatchUI();
 refreshCards();
 </script>
