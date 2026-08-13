@@ -646,6 +646,7 @@ function onConnected(){
   ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
   applyBatchGate();
   document.getElementById("cards").classList.add("in");
+  document.getElementById("batchgrid").classList.add("show");
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
 }
 function onDisc(){
@@ -654,6 +655,7 @@ function onDisc(){
   ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
   window.BatchGate.reset(); // a new BLE connection is a new session
   applyBatchGate();
+  document.getElementById("batchgrid").classList.remove("show");
   document.getElementById("veil").style.display="flex";
   setStatus("disconnected","err");S.forEach(s=>s.alive=false);
   stopBatchCapture();
