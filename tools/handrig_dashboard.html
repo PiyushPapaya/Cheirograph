@@ -1217,6 +1217,7 @@ function updateBatchUI(){
     document.getElementById("batchCount").textContent=`${batchRows.length} reps captured`;
   }
   document.getElementById("batchCsv").disabled=batchActive||batchRows.length===0;
+  updateBatchGrid();
 }
 
 // ===== per-letter coverage grid =====
@@ -1233,6 +1234,15 @@ function buildBatchGrid(){
     cell.id="bg-"+letter;
     cell.innerHTML=`<span>${letter}</span><b>0</b>`;
     wrap.appendChild(cell);
+  });
+}
+function updateBatchGrid(){
+  BATCH_ALPHABET.forEach(letter=>{
+    const cell=document.getElementById("bg-"+letter);
+    if(!cell)return;
+    const n=batchRepCounts[letter]||0;
+    cell.querySelector("b").textContent=n;
+    cell.classList.toggle("done",n>=BATCH_GOAL_REPS);
   });
 }
 
