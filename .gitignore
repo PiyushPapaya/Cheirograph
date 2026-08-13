@@ -41,6 +41,7 @@ ml/*.h
 data/*.csv
 data/*.json
 data/**/*.npy
+data/phase8_labelled_gestures/*.csv
 
 # macOS
 .DS_Store
