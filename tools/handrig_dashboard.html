@@ -119,6 +119,20 @@
   .batchflash.ok{background:radial-gradient(circle at 50% 50%,rgba(76,128,100,.4),transparent 70%);opacity:1;transition:none}
   .batchflash.bad{background:radial-gradient(circle at 50% 50%,rgba(192,57,43,.4),transparent 70%);opacity:1;transition:none}
 
+  /* per-letter batch coverage grid — A-Z, colored once a letter clears the rep goal */
+  .batchgrid{position:absolute;top:46px;right:18px;z-index:2;display:none;
+    grid-template-columns:repeat(13,20px);gap:3px;
+    background:rgba(17,17,17,.78);border:1px solid var(--line);border-radius:8px;padding:8px;
+    backdrop-filter:blur(3px)}
+  .batchgrid.show{display:grid}
+  .batchgrid .cell{width:20px;height:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border-radius:4px;background:var(--track);font-family:var(--font-mono);line-height:1;gap:2px}
+  .batchgrid .cell span{font-size:8px;color:var(--dim);letter-spacing:.02em}
+  .batchgrid .cell b{font-size:9px;font-weight:600;color:var(--mut)}
+  .batchgrid .cell.done{background:var(--good);box-shadow:0 0 6px -1px var(--good)}
+  .batchgrid .cell.done span{color:#0b1a12;opacity:.75}
+  .batchgrid .cell.done b{color:#0b1a12}
+
   /* noise-baseline GO/NO-GO panel — same overlay language as .veil, dismissible */
   .noisepanel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:9;
     background:rgba(8,11,16,.86);backdrop-filter:blur(3px)}
