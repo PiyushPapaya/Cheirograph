@@ -42,7 +42,7 @@ Two captures: a roughly 30-second deliberate-movement run, and a roughly 30-seco
 - **Drift, held still:** roll and pitch stayed essentially flat, under about 1.7 deg/min and usually well below that. That's expected. Madgwick's accelerometer correction anchors both of those against gravity on every tick, so they can't wander far. Yaw crept at 0.2 to 2.1 deg/min depending on the sensor. That's small, and it's exactly the behavior you'd predict for a 6-DOF IMU with no magnetometer: nothing anchors yaw against an absolute reference, so it drifts slowly no matter how good your calibration is. Not a bug, a known physical limit of this sensor setup, planned around rather than fought.
 - **Rate dropped to about 84 to 86 Hz**, down from Phase 4's ~93.6 Hz. The added filter math, Euler-angle conversion, and extra printed columns all cost real time inside the 10 ms tick budget.
 
-## What "done" looks like
+## The target
 
 - Six quaternion streams, no NaNs. Confirmed, in both captures.
 - A slow 360° rotation returning close to its starting heading. Not yet tested with a controlled rotation, only a general movement capture so far.
@@ -52,7 +52,7 @@ Two captures: a roughly 30-second deliberate-movement run, and a roughly 30-seco
 
 If you see drift, check calibration before you touch the filter. Almost every apparent "drift" problem across this whole project traced back to gyro bias, not a flaw in the fusion math itself.
 
-## Proof
+## What's here
 
 - Firmware: [`05_madgwick_fusion.ino`](05_madgwick_fusion.ino)
 - Captures: [`capture_01_movement.csv`](capture_01_movement.csv), [`capture_02_drift.csv`](capture_02_drift.csv)
@@ -64,6 +64,6 @@ Roll and pitch pinned flat by gravity correction, yaw slowly creeping, the unbou
 
 ![Roll/pitch/yaw during the movement test](movement_rpy.png)
 
-## What this isn't
+## Not there yet
 
 Not relative orientation yet. These quaternions are still each sensor's own absolute orientation in space. Subtracting out the hand's motion to get a finger's relative pose is the next stage.

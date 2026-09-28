@@ -4,7 +4,7 @@
 
 This is the first thing I ran on the board, before any sensor touched it. The goal was small on purpose: prove the Seeed XIAO nRF52840 Sense actually flashes and runs code. Nothing else matters if this doesn't work.
 
-## What it does
+## What it actually runs
 
 Cycles the onboard RGB LED red, green, blue, half a second each, forever. That's it. No I²C, no serial, no sensors.
 
@@ -38,7 +38,7 @@ The board wouldn't show up as a programmable COM port the first time I plugged i
 
 The LED is active-LOW. `digitalWrite(LED_RED, LOW)` turns it on. Write `HIGH` expecting the light to come on, and you'll sit there for a minute wondering why nothing's happening. The board package defines `LED_RED`, `LED_GREEN`, `LED_BLUE` for you, so you don't need to know the raw pin numbers.
 
-## Proof
+## What's here
 
 - [`00_led_sanity_test.ino`](00_led_sanity_test.ino), the sketch.
 - [`story.md`](story.md), the short version of how this session actually went.

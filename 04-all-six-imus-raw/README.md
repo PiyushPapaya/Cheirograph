@@ -27,7 +27,7 @@ millis,sensor_id,ax,ay,az,gx,gy,gz
 
 One line per sensor per sample. `sensor_id`: 0 is the hand (onboard), 1 through 5 are the fingers (mux channels 0 through 4).
 
-## What "done" looks like
+## The target
 
 - Loop period under 10 ms, that's 100 Hz, with no missed samples.
 - All six sensor IDs showing up in the output.
@@ -52,7 +52,7 @@ One line per sensor per sample. `sensor_id`: 0 is the hand (onboard), 1 through 
 
 **A sensor reading exactly `0.0000, 0.0000, 0.0000` for accel is not a "very still" reading. It's a dead one.** A live accelerometer always shows gravity somewhere in its three axes. Learning to read an exact zero as "this chip's registers are frozen" rather than "the sensor is calm" saved a lot of confused debugging later, especially once the finger sensors turned out to have a much stranger version of this same failure mode.
 
-## Proof
+## What's here
 
 - Firmware: [`04_all_imus_raw.ino`](04_all_imus_raw.ino)
 - Captures: [`movement_test.csv`](movement_test.csv) (five-finger gyro-only bench test), [`capture_01_raw.csv`](capture_01_raw.csv), [`capture_02_full_session.csv`](capture_02_full_session.csv), [`capture_03_full_session.csv`](capture_03_full_session.csv)
@@ -71,6 +71,6 @@ Static views of the six-sensor accelerometer trajectories; animated GIF versions
 - Interactive visualizer: [`visualizer.html`](visualizer.html)
 - Original capture notes: [`data-notes-phase3-4.md`](data-notes-phase3-4.md), [`data-notes-phase4.md`](data-notes-phase4.md)
 
-## What this isn't
+## Not there yet
 
 Not fused yet, this is raw accel and gyro only, no orientation math.

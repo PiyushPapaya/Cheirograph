@@ -8,7 +8,7 @@ Everything up to this point ran on a breadboard. This is where it moves onto the
 
 All five MPU-6050s taped onto the glove, middle phalanx for index through pinky, proximal phalanx for the thumb, since the thumb's joint geometry is different enough that middle-phalanx placement wouldn't make sense there. The XIAO and the PCA9548A mux, along with a small breadboard used as a wiring hub, got mounted together on the wrist strap. Every finger was wired back to the mux with jumper wire, routed across the back of the hand.
 
-## What "done" looks like
+## What passing actually meant
 
 - All five finger sensors readable through a full 30-minute wear session, no disconnects.
 - Wire runs anchored so no solder pad ever takes a bend directly. That's the difference between a glove that survives regular use and one that fails at the first knuckle flex.
@@ -28,7 +28,7 @@ The wire routing from this pass is loose jumper wire, not fully strain-relief-ta
 
 Sensor failures on a wearable are almost always wire fatigue at a knuckle, not a bad chip. Stranded wire, not solid-core. Anchored with slack on both sides of a flex point, never a straight run tacked down tight across a joint that's about to bend.
 
-## Proof
+## What's here
 
 - [`main.cpp`](main.cpp), the firmware run for this stage's tests.
 

@@ -18,53 +18,44 @@ I wanted one project where I genuinely understood every layer, from the electric
 
 ```mermaid
 flowchart LR
-    subgraph Sensors["5 finger IMUs"]
-        F1[MPU-6050]
-    end
-    H[XIAO onboard IMU<br/>hand reference]
-    F1 --> MUX[PCA9548A<br/>I2C multiplexer]
-    MUX --> FUSE
-    H --> FUSE[Madgwick fusion<br/>100 Hz, on-device]
-    FUSE --> REL["Relative orientation<br/>q_rel = conj(q_hand) ⊗ q_finger"]
-    REL --> FEAT[Feature vector<br/>per gesture]
-    FEAT --> CLS[On-device classifier]
-    CLS --> BLE[BLE → typed letter]
-
-    style Sensors fill:#2b2b2b,stroke:#888,color:#eee
-    style FEAT fill:#1a1a1a,stroke:#666,color:#999,stroke-dasharray: 5 5
-    style CLS fill:#1a1a1a,stroke:#666,color:#999,stroke-dasharray: 5 5
-    style BLE fill:#1a1a1a,stroke:#666,color:#999,stroke-dasharray: 5 5
+    F[5x MPU-6050, one per finger] --> MUX[PCA9548A I2C mux]
+    H[XIAO onboard IMU, hand reference] --> FUSE
+    MUX --> FUSE[Madgwick fusion, 100 Hz, on device]
+    FUSE --> REL[Relative orientation]
+    REL --> FEAT[Feature vector, per gesture]
+    FEAT --> CLS[On device classifier]
+    CLS --> BLE[BLE, typed letter]
 ```
 
-Dashed boxes are the next milestones, not built yet.
+`Feature vector`, `On device classifier`, and the final BLE output are the next milestones. Not built yet. The relative-orientation math right before them is what's proven and working today.
 
 ## The build, stage by stage
 
 ```mermaid
 flowchart TD
-    S00["00 · LED sanity test<br/>board is alive"] --> S01["01 · XIAO onboard IMU<br/>hand reference reads clean"]
-    S01 --> S02["02 · Single MPU-6050<br/>found the sensors were clones"]
-    S02 --> S03["03 · I2C multiplexer<br/>five sensors, one address"]
-    S03 --> S04["04 · All six IMUs raw<br/>real-time read at ~94 Hz"]
-    S04 --> S05["05 · Madgwick fusion<br/>raw data becomes orientation"]
-    S05 --> S06["06 · Relative orientation<br/>the core idea, made real"]
-    S06 --> S07["07 · Full glove assembly<br/>survives being worn"]
-    S07 --> S08["08 · BLE wireless dashboard<br/>live, wireless, hardest bug found"]
+    S00[00 LED sanity test] --> S01[01 XIAO onboard IMU]
+    S01 --> S02[02 Single MPU-6050]
+    S02 --> S03[03 I2C multiplexer]
+    S03 --> S04[04 All six IMUs raw]
+    S04 --> S05[05 Madgwick fusion]
+    S05 --> S06[06 Relative orientation]
+    S06 --> S07[07 Full glove assembly]
+    S07 --> S08[08 BLE wireless dashboard]
 ```
 
 Each folder below is a self-contained milestone: the actual firmware or code for that stage, the raw data and photos that prove it worked, and a write-up of what happened, including what broke. They build on each other in order. I didn't skip a layer before proving the one under it.
 
 | Stage | What it proves |
 |---|---|
-| [00 · LED Sanity Test](00-led-sanity-test/) | The board flashes and runs code at all |
-| [01 · XIAO Onboard IMU](01-xiao-onboard-imu/) | The hand-reference sensor reads clean |
-| [02 · Single MPU-6050](02-single-mpu6050/) | One finger sensor works, and where I found the sensors were mislabeled clones |
-| [03 · I²C Multiplexer](03-i2c-multiplexer/) | Five identical-address sensors can be told apart on one bus |
-| [04 · All Six IMUs Raw](04-all-six-imus-raw/) | All six sensors read together at close to 100 Hz |
-| [05 · Madgwick Fusion](05-madgwick-fusion/) | Raw motion data becomes real orientation, per sensor |
-| [06 · Relative Orientation](06-relative-orientation/) | Finger orientation gets expressed relative to the hand, the core idea of the whole project |
-| [07 · Full Glove Assembly](07-full-glove-assembly/) | Everything survives being mounted on an actual hand and worn |
-| [08 · BLE Wireless Dashboard](08-ble-wireless-dashboard/) | The whole chain works live, wirelessly, and where the hardest bug of the project got found and fixed |
+| [00 - LED Sanity Test](00-led-sanity-test/) | The board flashes and runs code at all |
+| [01 - XIAO Onboard IMU](01-xiao-onboard-imu/) | The hand-reference sensor reads clean |
+| [02 - Single MPU-6050](02-single-mpu6050/) | One finger sensor works, and where I found the sensors were mislabeled clones |
+| [03 - I²C Multiplexer](03-i2c-multiplexer/) | Five identical-address sensors can be told apart on one bus |
+| [04 - All Six IMUs Raw](04-all-six-imus-raw/) | All six sensors read together at close to 100 Hz |
+| [05 - Madgwick Fusion](05-madgwick-fusion/) | Raw motion data becomes real orientation, per sensor |
+| [06 - Relative Orientation](06-relative-orientation/) | Finger orientation gets expressed relative to the hand, the core idea of the whole project |
+| [07 - Full Glove Assembly](07-full-glove-assembly/) | Everything survives being mounted on an actual hand and worn |
+| [08 - BLE Wireless Dashboard](08-ble-wireless-dashboard/) | The whole chain works live, wirelessly, and where the hardest bug of the project got found and fixed |
 
 ## The two hardest problems I actually solved
 

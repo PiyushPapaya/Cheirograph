@@ -78,7 +78,7 @@ Before any real labeled-data session, the checklist below has to pass. Bad data 
 3. Record 60 seconds flat and still, export the CSV, and run it through the noise-baseline check script. It has to print GO. On a NO-GO, fix the flagged sensor's connection and repeat from step 1 rather than pushing ahead anyway.
 4. Only once that passes: start real data collection.
 
-## Proof, the evidence that led to the fix
+## The evidence that cracked it
 
 These two captures are the actual raw data that made the clone-chip diagnosis possible, exported directly from the dashboard before the fix landed.
 
@@ -86,6 +86,6 @@ These two captures are the actual raw data that made the clone-chip diagnosis po
 - [`capture_02_pre_fix_garbage_calibrated.csv`](capture_02_pre_fix_garbage_calibrated.csv)
 - [`data-notes.md`](data-notes.md), original notes on what these captures show.
 
-## What this isn't
+## Not there yet
 
 Not the classifier. This stage proves the whole sensing and communication chain works live and wirelessly. The actual gesture recognition model hasn't been trained yet, that's the next real milestone, and it depends on this stage's data quality being trustworthy first.
