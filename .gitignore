@@ -72,3 +72,9 @@ secrets.json
 
 # Social media kit — brand assets, content backlog, agents: local-only, never pushed
 social/
+
+# Internal Claude-workflow planning docs — local-only, never pushed
+/CLAUDE.md
+/GENERAL_PLAN.md
+/DOCUMENTATION.md
+/DECISIONS.md
