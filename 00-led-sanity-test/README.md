@@ -1,43 +1,35 @@
-# 00 — XIAO LED Sanity Test
+# 00 — LED Sanity Test
 
-> *This folder's number is a flexible guide, not a permanent label. Rename or renumber as the real build dictates.*
+**Phase 0. Status: done.**
 
-**Phase:** 0
+This is the first thing I ran on the board, before any sensor touched it. The goal was small on purpose: prove the Seeed XIAO nRF52840 Sense actually flashes and runs code. Nothing else matters if this doesn't work.
 
-**Goal:** Confirm the Seeed XIAO nRF52840 Sense powers on, enumerates over USB, accepts a flash, and runs code — before trusting it with any sensor work. The classic first-light test: blink the onboard LED.
+## What it does
 
-**"Done" looks like:**
-- The onboard RGB user-LED cycles **red → green → blue**, 500 ms per colour, forever.
-- Upload completes from the Arduino IDE with no bootloader errors.
+Cycles the onboard RGB LED red, green, blue, half a second each, forever. That's it. No I²C, no serial, no sensors.
 
-**What this is not:** No IMU, no I²C, no serial — just proof that the board and toolchain are alive.
+## Why bother with something this trivial
 
-**Why it matters:** If flashing fails, nothing downstream matters. This isolates "is the board/toolchain working?" from every later, harder question.
+Because if flashing fails, every later phase fails with it, and you won't know if the bug is in your code or in your toolchain. Isolating "is the board alive" from "is my sensor code correct" saves a lot of confused debugging later. This is the cheapest possible way to answer the first question.
 
----
+## The one real problem I hit
 
-## First-contact gotcha — the board wouldn't connect
-
-On first plug-in the XIAO would not show up as a programmable port. The fix for the
-nRF52840 bootloader: **double-tap the RESET button** (quick double-press). This drops
-the board into UF2 bootloader mode and it re-enumerates as a flashable device. After
-that the port appears and uploads work normally. Expect to do this any time the board
-gets stuck or a bad sketch bricks the port.
+The board wouldn't show up as a programmable COM port the first time I plugged it in. Turns out the nRF52840 needs a specific trick: double-tap the RESET button. That drops it into UF2 bootloader mode and it enumerates properly. After that, uploads worked normally. I hit this again more than once over the course of the project, so it's worth remembering — it's not a one-time fluke.
 
 ## Toolchain setup (Arduino IDE)
 
-1. **File → Preferences → Additional Boards Manager URLs**, add:
+1. File → Preferences → Additional Boards Manager URLs, add:
    `https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json`
-2. **Tools → Board → Boards Manager**, search `seeed nrf52`, install the latest.
-   - Two packages exist — see [`../../hardware/datasheets/XIAO_nRF52840_Sense.md`](../../hardware/datasheets/XIAO_nRF52840_Sense.md)
-     for which to use when.
-3. **Tools → Board →** *Seeed XIAO nRF52840 Sense*.
-4. **Tools → Port →** the COM port shown as *Seeed Studio XIAO nRF52840 Sense*
-   (double-tap RESET first if it's missing).
-5. Open `00_led_sanity_test.ino` and click **Upload**.
+2. Tools → Board → Boards Manager, search "seeed nrf52", install it.
+3. Tools → Board → Seeed XIAO nRF52840 Sense.
+4. Tools → Port → the port that shows up as the XIAO (double-tap RESET first if it's not there).
+5. Open `00_led_sanity_test.ino`, hit Upload.
 
-## The LED is active-LOW
+## One gotcha in the code itself
 
-`digitalWrite(LED_RED, LOW)` turns the red segment **on**; `HIGH` turns it off. Same for
-green and blue. The `LED_RED` / `LED_GREEN` / `LED_BLUE` symbols are defined by the Seeed
-board package, so no raw `P0.xx` pin numbers are needed here.
+The LED is active-LOW. `digitalWrite(LED_RED, LOW)` turns it *on*. If you write `HIGH` expecting the light to turn on, you'll sit there for a minute wondering why nothing's happening. The board package defines `LED_RED`/`LED_GREEN`/`LED_BLUE` for you, so you don't need to know the raw pin numbers.
+
+## Proof
+
+- [`00_led_sanity_test.ino`](00_led_sanity_test.ino) — the sketch.
+- [`story.md`](story.md) — the short version of how this session actually went.

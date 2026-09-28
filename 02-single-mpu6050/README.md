@@ -1,122 +1,72 @@
 # 02 — Single MPU-6050 Test (Direct I²C)
 
-> *This folder's number is a flexible guide, not a permanent label. Rename or renumber as the real build dictates.*
+**Phase 2. Status: done — sensor alive, raw accel + gyro verified and plotted. No mux yet.**
 
-**Phase:** 2
-**Status:** ✅ sensor alive, raw accel + gyro verified and plotted. Mux not yet involved.
+Before wiring five sensors behind a multiplexer, I wanted one working sensor I actually understood. Debugging one chip is a lot easier than debugging five behind a mux, so this stage is deliberately narrow: wire a single MPU-6050 straight to the XIAO, no mux, and get clean data out.
 
-**Goal:** Wire one MPU-6050 (GY-521) directly to the XIAO's external I²C pins — no mux — and confirm raw accel + gyro readings over serial.
+This is also where I ran into the first real problem of the project.
 
----
+## Wiring
 
-## Wiring (direct, no mux)
+Four wires, plus one that fixes the address.
 
-Four wires. AD0 → GND fixes the address at `0x68`.
-
-![MPU-6050 → XIAO direct wiring](../../hardware/wiring_mpu6050_direct.png)
-
-```
-        MPU-6050 (GY-521)                 XIAO nRF52840 Sense
-        ┌──────────────┐                  ┌──────────────────┐
-        │ VCC ─────────┼──────────────────┤ 3V3              │
-        │ GND ─────────┼──────────────────┤ GND              │
-        │ SDA ─────────┼──────────────────┤ D4 / SDA         │
-        │ SCL ─────────┼──────────────────┤ D5 / SCL         │
-        │ AD0 ─────────┼───┐              │                  │
-        │ INT   (n/c)  │   └── GND ────────┤ GND  (→ 0x68)    │
-        └──────────────┘                  └──────────────────┘
-```
+![MPU-6050 → XIAO direct wiring](../hardware/wiring_mpu6050_direct.png)
 
 | MPU-6050 pin | XIAO pin | Purpose |
 |---|---|---|
-| VCC | 3V3 | Power (3.3 V logic — no level shifter needed) |
+| VCC | 3V3 | Power |
 | GND | GND | Ground |
 | SDA | D4 / SDA | I²C data |
 | SCL | D5 / SCL | I²C clock |
-| AD0 | GND | Selects I²C address `0x68` |
-| INT | — | Interrupt, unused here |
+| AD0 | GND | Sets I²C address to `0x68` |
+| INT | — | Unused here |
 
-> This is the same D4/D5 bus the PCA9548A mux will sit on in Phase 3. Proving one
-> bare sensor here first means that if a finger misbehaves after the mux goes in,
-> we already know the sensor and driver are good — so the mux is the suspect.
+This is the same D4/D5 bus the mux sits on later. Proving one bare sensor here means that if a finger misbehaves once the mux is in, the sensor and driver are already known-good — so the mux becomes the first suspect, not the last.
 
----
+## The clone chip
 
-## Sketches in this folder
+My first attempt used the Adafruit_MPU6050 library. It printed `Failed to find MPU6050 chip!` and stopped dead. I ran an I²C scanner and it clearly found something at `0x68`, so the wiring wasn't the problem. Then I read the `WHO_AM_I` register (0x75) directly instead of trusting the library's judgment, and it came back `0x72`.
 
-| File | Output | Role |
+A genuine MPU-6050 reports `0x68` there. `0x72` belongs to the MPU-6500/9250 family. What I had was a clone — a very common situation with cheap "MPU-6050" breakout boards — and Adafruit's library checks that register strictly and refuses anything that doesn't match exactly.
+
+Switched to `MPU6050_light`, which doesn't gate on that check, and it worked immediately. Full reasoning behind the library swap is in the (private) decision log; the short version is that `MPU6050_light` is lenient about chip identity and still does proper bias calibration in one call. Since all five finger modules came from the same order, I assumed going in that they were likely all the same clone — worth scanning each one individually once they went on the glove, which I did later.
+
+## What's in this folder
+
+| File | What it prints | Role |
 |---|---|---|
-| `02_single_mpu6050_test.ino` | `millis,sensor_id,aX,aY,aZ,gX,gY,gZ` | **Milestone** — full serial contract, the reusable one |
-| `diagnostics/i2c_scan/i2c_scan.ino` | text | Scans the bus + reads `WHO_AM_I` — the sketch that found the clone |
-| `diagnostics/gyro_raw/gyro_raw.ino` | `gX,gY,gZ` | Minimal gyro-only stream (used for the 3D plot) |
-| `diagnostics/accel_raw/accel_raw.ino` | `aX,aY,aZ` | Minimal accel-only stream (used for the 3D plot) |
+| [`02_single_mpu6050_test.ino`](02_single_mpu6050_test.ino) | `millis,sensor_id,aX,aY,aZ,gX,gY,gZ` | The real milestone sketch, full serial contract |
+| [`diagnostics/i2c_scan/`](diagnostics/i2c_scan/i2c_scan.ino) | text | Scans the bus and reads `WHO_AM_I` — this is the sketch that found the clone |
+| [`diagnostics/gyro_raw/`](diagnostics/gyro_raw/gyro_raw.ino) | `gX,gY,gZ` | Minimal gyro-only stream, used to build the gyro plot below |
+| [`diagnostics/accel_raw/`](diagnostics/accel_raw/accel_raw.ino) | `aX,aY,aZ` | Minimal accel-only stream, used to build the accel plot below |
 
-Arduino IDE compiles exactly one sketch per folder, so each diagnostic lives in
-its own subfolder. Open the `.ino` and the folder name will match.
+Arduino IDE only compiles one sketch per folder, which is why the diagnostics are split into their own subfolders instead of living side by side.
 
-**Library:** `MPU6050_light` **v1.2.1** by rfetick (Library Manager → search "MPU6050_light").
-Why this one and not Adafruit_MPU6050 → see `DECISIONS.md` (2026-07-14).
+## What "done" looks like
 
-**Board package:** Seeed nRF52 mbed-enabled boards — *record exact version here at next flash.*
+- Sensor answers at `0x68`, streams cleanly, no I²C hangs or garbage values.
+- Flat and still, accel reads roughly `0, 0, 1` g — gravity sitting on Z. Tilting moves the axes the way you'd expect.
+- Gyro sits near 0 deg/s at rest (after calibration), swings out to a couple hundred deg/s on a fast twist, comes back down.
+- Both captures saved and plotted in 3D below.
 
----
+## The plots
 
-## The clone — why the first library failed
+Built with a small Python script (`plot_imu_3d.py`, in the project's `tools/`) from the two diagnostic captures. Each point is one sample; color goes from dark to bright over time, so you can read the order of motion, not just where the points ended up.
 
-The first attempt used `Adafruit_MPU6050` and it just printed
-`Failed to find MPU6050 chip!` and halted. The bring-up went:
+![Accelerometer 3D trajectory](accel_3d.png)
 
-1. **I²C scan** (`diagnostics/i2c_scan/`) → device present at **`0x68`**. Wiring is fine.
-2. **`WHO_AM_I` (register 0x75)** → returns **`0x72`**, not the `0x68` a genuine
-   MPU-6050 reports. This module is a **clone** (the 0x72 ID belongs to the
-   MPU-6500 / 9250 family that fills a lot of cheap "MPU-6050" breakouts).
-3. Adafruit validates `WHO_AM_I` strictly and refuses the mismatch; `MPU6050_light`
-   doesn't, so it drives the clone without complaint.
+This is the real sanity check. Gravity has constant magnitude, so every point should sit roughly on a sphere of radius 1 g — and it does. The bright cluster is where I set the sensor down and let it sit still at the end. The couple of points past 2 g are real linear acceleration from a quick shake, not sensor noise.
 
-Full write-up in `DECISIONS.md` (2026-07-14); sources in `docs/REFERENCES.md`.
-**Watch-item:** a clone can differ in register defaults / self-test, so if fusion
-misbehaves in Phase 5 this is a suspect. All five finger modules are likely the
-same clone — scan each one when it goes on.
+![Gyroscope 3D trajectory](gyro_3d.png)
 
----
+The gyro path loops out during each twist and comes back toward zero once I stop moving — angular rate, not angle, so it's tracking speed of rotation, not position. It never quite returns to a perfect zero. That small leftover bias, a couple deg/s, is exactly the kind of drift the Madgwick filter has to fight later.
 
-## "Done" looks like
+## What this isn't
 
-- [x] Sensor responds at `0x68`; readings stream without I²C hangs or `0xFF` garbage.
-- [x] Accelerometer: a flat, still sensor reads ≈ `0, 0, 1` g (gravity on Z). Tilting swings the axes predictably.
-- [x] Gyroscope: ≈ `0` deg/s at rest (after `calcOffsets()`), swings to ±100–240 deg/s on fast twists and returns to ~0.
-- [x] Captures saved (`data/phase2_single_mpu6050/`) and plotted in 3D (`docs/media/phase2_*_3d.png`).
+No mux, no fusion, no other sensors. One sensor, proven honest.
 
-**What this is not:** No mux, no fusion, no other sensors. Just one honest sensor.
+## Proof
 
----
-
-## The 3D plots
-
-Generated with `tools/plot_imu_3d.py` from the two diagnostic captures. Each point
-is one sample; colour runs dark→bright with time so you can read the *order* of
-motion, not just the point cloud.
-
-![Accelerometer 3D trajectory](../../docs/media/phase2_accel_3d.png)
-
-The accelerometer path is the clean sanity check: because gravity has a constant
-magnitude, every point sits roughly on a sphere of radius ~1 g. Slow hand
-rotation walks the gravity vector around that sphere; the bright cluster is where
-the sensor was set down still at the end (≈ `0, -0.1, 1.2` g). The few spikes
-past 2 g are real linear acceleration from quick shakes, not noise.
-
-![Gyroscope 3D trajectory](../../docs/media/phase2_gyro_3d.png)
-
-The gyroscope path loops far out from the origin during each twist and returns
-toward zero when the motion stops — angular *rate*, not angle. That return-to-zero
-is what lets `calcOffsets()` measure and subtract the resting bias. Note it never
-returns to a perfect zero: the small leftover (~2–3 deg/s) is exactly the drift
-source the Madgwick filter will have to fight in Phase 5.
-
----
-
-## Next
-
-Introduce the PCA9548A mux (`firmware/03_mux_channel_test/`): address `0x70`,
-select a channel, then talk to the same `0x68` sensor *through* it. Run the
-WIRING.md pre-flight checks (pull-ups, 400 kHz) before wiring the glove.
+- CSV captures: [`accel_raw.csv`](accel_raw.csv), [`gyro_raw.csv`](gyro_raw.csv)
+- [`data-notes.md`](data-notes.md) — original notes on how these captures were taken.
+- [`story.md`](story.md) — the narrative version of this session.

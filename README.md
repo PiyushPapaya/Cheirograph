@@ -1,153 +1,88 @@
 # Cheirograph
 
-> *cheir* (χείρ) "hand" + *graph* (γράφω) "writing" — a hand that writes itself.
+*cheir* (χείρ), hand — *graph* (γράφω), writing. A glove that reads your hand's shape and turns it into text.
 
-A wearable **gesture-tracking glove** that reads the orientation of each finger, fuses it with a Madgwick filter, and classifies static hand-shapes / the fingerspelling alphabet into text or control signals — entirely on-device.
+Cheirograph is a wearable gesture-tracking glove I'm building solo, end to end: six motion sensors, real-time sensor fusion running on a microcontroller, and eventually an on-device machine learning model that recognizes fingerspelling. This repo is both the code and an honest record of how it got built — including the parts that didn't work the first time.
 
----
+## What it actually does
 
-## Demo
+The glove has six IMUs (accelerometer + gyroscope chips): one on each of five fingers, plus one on the back of the hand as a reference. Each sensor's raw motion data gets fused into an orientation using a Madgwick filter, running at 100 Hz on the microcontroller itself, not offloaded to a laptop. Every finger's orientation is then expressed *relative to the hand* — so waving your arm around changes nothing, but curling a finger changes the signal cleanly. That relative-orientation data is what a classifier will eventually read to recognize static hand shapes and output them as text over Bluetooth.
 
-![Demo](docs/media/demo.gif)
+Scope, deliberately: fingerspelling and a fixed set of static hand shapes. Not full sign language — that also involves hand location relative to the body, motion trajectories, two hands working together, and facial expression, none of which six IMUs on one hand can capture. Keeping the target achievable mattered more to me than an impressive-sounding scope I couldn't actually finish.
 
-*Coming soon — will be updated as the glove reaches a working state.*
+## Why this project
 
----
+I wanted one project where I genuinely understood every layer, from the electrical signal to the final output, instead of gluing together libraries I didn't fully trust. That meant hitting real hardware bugs and actually root-causing them instead of working around them — which happened more than once, and each time taught me more than the version of this project where everything just worked would have.
 
-## What it is
+## The build, stage by stage
 
-Cheirograph is a left-hand glove instrumented with six IMUs: five MPU-6050 modules (one per finger) multiplexed behind a PCA9548A, plus the XIAO nRF52840 Sense's onboard IMU as a rigid back-of-hand reference. Each sensor's raw accelerometer and gyroscope data is fused into an orientation quaternion with a Madgwick filter running at 100 Hz on the MCU. A finger's pose is expressed as its orientation *relative to the hand* — making the signal invariant to arm rotation. Those relative quaternions feed a small TinyML classifier (trained in Edge Impulse and deployed on-device) that outputs recognised letters over BLE HID.
+Each folder below is a self-contained milestone: the actual firmware or code for that stage, the raw data and photos that prove it worked, and a write-up of what happened, including what broke. They build on each other in order — I didn't skip a layer before proving the one under it.
 
-This is a solo engineering project and portfolio flagship, built to understand every layer of the stack firsthand — from I²C bus multiplexing through quaternion math to on-device inference.
+| Stage | What it proves |
+|---|---|
+| [00 — LED Sanity Test](00-led-sanity-test/) | The board flashes and runs code at all |
+| [01 — XIAO Onboard IMU](01-xiao-onboard-imu/) | The hand-reference sensor reads clean |
+| [02 — Single MPU-6050](02-single-mpu6050/) | One finger sensor works — and where I found the sensors were mislabeled clones |
+| [03 — I²C Multiplexer](03-i2c-multiplexer/) | Five identical-address sensors can be told apart on one bus |
+| [04 — All Six IMUs Raw](04-all-six-imus-raw/) | All six sensors read together at close to 100 Hz |
+| [05 — Madgwick Fusion](05-madgwick-fusion/) | Raw motion data becomes real orientation, per sensor |
+| [06 — Relative Orientation](06-relative-orientation/) | Finger orientation gets expressed relative to the hand — the core idea of the whole project |
+| [07 — Full Glove Assembly](07-full-glove-assembly/) | Everything survives being mounted on an actual hand and worn |
+| [08 — BLE Wireless Dashboard](08-ble-wireless-dashboard/) | The whole chain works live, wirelessly — and where the hardest bug of the project got found and fixed |
 
----
+## The two hardest problems I actually solved
 
-## How it works
+**The sensors weren't what they claimed to be.** Every "MPU-6050" module I bought is actually a clone from a related chip family. It responds fine on the I²C bus, so wiring checks pass — but a library that only knows the real chip's wake-up sequence leaves it half-asleep, returning a fixed, stuck value instead of live data. I diagnosed this by reading the chip's identity register directly instead of trusting a library's judgment, then confirmed it again months later at full scale — four of five finger sensors streaming bit-identical "stuck" values while looking otherwise plausible. The full story, including the actual raw CSV evidence, is in [Stage 02](02-single-mpu6050/) and [Stage 08](08-ble-wireless-dashboard/).
+
+**A wireless link dying under load looked like a sensor problem, but wasn't.** The dashboard would connect and then sit at 0 Hz. Adding real instrumentation — logging exactly how long each part of the loop took — showed the sensors and fusion math were fine; the Bluetooth write call itself was blocking for over 100 milliseconds because the radio link's default bandwidth settings were too conservative for the data rate I needed. Widening the connection parameters fixed it completely. The lesson that stuck: measure before you guess which part of the system is actually slow.
+
+## How it's built
 
 ```
-MPU-6050 × 5 ──┐
-                ├── PCA9548A mux ──┐
-XIAO onboard ──┘                   ├── Madgwick fusion (100 Hz)
-                                   │     → q_hand, q_finger[0..4]
-                                   ├── Relative orientation
-                                   │     q_rel = conj(q_hand) ⊗ q_finger
-                                   ├── Feature vector (5 × quat)
-                                   ├── TinyML classifier (Edge Impulse)
-                                   └── BLE HID → typed letter / control signal
+5× MPU-6050 (fingers) ──┐
+                          ├── I²C mux ──┐
+XIAO onboard IMU (hand) ─┘              ├── Madgwick fusion, 100 Hz, on-device
+                                         │     → one orientation per sensor
+                                         ├── Relative orientation
+                                         │     q_rel = conj(q_hand) ⊗ q_finger
+                                         ├── (next) feature vector per gesture
+                                         ├── (next) on-device classifier
+                                         └── (next) BLE → typed letter
 ```
-
-Key design choices:
-
-- **MCU-side Madgwick** (not the MPU-6050 onboard DMP) — uniform, transparent, works through a mux.
-- **Relative-to-hand quaternions** — waving your arm changes nothing; curling a finger changes everything.
-- **Middle-phalanx placement** for fingers (proximal for thumb) — captures combined MCP+PIP bend, richest single-sensor curl signal.
-- **Left hand** — non-dominant, keeps the right hand free for soldering and laptop during live testing. Fixed for the dataset.
-
----
 
 ## Hardware
 
-| Part | Role | Notes |
-|---|---|---|
-| Seeed XIAO nRF52840 Sense | MCU + hand-reference IMU + BLE | Onboard LSM6DS3 on internal I²C — **not** behind the mux |
-| 5× MPU-6050 (GY-521) | Finger IMUs | All at I²C addr **0x68**; sit behind the mux |
-| PCA9548A | 8-channel I²C multiplexer | Addr **0x70**; selects one finger IMU at a time |
-| Half-finger glove (left) | Substrate | Finger IMUs on **middle phalanx**; thumb on **proximal phalanx** |
-| Leukoplast tape / cable ties | Mounting + strain relief | Wires fatigue at knuckles — anchor every run |
+| Part | Role |
+|---|---|
+| Seeed XIAO nRF52840 Sense | Microcontroller, hand-reference IMU, Bluetooth |
+| 5× MPU-6050 (clone) | One per finger |
+| PCA9548A | 8-channel I²C multiplexer — resolves the address collision from five identical sensors |
+| Half-finger glove, left hand | The physical substrate everything mounts to |
 
-Authoritative wiring + sensor-to-finger map: [`hardware/WIRING.md`](hardware/WIRING.md).
+Full parts list and wiring map: [`hardware/`](hardware/).
 
----
+## What this project actually exercises
 
-## Repository structure
+- **Embedded C/C++** on a real microcontroller — a timed sensor-read loop that has to hit a hard rate budget, not just "run eventually."
+- **I²C at the register level** — not just calling a library, but reading and writing specific control registers directly once the library abstraction turned out to be hiding a real bug.
+- **Sensor fusion** — quaternion-based orientation from raw accelerometer and gyroscope data, gyro-bias calibration, and reasoning carefully about coordinate frames instead of assuming they match.
+- **Systematic hardware debugging** — reading raw register values and CSV exports instead of guessing, on two separate real bugs that both looked like something else at first.
+- **Live data visualization** — a 3D hand model rendered in-browser from a live Bluetooth stream, and a handful of Python scripts for plotting and analyzing captured sensor data.
+- **Wireless protocol design** — a compact custom binary frame format over Bluetooth LE, including a checksum after a real bug taught me why I needed one.
+- (Coming) **TinyML** — training a small classifier and deploying it to run directly on the microcontroller, no cloud round-trip.
 
-```
-Cheirograph/
-├── README.md                  — this file
-├── CLAUDE.md                  — standing context for Claude Code
-├── GENERAL_PLAN.md            — roadmap, phases, Gantt
-├── DOCUMENTATION.md           — dated ledger of planned vs. achieved
-├── DECISIONS.md               — engineering forks and rationale
-├── .gitignore
-├── LICENSE
-│
-├── firmware/                  — numbered milestone folders (never overwritten)
-│   ├── 00_led_sanity_test/    — Phase 0: first flash, onboard RGB LED blink
-│   ├── 01_xiao_imu_test/      — Phase 1: XIAO onboard IMU over serial
-│   ├── 02_single_mpu6050_test/— Phase 2: single MPU-6050, direct I²C
-│   ├── 03_mux_channel_test/   — Phase 3: PCA9548A mux bring-up
-│   ├── 04_all_imus_raw/       — Phase 4: all 6 IMUs streaming @ 100 Hz
-│   ├── 05_madgwick_fusion/    — Phase 5: Madgwick filter per IMU
-│   ├── 06_relative_orientation/— Phase 6: relative quaternions + skeleton viz
-│   ├── 07_full_glove/         — Phase 7: mounted on glove, strain-relieved
-│   └── lib/                   — shared library code (only after it stabilises)
-│
-├── tools/                     — Python scripts: plotter, visualiser, data capture
-├── data/                      — labelled training samples
-├── ml/                        — Edge Impulse export, model artefacts
-│
-├── hardware/
-│   ├── BOM.md                 — bill of materials
-│   ├── WIRING.md              — authoritative sensor ↔ mux-channel ↔ finger map
-│   └── datasheets/            — board references, pinouts, spec sheets
-│
-└── docs/
-    ├── REFERENCES.md          — external sources, datasheets, libraries used
-    ├── log/                   — narrative devlog, one entry per phase
-    └── media/                 — photos, GIFs, serial traces
-```
+## A curated copy of everything, sorted by type
 
----
+If you want the raw material — every firmware file, every dataset, every image — without reading through nine stage folders, [`Data/`](Data/) has it all pulled together and sorted by type instead of by stage: firmware, CSVs, images, HTML, datasheets.
 
-## Tech and skills exercised
+## Getting it running
 
-Skills this project exercises, layer by layer (see [`GENERAL_PLAN.md`](GENERAL_PLAN.md) for which phases are actually complete):
+1. Arduino IDE, with the Seeed board package added (`File → Preferences → Additional Boards Manager URLs`, then install "Seeed nRF52 Boards" via Boards Manager).
+2. Select **Seeed XIAO nRF52840 Sense** as the board, and its COM port (double-tap RESET if the port doesn't show up — a nRF52840 quirk, not a broken board).
+3. Open the `.ino` in any stage folder above and upload it.
+4. Serial Monitor at 115200 baud.
 
-- **Embedded C/C++** — Arduino framework on PlatformIO; real-time sensor read/fuse loop at 100 Hz.
-- **I²C bus multiplexing** — PCA9548A channel switching; address collision resolution.
-- **Sensor fusion (Madgwick filter)** — quaternion-based orientation from raw accel + gyro; gyro-bias calibration; coordinate frame discipline.
-- **Real-time data visualisation** — Python / pyserial / matplotlib serial plotter; 3D hand-skeleton visualiser.
-- **TinyML / on-device inference** — Edge Impulse pipeline; model quantisation; deploying to nRF52840.
-- **BLE HID** — keystroke output over Bluetooth Low Energy.
-
----
-
-## Build phases
-
-The project is structured as eleven incremental, proven-before-advancing phases. Full roadmap, deliverables, and Gantt chart: [`GENERAL_PLAN.md`](GENERAL_PLAN.md).
-
----
-
-## Getting started
-
-> *This section will be expanded as phases land.*
-
-**Toolchain (current — Arduino IDE):**
-1. Arduino IDE with the Seeed board package — add
-   `https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json`
-   under **File → Preferences → Additional Boards Manager URLs**, then install
-   **Seeed nRF52 Boards** via Boards Manager.
-2. **Tools → Board →** *Seeed XIAO nRF52840 Sense*; select its COM port
-   (double-tap **RESET** if the port doesn't appear).
-3. Open the `.ino` in any `firmware/NN_*/` milestone folder and **Upload**.
-4. Serial Monitor at **115200 baud**.
-
-Full board reference, pinout, and library notes:
-[`hardware/datasheets/XIAO_nRF52840_Sense.md`](hardware/datasheets/XIAO_nRF52840_Sense.md).
-
-> A PlatformIO migration (for `platformio.ini` version pinning) is planned once the
-> milestone folders stabilise — see `DECISIONS.md`. Until then, the board-package and
-> library versions in use are recorded in each milestone README.
-
-- Python 3 for `tools/` — dependencies pinned in `tools/requirements.txt` (lands with the first script).
-
----
-
-## Scope
-
-Fingerspelling / static gestures only. Not full ASL translation — see [`GENERAL_PLAN.md`](GENERAL_PLAN.md) for the scope boundary.
-
----
+Board reference and pinouts: [`hardware/datasheets/`](hardware/datasheets/).
 
 ## License
 
