@@ -34,14 +34,14 @@ dist/
 # Jupyter
 .ipynb_checkpoints/
 
-# Large ML / data artefacts
+# Large ML / data artefacts (future labelled-gesture data collection — see
+# ml/future-data-collection-plan.md)
 ml/*.zip
 ml/*.tflite
 ml/*.h
-data/*.csv
-data/*.json
-data/**/*.npy
-data/phase8_labelled_gestures/*.csv
+ml/**/*.csv
+ml/**/*.json
+ml/**/*.npy
 
 # macOS
 .DS_Store
