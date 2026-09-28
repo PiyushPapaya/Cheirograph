@@ -30,12 +30,12 @@ Wave your arm around and `q_hand` and `q_finger` rotate together, so `q_rel` doe
 
 If this math is wrong, every labeled training sample built on top of it is wrong, and the classifier trained on those samples will be wrong too, in a way that's hard to diagnose after the fact. It'll just look like "the model doesn't work" with no obvious root cause. This is the last pure signal-processing step before real data collection starts, so it's worth verifying carefully rather than assuming it's correct because the formula looks right on paper.
 
-## What "done" looks like
+## The actual test, not just "does it produce numbers"
 
 - Five relative-quaternion streams, one per finger, on serial.
 - A 3D skeleton visualizer that mirrors your actual hand pose.
-- Rotate your wrist 90° with your fingers held still: the visualizer shouldn't change. Curl a finger: it should change clearly and immediately. That contrast is the actual test, not just "does it produce numbers," but "do the right things change it and the wrong things not."
+- Rotate your wrist 90° with your fingers held still: the visualizer shouldn't change. Curl a finger: it should change clearly and immediately. That contrast is what actually matters here, not "do the right things change it and the wrong things not."
 
-## Proof
+## What's here
 
 - [`main.cpp`](main.cpp), the relative-orientation implementation.

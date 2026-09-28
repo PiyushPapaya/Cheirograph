@@ -7,9 +7,9 @@ Here's the core problem this stage solves: every MPU-6050 on the bus answers at 
 ```mermaid
 sequenceDiagram
     participant XIAO
-    participant Mux as PCA9548A (0x70)
-    participant F0 as Finger 0 (0x68)
-    participant F1 as Finger 1 (0x68)
+    participant Mux as PCA9548A, addr 0x70
+    participant F0 as Finger 0, addr 0x68
+    participant F1 as Finger 1, addr 0x68
 
     XIAO->>Mux: select channel 0
     XIAO->>F0: read 0x68
@@ -17,10 +17,10 @@ sequenceDiagram
     XIAO->>Mux: select channel 1
     XIAO->>F1: read 0x68
     F1-->>XIAO: sensor 1 data
-    Note over XIAO,F1: Same address, different sensor.<br/>The mux is what tells them apart.
+    Note over XIAO,F1: Same address, different sensor. The mux is what tells them apart.
 ```
 
-## What "done" looks like
+## How I knew the mux was solid
 
 - Write a channel byte to `0x70`, then read `0x68`, and you get data back from the sensor on that specific channel.
 - All five channels confirmed individually readable, no cross-talk between them.
@@ -38,6 +38,6 @@ This stage never got its own standalone firmware. The Phase 4 sketch (all six IM
 
 Everything downstream depends on this switching loop working cleanly. If the mux is unreliable, nothing built on top of it can be trusted, not the raw reads, not the fusion, not the classifier. Better to prove it in isolation, with nothing else in the way, than to find out it's flaky three layers up the stack.
 
-## Proof
+## What's here
 
 - [`main.cpp`](main.cpp), the mux-handling code, reused directly by the Phase 4 sketch.

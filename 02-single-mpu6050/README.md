@@ -52,7 +52,7 @@ Switched to `MPU6050_light`, which doesn't gate on that check, and it worked imm
 
 Arduino IDE only compiles one sketch per folder, which is why the diagnostics are split into their own subfolders instead of living side by side.
 
-## What "done" looks like
+## How I knew the sensor was actually healthy
 
 - Sensor answers at `0x68`, streams cleanly, no I²C hangs or garbage values.
 - Flat and still, accel reads roughly `0, 0, 1` g, gravity sitting on Z. Tilting moves the axes the way you'd expect.
@@ -71,11 +71,11 @@ This is the real sanity check. Gravity has constant magnitude, so every point sh
 
 The gyro path loops out during each twist and comes back toward zero once I stop moving, angular rate, not angle, so it's tracking speed of rotation, not position. It never quite returns to a perfect zero. That small leftover bias, a couple deg/s, is exactly the kind of drift the Madgwick filter has to fight later.
 
-## What this isn't
+## Still missing
 
 No mux, no fusion, no other sensors. One sensor, proven honest.
 
-## Proof
+## What's here
 
 - CSV captures: [`accel_raw.csv`](accel_raw.csv), [`gyro_raw.csv`](gyro_raw.csv)
 - [`data-notes.md`](data-notes.md), original notes on how these captures were taken.
