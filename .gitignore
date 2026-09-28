@@ -81,3 +81,6 @@ social/
 /docs/REFERENCES.md
 /docs/log/README.md
 /docs/log/TEMPLATE.md
+
+# Gestura social-pipeline agent definitions — local-only, part of social/ kit
+/.claude/agents/gestura-*.md
