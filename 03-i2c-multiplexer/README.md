@@ -1,31 +1,27 @@
-# 03 — PCA9548A Mux Channel Test
+# 03 — I²C Multiplexer
 
-> *This folder's number is a flexible guide, not a permanent label. Rename or renumber as the real build dictates.*
+**Phase 3. Status: done.**
 
-**Phase:** 3
-**Status:** ✅ mux bring-up confirmed — see below. No standalone sketch was flashed for this folder; the mux got proven directly by the Phase 4 sketch's `scanChannels()` boot routine instead (all five channels ACKed 0x68, see `firmware/04_all_imus_raw/README.md`).
+Here's the core problem this stage solves: every MPU-6050 on the bus answers at the same I²C address, `0x68`. That's fine with one sensor. With five, you get an address collision — the bus can't tell them apart. The fix is a PCA9548A, an 8-channel I²C multiplexer. You write a channel-select byte to it (address `0x70`), and only that one channel is actually connected to the bus. Switch channels, and you're talking to a different sensor at the exact same address.
 
-**Goal:** Bring up the PCA9548A I²C multiplexer (addr 0x70); select channels one at a time; confirm that two and then all five MPU-6050s are individually readable.
+## What "done" looks like
 
-**"Done" looks like:**
-- Writing a channel-select byte to 0x70, then reading 0x68 returns data from the expected sensor.
-- All five channels confirmed working with no cross-talk.
-- Channel switching does not hang the bus.
+- Write a channel byte to `0x70`, then read `0x68`, and you get data back from the sensor on that specific channel.
+- All five channels confirmed individually readable, no cross-talk between them.
+- Switching channels doesn't hang the bus.
 
-**What this is not:** No fusion; raw data only.
+## The gotcha that actually matters here
 
-**Why it matters:** The entire glove depends on this switching loop. If the mux is unreliable, nothing else works. Debug it isolated before adding sensors.
+You must select the mux channel *before* you address `0x68`. Write `0x00` to `0x70` and every channel is disabled — that's a safe idle state. But if you forget to select a channel first, you end up reading from whichever channel was last active. That data looks completely plausible. It's just from the wrong finger. This is the kind of bug that doesn't announce itself; it just quietly gives you wrong readings that pass every sanity check.
 
-**Gotcha to watch for:** You must write the channel byte to 0x70 *before* addressing 0x68. Writing 0x00 to 0x70 disables all channels (safe idle). Forgetting to switch first results in reading from whichever channel was last selected — which looks like plausible data and is hard to catch.
+## Why no dedicated sketch lives here
 
----
+This stage never got its own standalone firmware. The Phase 4 sketch (all six IMUs) includes a boot-time channel scan that swept all eight mux channels and found `0x68` on exactly channels 0 through 4, nothing on 5 through 7, and no cross-talk. That satisfied every "done" criterion above without writing a separate test. If a channel ever misbehaves in isolation later, the scanning pattern from that sketch is the right starting point for a focused retest.
 
-## Bench result (2026-07-16)
+## Why this stage matters
 
-`firmware/04_all_imus_raw/04_all_imus_raw.ino`'s boot-time `scanChannels()`
-swept all 8 mux channels and found `0x68` on exactly channels 0–4, nothing on
-5–7 (unused), and no cross-talk — the "done" criteria above are satisfied by
-that run. No dedicated `03_*.ino` was written since the all-five-sensor
-sketch subsumed this test; if a channel ever misbehaves in isolation, use the
-`tcaSelect()` + `scanChannels()` pattern from that sketch as the starting
-point for a focused re-test.
+Everything downstream depends on this switching loop working cleanly. If the mux is unreliable, nothing built on top of it can be trusted — not the raw reads, not the fusion, not the classifier. Better to prove it in isolation, with nothing else in the way, than to find out it's flaky three layers up the stack.
+
+## Proof
+
+- [`main.cpp`](main.cpp) — the mux-handling code, reused directly by the Phase 4 sketch.

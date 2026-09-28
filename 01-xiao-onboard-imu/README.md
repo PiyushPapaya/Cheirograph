@@ -1,36 +1,32 @@
 # 01 — XIAO Onboard IMU Test
 
-> *This folder's number is a flexible guide, not a permanent label. Rename or renumber as the real build dictates.*
+**Phase 1. Status: done.**
 
-**Phase:** 1
+Once I knew the board was alive, the next question was whether its onboard IMU works. The XIAO nRF52840 Sense has an LSM6DS3 built in, and in this project it plays a specific role: it's the "hand reference" sensor. Every finger's orientation later gets measured relative to this one, so if this sensor is noisy or wrong, everything downstream is wrong too. Worth getting right early.
 
-**Goal:** Read the XIAO nRF52840 Sense's onboard LSM6DS3 IMU via its internal I²C bus and stream raw accelerometer + gyroscope values to serial at 115 200 baud.
+## What it does
 
-**"Done" looks like:**
-- Six values per line: `ax, ay, az, gx, gy, gz` in a stable CSV format.
-- No I²C errors, no NaN, consistent at ≥ 100 Hz.
-- You can tilt the XIAO and watch the accel values change predictably.
+Reads the onboard LSM6DS3 over its internal I²C bus and streams raw accelerometer and gyroscope values to serial as CSV: `millis, sensor_id, ax, ay, az, gx, gy, gz`. `sensor_id` is 0 here — that's the "hand" slot in the project's numbering, fingers come later at 1 through 5.
 
-**What this is not:** No fusion, no mux, no finger sensors — just the one onboard chip confirmed working.
+## The one detail that trips people up
 
-**Why it matters:** Every relative-orientation calculation for every finger is subtracted from this sensor's reading. If the hand reference is noisy or wrong, all five finger poses are wrong. Prove this one first.
+This chip answers at I²C address `0x6A`, not `0x68`. The external MPU-6050 finger sensors use `0x68`. It's easy to mix these up if you're moving fast, and if you do, you'll spend a while wondering why the "wrong" chip is responding.
 
----
+## What "done" looks like
 
-## Implementation notes
+- Six clean values per line, stable, no I²C errors, no NaNs.
+- Tilt the board and watch the accel numbers move the way you'd expect.
+- `begin()` returns 0. If it doesn't, that means the chip never even ACKed on the bus — check wiring before you go blaming your code.
 
-- **Library:** [Seeed_Arduino_LSM6DS3](https://github.com/Seeed-Studio/Seeed_Arduino_LSM6DS3) —
-  install via Arduino Library Manager (search "Seeed LSM6DS3") or drop the repo into `libraries/`.
-- **I²C address is `0x6A`, not `0x68`.** The onboard LSM6DS3TR-C answers at `0x6A`;
-  `0x68` is what the external MPU-6050 finger sensors use. Easy to mix up.
-- **`begin()` returns 0 on success.** Non-zero means the chip never ACKed on the bus —
-  check wiring/board package before blaming code.
-- **Output follows the project serial contract:** `millis,sensor_id,aX,aY,aZ,gX,gY,gZ`,
-  with `sensor_id = 0` (hand). The timestamp gives fusion a real `dt` later and lets the
-  loop rate be verified from logs instead of assumed.
-- **Versions used** (until PlatformIO pinning lands): Seeed nRF52 board package
-  `<fill in from Boards Manager>`, Seeed_Arduino_LSM6DS3 `<fill in from Library Manager>`.
-- **This first version runs at ~20 Hz** (`delay(50)`), which is plenty for eyeballing that
-  the values move sensibly when you tilt the board. The ≥ 100 Hz target above belongs to the
-  final fused read loop, not this raw sanity read — don't over-optimise the test.
+## What this isn't
 
+No fusion yet, no mux, no finger sensors. Just confirming this one chip is honest.
+
+## Library
+
+[Seeed_Arduino_LSM6DS3](https://github.com/Seeed-Studio/Seeed_Arduino_LSM6DS3), installed through the Arduino Library Manager (search "Seeed LSM6DS3").
+
+## Proof
+
+- [`01_xiao_imu_test.ino`](01_xiao_imu_test.ino) — the sketch.
+- [`story.md`](story.md) — how this session actually went.
