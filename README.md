@@ -1,102 +1,116 @@
 # Cheirograph
 
-*cheir* (χείρ), hand. *graph* (γράφω), writing. A glove that reads your hand's shape and turns it into text.
+*cheir* (χείρ) = hand. *graph* (γράφω) = writing. A glove that reads the shape of your hand.
 
-Cheirograph is a wearable gesture-tracking glove I'm building solo, end to end: six motion sensors, real-time sensor fusion running on a microcontroller, and eventually an on-device machine learning model that recognizes fingerspelling. This repo is both the code and an honest record of how it got built, including the parts that broke on the first try.
+![Cheirograph glove with all six sensors mounted and live](07-full-glove-assembly/glove_mount_sensors_live.jpg)
 
-## What it actually does
+Cheirograph is a wearable gesture glove for the left hand. Six IMUs track the fingers and the back of the hand. The goal is to recognize static fingerspelling shapes on the device and send the letter out over Bluetooth. I'm building it alone, end to end, and this repo is the code plus an honest log of how it went, including what broke.
 
-The glove has six IMUs (accelerometer and gyroscope chips): one on each of five fingers, plus one on the back of the hand as a reference. Each sensor's raw motion data gets fused into an orientation using a Madgwick filter, running at 100 Hz on the microcontroller itself, not offloaded to a laptop. Every finger's orientation is then expressed relative to the hand, so waving your arm around changes nothing, but curling a finger changes the signal cleanly. That relative-orientation data is what a classifier will eventually read to recognize static hand shapes and output them as text over Bluetooth.
+## Status
 
-Scope, deliberately: fingerspelling and a fixed set of static hand shapes. Not full sign language. Real signing also involves hand location relative to the body, motion trajectories, two hands working together, and facial expression, none of which six IMUs on one hand can capture. An achievable target mattered more to me than an impressive-sounding one I couldn't actually finish.
+This is what works today and what doesn't. I'd rather say it here than have you find out in the code.
 
-## Why this project
+| Layer | Status | Where |
+|---|---|---|
+| Six IMUs read through an I²C mux | Done, ~94 Hz measured | [Stage 04](04-all-six-imus-raw/) |
+| Madgwick fusion on the microcontroller | Done, ~85 Hz measured, bench-tested | [Stage 05](05-madgwick-fusion/) |
+| Sensors mounted on a real glove | Done, 30 min wear test | [Stage 07](07-full-glove-assembly/) |
+| Wireless stream + live 3D dashboard | Done | [Stage 08](08-ble-wireless-dashboard/) |
+| Relative orientation (finger vs. hand) | Works in the dashboard (JS). **Not in the firmware yet.** | [Stage 06](06-relative-orientation/), [`tools/`](tools/) |
+| Labelled dataset | Not started. Capture tooling is built. | [`ml/`](ml/) |
+| On-device classifier | Not started | [`ml/`](ml/) |
+| Bluetooth HID (glove types the letter) | Not started | |
 
-I wanted one project where I genuinely understood every layer, from the electrical signal to the final output, instead of gluing together libraries I didn't fully trust. That meant hitting real hardware bugs and root-causing them properly instead of working around them. It happened more than once, and each time taught me more than a version of this project where everything just worked would have.
+So right now it is a working sensing and visualization system. The recognition part is still ahead.
 
-## How it's built
+## Measured results
+
+| What | Result | Source |
+|---|---|---|
+| Loop rate, 6 IMUs raw | ~94 Hz (target 100) | [Stage 04](04-all-six-imus-raw/) |
+| Loop rate with Madgwick on 6 IMUs | ~85 Hz | [Stage 05](05-madgwick-fusion/) |
+| Roll/pitch drift, hand held still, ~30 s | under 1.7°/min | [Stage 05](05-madgwick-fusion/) |
+| Yaw drift, hand held still | 0.2 to 2.1°/min, expected without a magnetometer | [Stage 05](05-madgwick-fusion/) |
+| Wear test | 30 min, glove taken off and on, no dropped connection | [Stage 07](07-full-glove-assembly/) |
+| Stuck-sensor detection | 50 identical frames (~1 s) triggers a flag | [Stage 08](08-ble-wireless-dashboard/) |
+
+Things I have **not** measured yet: end-to-end Bluetooth latency, real throughput after the connection fix, drift over several minutes, and any classifier accuracy. Those are on the list.
+
+## How it works
 
 ```mermaid
 flowchart LR
-    F[5x MPU-6050, one per finger] --> MUX[PCA9548A I2C mux]
-    H[XIAO onboard IMU, hand reference] --> FUSE
-    MUX --> FUSE[Madgwick fusion, 100 Hz, on device]
-    FUSE --> REL[Relative orientation]
-    REL --> FEAT[Feature vector, per gesture]
-    FEAT --> CLS[On device classifier]
-    CLS --> BLE[BLE, typed letter]
+    F[5 finger IMUs] --> MUX[I2C mux]
+    MUX --> MCU[XIAO nRF52840]
+    H[Onboard IMU, hand reference] --> MCU
+    MCU -->|BLE frames| DASH[Browser dashboard]
+    DASH --> REL[Fusion and relative orientation]
 ```
 
-`Feature vector`, `On device classifier`, and the final BLE output are the next milestones. Not built yet. The relative-orientation math right before them is what's proven and working today.
+The finger IMUs are all MPU-6050 modules with the same I²C address. The PCA9548A mux lets the board talk to one at a time. The board's own IMU sits flat on the back of the hand and acts as the reference.
+
+The idea that the whole project rests on: a finger's pose should be its orientation relative to the hand, not relative to the room.
+
+```
+q_rel = conjugate(q_hand) ⊗ q_finger
+```
+
+If you wave your arm, both quaternions rotate together and `q_rel` stays the same. If you curl a finger, only `q_finger` moves. That's what makes the signal usable for classification. Details in [Stage 06](06-relative-orientation/).
+
+**Scope.** Fingerspelling and a fixed set of static hand shapes. Not sign language. Real signing also needs hand position, motion, two hands and facial expression, and six IMUs on one hand can't capture that.
 
 ## The build, stage by stage
 
-```mermaid
-flowchart TD
-    S00[00 LED sanity test] --> S01[01 XIAO onboard IMU]
-    S01 --> S02[02 Single MPU-6050]
-    S02 --> S03[03 I2C multiplexer]
-    S03 --> S04[04 All six IMUs raw]
-    S04 --> S05[05 Madgwick fusion]
-    S05 --> S06[06 Relative orientation]
-    S06 --> S07[07 Full glove assembly]
-    S07 --> S08[08 BLE wireless dashboard]
-```
-
-Each folder below is a self-contained milestone: the actual firmware or code for that stage, the raw data and photos that prove it worked, and a write-up of what happened, including what broke. They build on each other in order. I didn't skip a layer before proving the one under it.
+Every folder is one milestone. It has the code, the raw data and photos, and a write-up. I don't delete old stages, so the history stays readable.
 
 | Stage | What it proves |
 |---|---|
-| [00 - LED Sanity Test](00-led-sanity-test/) | The board flashes and runs code at all |
-| [01 - XIAO Onboard IMU](01-xiao-onboard-imu/) | The hand-reference sensor reads clean |
-| [02 - Single MPU-6050](02-single-mpu6050/) | One finger sensor works, and where I found the sensors were mislabeled clones |
-| [03 - I²C Multiplexer](03-i2c-multiplexer/) | Five identical-address sensors can be told apart on one bus |
-| [04 - All Six IMUs Raw](04-all-six-imus-raw/) | All six sensors read together at close to 100 Hz |
-| [05 - Madgwick Fusion](05-madgwick-fusion/) | Raw motion data becomes real orientation, per sensor |
-| [06 - Relative Orientation](06-relative-orientation/) | Finger orientation gets expressed relative to the hand, the core idea of the whole project |
-| [07 - Full Glove Assembly](07-full-glove-assembly/) | Everything survives being mounted on an actual hand and worn |
-| [08 - BLE Wireless Dashboard](08-ble-wireless-dashboard/) | The whole chain works live, wirelessly, and where the hardest bug of the project got found and fixed |
+| [00 LED sanity test](00-led-sanity-test/) | The board flashes and runs code |
+| [01 XIAO onboard IMU](01-xiao-onboard-imu/) | The hand-reference sensor reads clean |
+| [02 Single MPU-6050](02-single-mpu6050/) | One finger sensor works, and the sensors turn out to be clones |
+| [03 I²C multiplexer](03-i2c-multiplexer/) | Five same-address sensors share one bus |
+| [04 All six IMUs raw](04-all-six-imus-raw/) | All six read together at close to 100 Hz |
+| [05 Madgwick fusion](05-madgwick-fusion/) | Raw motion becomes orientation, per sensor |
+| [06 Relative orientation](06-relative-orientation/) | Finger pose relative to the hand (firmware still a stub) |
+| [07 Full glove assembly](07-full-glove-assembly/) | It survives being worn |
+| [08 BLE wireless dashboard](08-ble-wireless-dashboard/) | Live wireless stream, and the hardest bug so far |
 
-## The two hardest problems I actually solved
+## The two hardest bugs
 
-**The sensors weren't what they claimed to be.** Every "MPU-6050" module I bought is actually a clone from a related chip family. It responds fine on the I²C bus, so wiring checks pass. But a library that only knows the real chip's wake-up sequence leaves it half-asleep, returning a fixed, stuck value instead of live data. I diagnosed this by reading the chip's identity register directly instead of trusting a library's judgment, then hit it again months later at full scale: four of five finger sensors streaming bit-identical "stuck" values while looking otherwise plausible. The full story, with the actual raw CSV evidence, is in [Stage 02](02-single-mpu6050/) and [Stage 08](08-ble-wireless-dashboard/).
+**The sensors weren't what they said they were.** The "MPU-6050" modules are clones. Their `WHO_AM_I` register returns `0x72`, not `0x68`. They answer on the bus, so wiring checks pass, but a library that only knows the real chip leaves them half asleep and stuck on one value. I found it by reading the identity register directly. Later it came back at full scale: four of five finger sensors sent bit-identical values while looking plausible (about 1 g). A working sensor always jitters by around 20 LSB, so identical values for 50 frames means the output is frozen. The firmware now checks for that all the time. Evidence is in [Stage 02](02-single-mpu6050/) and [Stage 08](08-ble-wireless-dashboard/).
 
-**A wireless link dying under load looked like a sensor problem. It wasn't.** The dashboard would connect and then sit stuck at 0 Hz. Adding real instrumentation, logging exactly how long each part of the loop took, showed the sensors and fusion math were fine. The Bluetooth write call itself was blocking for over 100 milliseconds because the radio link's default bandwidth settings were too conservative for the data rate I needed. Widening the connection parameters fixed it completely. Lesson that stuck: measure before you guess which part of the system is actually slow.
+**A Bluetooth problem that looked like a sensor problem.** The dashboard connected and then sat at 0 Hz. I added timing around each part of the loop. Sensors and fusion were fine. The BLE write call itself blocked for over 100 ms because the default connection parameters were too conservative for my data rate. Changing them fixed it. The lesson: measure before you guess what is slow.
 
 ## Hardware
 
 | Part | Role |
 |---|---|
-| Seeed XIAO nRF52840 Sense | Microcontroller, hand-reference IMU, Bluetooth |
-| 5× MPU-6050 (clone) | One per finger |
-| PCA9548A | 8-channel I²C multiplexer, resolves the address collision from five identical sensors |
-| Half-finger glove, left hand | The physical substrate everything mounts to |
+| Seeed XIAO nRF52840 Sense | MCU, hand-reference IMU, Bluetooth |
+| 5× MPU-6050 (clones) | One per finger |
+| PCA9548A | I²C mux, fixes the address collision |
+| Half-finger glove, left hand | Everything mounts to it |
 
-Full parts list and wiring map: [`hardware/`](hardware/).
+Parts list and wiring: [`hardware/`](hardware/).
 
-## What this project actually exercises
+## Skills this project uses
 
-- **Embedded C/C++** on a real microcontroller. A timed sensor-read loop that has to hit a hard rate budget, not just "run eventually."
-- **I²C at the register level.** Not just calling a library, but reading and writing specific control registers directly once the library abstraction turned out to be hiding a real bug.
-- **Sensor fusion.** Quaternion-based orientation from raw accelerometer and gyroscope data, gyro-bias calibration, and careful reasoning about coordinate frames instead of assuming they match.
-- **Systematic hardware debugging.** Reading raw register values and CSV exports instead of guessing, on two separate real bugs that both looked like something else at first.
-- **Live data visualization.** A 3D hand model rendered in-browser from a live Bluetooth stream, plus a handful of Python scripts for plotting and analyzing captured sensor data.
-- **Wireless protocol design.** A compact custom binary frame format over Bluetooth LE, including a checksum added after a real bug taught me why I needed one.
-- (Coming) **TinyML.** Training a small classifier and deploying it to run directly on the microcontroller, no cloud round-trip.
+- **Embedded C++** with a hard timing budget per loop.
+- **I²C at register level.** Reading and writing config registers directly after the library hid a real bug.
+- **Sensor fusion.** Quaternions, Madgwick, gyro-bias calibration, and careful coordinate frames.
+- **Hardware debugging.** Raw register values and CSV evidence instead of guessing.
+- **Data visualization.** Live 3D hand in the browser over Web Bluetooth, plus Python scripts for analysis.
+- **Protocol design.** A compact binary BLE frame with a checksum, added after a real corruption bug.
+- **TinyML (planned).** Small classifier running on the MCU.
 
-## A curated copy of everything, sorted by type
+## Run it
 
-If you want the raw material, every firmware file, every dataset, every image, without reading through nine stage folders, [`Data/`](Data/) has it all pulled together and sorted by type instead of by stage: firmware, CSVs, images, HTML, datasheets.
+1. Arduino IDE with the Seeed board package ("Seeed nRF52 Boards" in Boards Manager).
+2. Select **Seeed XIAO nRF52840 Sense** and its port. If no port shows up, double-tap RESET.
+3. Open the `.ino` in a stage folder and upload. Serial Monitor at 115200 baud.
+4. For the dashboard, open [`tools/handrig_dashboard.html`](tools/handrig_dashboard.html) in Chrome or Edge.
 
-## Getting it running
+Python tools: `cd tools && pip install -r requirements.txt`. Board info: [`hardware/datasheets/`](hardware/datasheets/).
 
-1. Arduino IDE, with the Seeed board package added (`File → Preferences → Additional Boards Manager URLs`, then install "Seeed nRF52 Boards" via Boards Manager).
-2. Select **Seeed XIAO nRF52840 Sense** as the board, and its COM port (double-tap RESET if the port doesn't show up, a known nRF52840 quirk, not a broken board).
-3. Open the `.ino` in any stage folder above and upload it.
-4. Serial Monitor at 115200 baud.
+## Contributing and license
 
-Board reference and pinouts: [`hardware/datasheets/`](hardware/datasheets/).
-
-## License
-
-MIT. See [`LICENSE`](LICENSE).
+Questions and ideas are welcome, see [`CONTRIBUTING.md`](CONTRIBUTING.md). MIT license, see [`LICENSE`](LICENSE).
