@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this project, please cite it like this."
+title: "Cheirograph: a left-hand IMU gesture-tracking glove"
+type: software
+authors:
+  - family-names: Nagpal
+    given-names: Piyush
+repository-code: "https://github.com/PiyushPapaya/Cheirograph"
+license: MIT
+keywords: [imu, sensor-fusion, madgwick, wearable, gesture-recognition, nrf52840, tinyml]

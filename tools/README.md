@@ -1,7 +1,8 @@
 # tools/ — Python Utility Scripts
 
-Python 3 scripts for interacting with the glove over serial during development.
-None are implemented yet — this README documents what will land here.
+Python 3 scripts for plotting and analysing captures from the glove, plus the
+live BLE dashboard. The first section is what exists today. "Planned scripts"
+further down is not built yet.
 
 ---
 
@@ -12,9 +13,9 @@ None are implemented yet — this README documents what will land here.
 (skips `#` comments and a header row), draws the samples as a time-coloured path
 through 3D space, and either opens a window or saves a PNG.
 - Dependency: `numpy`, `matplotlib`.
-- Used to plot the Phase 2 accel/gyro bench captures → `docs/media/phase2_*_3d.png`.
+- Used to plot the Phase 2 accel/gyro bench captures .
 ```bash
-python plot_imu_3d.py ../data/phase2_single_mpu6050/gyro_raw.csv --kind gyro
+python plot_imu_3d.py <capture.csv> --kind gyro
 ```
 
 ### `analyze_multi_imu.py`  *(Phase 3/4)*
@@ -24,7 +25,7 @@ reference sensor, and a frame-to-frame noise estimate over the calmest
 stretch of the run.
 - Dependency: `numpy`.
 ```bash
-python analyze_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv
+python analyze_multi_imu.py ../04-all-six-imus-raw/movement_test.csv
 ```
 
 ### `analyze_calibration.py`  *(Phase 4)*
@@ -35,7 +36,7 @@ the liveness check; a sensor stuck at exact zeros (dead mid-run) shows up
 immediately.
 - Dependency: `numpy`.
 ```bash
-python analyze_calibration.py ../data/phase4_six_imu_capture/capture_02_full_session.csv
+python analyze_calibration.py ../04-all-six-imus-raw/capture_02_full_session.csv
 ```
 
 ### `plot_6imu_3d.py`  *(Phase 4)*
@@ -46,9 +47,9 @@ trajectory that stops dead at a point. The GIF redraws each sensor's
 instantaneous accel vector as an arrow from the origin, frame by frame.
 - Dependency: `numpy`, `matplotlib`, `pillow` (for the GIF writer).
 ```bash
-python plot_6imu_3d.py ../data/phase4_six_imu_capture/capture_02_full_session.csv \
-    --save-static ../docs/media/phase4_6imu_accel_3d.png \
-    --save-gif ../docs/media/phase4_6imu_accel_3d.gif --stride 4
+python plot_6imu_3d.py ../04-all-six-imus-raw/capture_02_full_session.csv \
+    --save-static ../04-all-six-imus-raw/6imu_accel_3d.png \
+    --save-gif ../04-all-six-imus-raw/6imu_accel_3d.gif --stride 4
 ```
 
 ### `plot_multi_imu.py`  *(Phase 3/4)*
@@ -57,7 +58,7 @@ one coloured line per sensor, plus a cross-sensor-spread subplot on a shared
 time axis.
 - Dependency: `numpy`, `matplotlib`.
 ```bash
-python plot_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv --save ../docs/media/phase3-4_five_imu_movement.png
+python plot_multi_imu.py ../04-all-six-imus-raw/movement_test.csv --save ../04-all-six-imus-raw/five_imu_movement.png
 ```
 
 ---
@@ -66,7 +67,7 @@ python plot_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv --save
 Live BLE dashboard — no build step, no server, open the file directly in
 Chrome or Edge (desktop or Android, needs Web Bluetooth). Connects to the
 glove's Nordic UART service, decodes the 79-byte binary frame streamed by
-`firmware/08_ble_dashboard/08_ble_dashboard.ino`, runs Madgwick fusion
+`08-ble-wireless-dashboard/08_ble_dashboard.ino`, runs Madgwick fusion
 per-sensor client-side in JS, and renders a live Three.js 3D hand plus raw
 accel/gyro trace canvases and a 10-second gyro-bias calibration per sensor.
 Flags a sensor "bad" and freezes it in the 3D view if its calibrated accel
@@ -74,9 +75,7 @@ magnitude, gyro bias, or gyro noise falls outside a healthy-at-rest range,
 so a broken finger sensor can't make the whole hand look broken.
 - Dependency: none (vanilla JS + Three.js from CDN).
 - Frame format and the clone-IMU init bug this uncovered are documented in
-  `firmware/08_ble_dashboard/README.md`.
-- **Known gap:** the dashboard does not yet remap raw sensor axes into the
-  3D model's frame before fusion — see `DECISIONS.md` (2026-07-19).
+  `08-ble-wireless-dashboard/README.md`.
 
 ## Planned scripts
 
@@ -96,7 +95,7 @@ Live serial plotter for raw IMU data.
 
 ### `capture_data.py`
 Labelled training-data capture tool.
-- Prompts for a label (A–Z or custom), records N samples, saves to `data/<label>/`.
+- Prompts for a label (A–Z or custom), records N samples, saves to a per-label folder.
 - Used in Phase 8 for Edge Impulse dataset collection.
 
 ---
