@@ -2,8 +2,6 @@
 
 *cheir* (χείρ) = hand. *graph* (γράφω) = writing. A glove that reads the shape of your hand.
 
-![Cheirograph glove with all six sensors mounted and live](07-full-glove-assembly/glove_mount_sensors_live.jpg)
-
 Cheirograph is a wearable gesture glove for the left hand. Six IMUs track the fingers and the back of the hand. The goal is to recognize static fingerspelling shapes on the device and send the letter out over Bluetooth. I'm building it alone, end to end, and this repo is the code plus an honest log of how it went, including what broke.
 
 ## Status
