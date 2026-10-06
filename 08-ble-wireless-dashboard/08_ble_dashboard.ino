@@ -11,7 +11,7 @@
  *   family), not the genuine MPU-6050's 0x68. MPU6050_light talks to them but
  *   never does a proper reset/wake/enable-axes sequence, so several boot
  *   half-asleep and return FIXED register patterns — the "stuck 0x3F00" and
- *   "+/-0x2000 linear ramp" garbage seen in data/phase7_5_ble_diagnostics/.
+ *   "+/-0x2000 linear ramp" garbage seen in this folder's CSV captures.
  *   v3 dropped MPU6050_light for the fingers and drove them by raw I2C.
  *
  * WHAT v4 ADDS (and why each one is here)
