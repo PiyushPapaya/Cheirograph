@@ -5,7 +5,7 @@
 Once the glove was wired and mounted, I wanted a way to actually see it working, untethered, in real time, in a browser, before committing to the effort of collecting a labeled training set. This stage streams all six IMUs over Bluetooth LE to a live dashboard that renders a 3D hand model plus per-sensor accel/gyro traces. It's also where the hardest debugging session of the whole project happened.
 
 **Firmware:** [`08_ble_dashboard.ino`](08_ble_dashboard.ino), flash it with the Arduino IDE onto the XIAO, using the Adafruit nRF52 board package.
-**Dashboard:** `handrig_dashboard.html`, open it directly in Chrome or Edge, desktop or Android, no build step, no server. Canonical copy lives in the project's `tools/` folder; a copy sits [here](handrig_dashboard.html) too, as this stage's actual deliverable.
+**Dashboard:** `handrig_dashboard.html`, open it directly in Chrome or Edge, desktop or Android, no build step, no server. The canonical copy is `tools/handrig_dashboard.html` (the `tools/verify_*.mjs` scripts read it). Byte-identical copies sit [here](handrig_dashboard.html) (this stage's deliverable) and in `Data/html/`; copy the canonical file over both after every edit and compare with `md5sum`.
 
 ## Why this is v4, not v1
 
