@@ -154,8 +154,9 @@ With all 5 finger sensors taped to the glove and the hand IMU seated flat:
 - **Consequence**: `tools/handrig_dashboard.html`'s 3D model uses
   `+Z = forward (fingertip), +Y = up`, which does not match either sensor's
   raw frame directly. A per-sensor axis remap is needed before the data feeds
-  Madgwick — **not yet implemented**, tracked in
-  `firmware/08_ble_dashboard/README.md` and `DECISIONS.md` (2026-07-19).
+  Madgwick. This is **implemented** in the dashboard (`REMAPS` / `applyRemap`, dashboard v4); the finger
+  remap is measured, the hand's forward axis is picked from the UI. See
+  `08-ble-wireless-dashboard/README.md` and `DECISIONS.md` (2026-07-19).
 - Leukoplast tape used to mount the finger sensors was checked and ruled out
   as a source of bad *initial* readings (non-conductive, can't cause a stuck
   digital register) — see `DECISIONS.md` for the actual root cause found that
