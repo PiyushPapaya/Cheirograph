@@ -1,245 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gestura — 6-IMU live</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous"></script>
 
 <style>
+  /* ==========================================================================
+     Gestura dashboard — monochrome drafting-sheet style.
+     Rules of the house:
+       - black ground, white linework, greys for hierarchy. NO hue anywhere.
+       - 1px hairlines. No radius, no shadow, no blur, no gradient.
+       - one typeface (mono). Numbers are tabular so they never jitter.
+       - state is never carried by colour alone: every state has a glyph + word,
+         and the three axes are told apart by LINE STYLE (solid / dashed / dotted).
+     The tokens below are the single source of truth: the canvas traces and the
+     three.js scene read them back through getComputedStyle (see THEME in the JS).
+     ========================================================================== */
   :root{
-    --bg:#0A0B0C; --bg2:#0A0B0C; --panel:#111111; --panel2:#161616;
-    --line:#30343B; --line2:#3c414a;
-    --tx:#FAFAF9; --mut:#9CA3AB; --dim:#5A6069;
-    --accent:#C87941; --accent-deep:#8F5527; --accent-light:#DA9A67;
-    --good:#4C8064; --error:#C0392B; --warn:#D8A23A; --info:#3F6FA8;
-    --x:#B08D57; --y:#4A7C6F; --z:#7A6BA8;
-    --c100:#F0DBC6; --glacier:#DDE4E3;
-    --track:#202227;            /* gauge/bar track — reads as an empty instrument channel */
-    --live:#4C8064; --ref:#D8A23A; --bad:#C0392B;
-    --font-display:"Space Grotesk",system-ui,sans-serif;
-    --font-body:"Inter",system-ui,sans-serif;
-    --font-mono:"JetBrains Mono",ui-monospace,monospace;
-    --r:10px;
+    --bg:#000; --ink:#fff; --ink-2:#b4b4b4; --ink-3:#8a8a8a;   /* #8a8a8a on #000 = 5.9:1, passes AA */
+    --line:#2a2a2a; --line-2:#4a4a4a;
+    --font:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
+  html,body{margin:0}
   body{
-    background:var(--bg);
-    color:var(--tx); font-family:var(--font-display);
-    -webkit-font-smoothing:antialiased; height:100vh; display:flex; flex-direction:column; overflow:hidden;
-    position:relative;
+    background:var(--bg); color:var(--ink); font-family:var(--font); font-size:12px; line-height:1.4;
+    -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+    height:100vh; display:flex; flex-direction:column; overflow:hidden;
   }
-  .mono{font-family:var(--font-mono)}
-  .label{font-family:var(--font-body)}
+  b{font-weight:700}
+  .mono{font-family:var(--font)}
+  .caps{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 
-  .ambient{position:fixed;inset:0;z-index:0;pointer-events:none;
-    background:
-      radial-gradient(1200px 600px at 82% -8%, rgba(200,121,65,.07), transparent 60%),
-      radial-gradient(900px 500px at 6% 108%, rgba(74,124,111,.05), transparent 62%)}
-  .ambient::after{content:"";position:absolute;inset:0;filter:url(#grain);opacity:1}
-
-  header{display:flex;align-items:center;gap:16px;padding:13px 20px;border-bottom:1px solid var(--line);
-    background:linear-gradient(180deg,#0d0f11,transparent);flex:none;position:relative;z-index:1}
-  .brand{display:flex;align-items:center;gap:11px;letter-spacing:.02em;padding-right:16px;border-right:1px solid var(--line)}
-  .brand .mark{flex:none;display:block}
-  .brand .wm{display:flex;flex-direction:column;line-height:1}
-  .brand b{font-weight:700;font-size:clamp(17px,1.8vw,21px);font-family:var(--font-display);letter-spacing:.4px}
-  .brand span{color:var(--mut);font-size:9px;font-weight:500;letter-spacing:.34em;text-transform:uppercase;font-family:var(--font-body);margin-top:3px}
-  .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);transition:.25s}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
-  .dot.on{background:var(--good);box-shadow:0 0 12px 1px var(--good);animation:pulse 1.8s ease-in-out infinite}
-  .dot.err{background:var(--error);box-shadow:0 0 12px 1px var(--error)}
-  .status{font-size:12px;color:var(--mut);min-width:140px;font-family:var(--font-body);letter-spacing:.02em}
+  /* ---------- header / title block ---------- */
+  header{display:flex;align-items:stretch;flex:none;border-bottom:1px solid var(--ink);flex-wrap:wrap}
+  .titleblock{display:flex;align-items:stretch;border-right:1px solid var(--ink)}
+  .tb-name{display:flex;flex-direction:column;justify-content:center;gap:3px;padding:12px 20px}
+  .tb-name b{font-size:16px;letter-spacing:.28em}
+  .tb-name span{font-size:10px;letter-spacing:.18em;color:var(--ink-3)}
+  .tb-meta{display:flex;border-left:1px solid var(--line)}
+  .tb-meta div{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 16px;
+    border-right:1px solid var(--line);font-size:11px}
+  .tb-meta div:last-child{border-right:0}
+  .tb-meta i{font-style:normal;font-size:9px;letter-spacing:.16em;color:var(--ink-3)}
+  .conn-state{display:flex;align-items:center;gap:10px;padding:0 20px;min-width:200px}
+  .status{font-size:11px;color:var(--ink-2);letter-spacing:.04em}
+  /* status glyph: hollow ring = idle, filled disc = streaming, diamond = error */
+  .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--ink-3);flex:none}
+  .dot.on{background:var(--ink);border-color:var(--ink);animation:blink 1.8s ease-in-out infinite}
+  .dot.err{border-radius:0;transform:rotate(45deg);background:var(--ink);border-color:var(--ink);animation:none}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
   .spacer{flex:1}
-  /* telemetry = an instrument cluster: hairline-separated cells, tiny Inter caps
-     labels over mono tabular values. */
-  .telem{display:flex;align-items:stretch;font-family:var(--font-body);
-    border:1px solid var(--line);border-radius:9px;background:rgba(17,17,17,.6);overflow:hidden}
-  .telem>div{display:flex;flex-direction:column;gap:2px;padding:6px 15px;justify-content:center;
-    border-left:1px solid var(--line)}
-  .telem>div:first-child{border-left:0}
-  .telem .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
-  .telem .v{font-size:15px;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--tx)}
-  .telem .v.warnv{color:var(--error)}
-  .telem .v.hl{color:var(--accent);text-shadow:0 0 12px rgba(200,121,65,.5)}
-  button{font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--tx);
-    background:var(--panel2);border:1px solid var(--line2);padding:9px 15px;border-radius:8px;cursor:pointer;
-    transition:transform .18s cubic-bezier(0.32,0.72,0,1), box-shadow .18s cubic-bezier(0.32,0.72,0,1),
-      border-color .18s cubic-bezier(0.32,0.72,0,1), background .18s cubic-bezier(0.32,0.72,0,1), color .18s cubic-bezier(0.32,0.72,0,1)}
-  button:hover{border-color:var(--accent);color:#fff;transform:translateY(-1px)}
-  button:active{transform:scale(.97)}
-  button.primary{background:var(--accent);color:#160D05;border-color:transparent}
-  button.primary:hover{filter:brightness(1.06);box-shadow:0 0 0 1px var(--accent-light), 0 4px 16px -4px rgba(200,121,65,.35)}
-  button.ref{background:transparent;border-color:var(--warn);color:var(--warn)}
-  button.ref:hover{background:var(--warn);color:#1a1400}
-  button.info{background:transparent;border-color:var(--info);color:var(--info)}
-  button.info:hover{background:var(--info);color:#04121a}
-  button.rec{border-color:var(--error);color:var(--error)}
-  button.rec.active{background:var(--error);color:#1a0006;border-color:transparent}
-  button:disabled{opacity:.4;cursor:not-allowed;transform:none}
-  button.mini{padding:6px 11px;font-size:12px}
-  button:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid var(--accent-light);
-    outline-offset: 2px;
-  }
 
-  main{flex:1;display:grid;grid-template-columns:1.5fr 1fr;min-height:0;position:relative;z-index:1}
-  .stage{position:relative;z-index:1;border-right:1px solid var(--line);min-height:0}
-  #gl{position:absolute;inset:0;display:block}
-  .hint{position:absolute;top:16px;left:18px;color:var(--dim);font-size:12px;font-family:var(--font-body)}
-  .stagefoot{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
-    padding:14px 18px;background:linear-gradient(0deg,rgba(10,14,20,.94),transparent)}
-  .ctrl{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12px;font-family:var(--font-body)}
-  input[type=range]{width:110px;accent-color:var(--accent)}
-  .seg{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
-  .seg button{border:0;border-radius:0;background:transparent;padding:7px 12px;font-size:12px;color:var(--mut)}
-  .seg button.on{background:var(--panel2);color:var(--tx)}
-  select{font-family:var(--font-mono);font-size:11px;color:var(--tx);background:var(--panel2);
-    border:1px solid var(--line2);border-radius:7px;padding:6px 8px;cursor:pointer}
+  /* telemetry = a ruled strip: tiny caps key over a tabular value */
+  .telem{display:flex;align-items:stretch;margin-left:auto;border-left:1px solid var(--line)}
+  .telem>div{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 16px;
+    min-width:84px;border-right:1px solid var(--line)}
+  .telem .k{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+  .telem .v{font-size:14px;color:var(--ink)}
+  .telem .v.warnv{background:var(--ink);color:var(--bg);padding:0 4px;margin:0 -4px;width:max-content}  /* inverted block = alert */
+  .telem .v.hl{background:var(--ink);color:var(--bg);padding:0 4px;margin:0 -4px;width:max-content}
+  header>#conn{align-self:center;margin:0 20px}
 
-  /* calibration banner */
-  .calbanner{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:8;
-    background:rgba(8,11,16,.82);backdrop-filter:blur(3px)}
+  /* ---------- buttons / inputs: outlined rectangles, invert on hover ---------- */
+  button{font-family:inherit;font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink);background:transparent;border:1px solid var(--ink);border-radius:0;
+    min-height:34px;padding:0 14px;cursor:pointer}
+  button:hover:not(:disabled){background:var(--ink);color:var(--bg)}
+  button:active:not(:disabled){background:var(--ink-2);color:var(--bg)}
+  button.primary{background:var(--ink);color:var(--bg)}
+  button.primary:hover:not(:disabled){background:var(--bg);color:var(--ink)}
+  button.active{background:var(--ink);color:var(--bg)}
+  button:disabled{color:var(--ink-3);border-color:var(--line-2);cursor:not-allowed}
+  button.rec.active::first-letter{animation:blink 1s steps(2,jump-none) infinite}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  @media (pointer:coarse){button{min-height:44px}}
+
+  input[type=range]{width:96px;accent-color:#fff;background:transparent}
+  input[type=text]{font-family:inherit;font-size:12px;color:var(--ink);background:transparent;
+    border:1px solid var(--ink);border-radius:0;height:34px;padding:0 8px;width:64px;text-transform:uppercase}
+  select{font-family:inherit;font-size:11px;color:var(--ink);background:var(--bg);
+    border:1px solid var(--ink);border-radius:0;height:34px;padding:0 8px;cursor:pointer;max-width:230px}
+  .seg{display:flex;border:1px solid var(--ink)}
+  .seg button{border:0;border-right:1px solid var(--ink);min-height:32px}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--ink);color:var(--bg)}
+  .seg button.on:hover:not(:disabled){background:var(--ink-2)}
+
+  /* ---------- sheet layout ---------- */
+  main{flex:1;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);min-height:0}
+  .stage{display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--ink)}
+  .side{display:flex;flex-direction:column;min-height:0;min-width:0}
+  .sechead{display:flex;align-items:baseline;gap:12px;flex:none;padding:8px 20px;border-bottom:1px solid var(--line);
+    font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3)}
+  .sechead b{color:var(--ink);font-weight:700}
+  .sechead span{margin-left:auto}
+
+  /* ---------- 3D viewport ---------- */
+  .viewport{position:relative;flex:1;min-height:260px;overflow:hidden}
+  #gl{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #gl:active{cursor:grabbing}
+  .crop{position:absolute;width:14px;height:14px;pointer-events:none;border:0 solid var(--ink);z-index:1}
+  .crop.tl{top:10px;left:10px;border-width:1px 0 0 1px}
+  .crop.tr{top:10px;right:10px;border-width:1px 1px 0 0}
+  .crop.bl{bottom:10px;left:10px;border-width:0 0 1px 1px}
+  .crop.br{bottom:10px;right:10px;border-width:0 1px 1px 0}
+  .hint{position:absolute;bottom:20px;right:30px;color:var(--ink-3);font-size:10px;letter-spacing:.12em;
+    text-transform:uppercase;pointer-events:none}
+  #triad{position:absolute;bottom:24px;left:28px;width:64px;height:64px;pointer-events:none}
+
+  /* ---------- controls: three ruled groups ---------- */
+  .controls{flex:none;border-top:1px solid var(--ink)}
+  .grp{display:grid;grid-template-columns:96px 1fr;border-bottom:1px solid var(--line)}
+  .grp:last-child{border-bottom:0}
+  .glabel{padding:14px 0 0 20px;border-right:1px solid var(--line);font-size:10px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-3)}
+  .gbody{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:10px 16px}
+  .ctrl{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-size:11px;letter-spacing:.04em}
+  .batchcount{font-size:11px;color:var(--ink-2);white-space:nowrap}
+
+  /* ---------- overlays on the viewport ---------- */
+  .calbanner{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:8;background:rgba(0,0,0,.94)}
   .calbanner.show{display:flex}
-  .calbanner .c{text-align:center}
-  .calbanner .big{font-size:clamp(48px,9vw,64px);font-weight:700;font-family:var(--font-mono);color:var(--warn);line-height:1}
-  .calbanner .lab{margin-top:10px;font-size:15px;color:var(--tx);letter-spacing:.02em;font-family:var(--font-body)}
-  .calbanner .sub{margin-top:4px;font-size:12px;color:var(--mut);font-family:var(--font-body)}
+  .calbanner .c{text-align:center;width:min(380px,80%)}
+  .calbanner .big{font-size:clamp(56px,10vw,88px);font-weight:500;line-height:1}
+  .calbanner .lab{margin-top:14px;font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  .calbanner .sub{margin-top:6px;font-size:11px;color:var(--ink-3)}
+  .calbar{margin-top:18px;height:4px;border:1px solid var(--ink)}
+  .calbar i{display:block;height:100%;width:0;background:var(--ink)}
 
-  /* batch capture */
-  input[type=text]{font-family:var(--font-mono);font-size:12px;color:var(--tx);background:var(--panel2);
-    border:1px solid var(--line2);border-radius:7px;padding:6px 10px;width:64px;text-transform:uppercase}
-  .batchcount{font-family:var(--font-mono);font-size:12px;color:var(--mut);white-space:nowrap}
-  button.ref.active{background:var(--warn);color:#1a1400}
-  .batchhint{position:absolute;top:16px;right:18px;color:var(--good);font-size:12px;font-family:var(--font-body);
-    letter-spacing:.02em;display:none;z-index:2}
+  .batchhint{position:absolute;top:22px;right:30px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    display:none;z-index:2;background:var(--ink);color:var(--bg);padding:3px 8px}
   .batchhint.show{display:block}
-  .batchflash{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:0;transition:opacity .18s}
-  .batchflash.ok{background:radial-gradient(circle at 50% 50%,rgba(76,128,100,.4),transparent 70%);opacity:1;transition:none}
-  .batchflash.bad{background:radial-gradient(circle at 50% 50%,rgba(192,57,43,.4),transparent 70%);opacity:1;transition:none}
+  .batchflash{position:absolute;inset:0;pointer-events:none;z-index:9;opacity:0;transition:opacity .18s;
+    display:flex;align-items:center;justify-content:center;font-size:20px;letter-spacing:.3em}
+  .batchflash.ok{opacity:1;transition:none;border:4px solid var(--ink)}
+  .batchflash.ok::after{content:"SAVED";background:var(--ink);color:var(--bg);padding:6px 14px}
+  .batchflash.bad{opacity:1;transition:none;border:4px dashed var(--ink)}
+  .batchflash.bad::after{content:"REJECTED — HOLD STILL";background:var(--bg);color:var(--ink);padding:6px 14px;border:1px solid var(--ink);font-size:14px;letter-spacing:.16em}
 
-  /* per-letter batch coverage grid — A-Z, colored once a letter clears the rep goal */
-  .batchgrid{position:absolute;top:46px;right:18px;z-index:2;display:none;
-    grid-template-columns:repeat(13,20px);gap:3px;
-    background:rgba(17,17,17,.78);border:1px solid var(--line);border-radius:8px;padding:8px;
-    backdrop-filter:blur(3px)}
+  /* per-letter coverage grid: hollow cell until the goal is reached, then filled */
+  .batchgrid{position:absolute;top:52px;right:30px;z-index:2;display:none;
+    grid-template-columns:repeat(13,22px);gap:2px;background:var(--bg);border:1px solid var(--ink);padding:6px}
   .batchgrid.show{display:grid}
-  .batchgrid .cell{width:20px;height:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    border-radius:4px;background:var(--track);font-family:var(--font-mono);line-height:1;gap:2px}
-  .batchgrid .cell span{font-size:8px;color:var(--dim);letter-spacing:.02em}
-  .batchgrid .cell b{font-size:9px;font-weight:600;color:var(--mut)}
-  .batchgrid .cell.done{background:var(--good);box-shadow:0 0 6px -1px var(--good)}
-  .batchgrid .cell.done span{color:#0b1a12;opacity:.75}
-  .batchgrid .cell.done b{color:#0b1a12}
+  .batchgrid .cell{width:22px;height:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1px solid var(--line-2);line-height:1;gap:3px}
+  .batchgrid .cell span{font-size:9px;color:var(--ink-3)}
+  .batchgrid .cell b{font-size:9px;font-weight:500;color:var(--ink-2)}
+  .batchgrid .cell.done{background:var(--ink);border-color:var(--ink)}
+  .batchgrid .cell.done span,.batchgrid .cell.done b{color:var(--bg)}
 
-  /* noise-baseline GO/NO-GO panel — same overlay language as .veil, dismissible */
-  .noisepanel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:9;
-    background:rgba(8,11,16,.86);backdrop-filter:blur(3px)}
+  .noisepanel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:9;background:rgba(0,0,0,.94)}
   .noisepanel.show{display:flex}
-  .noisepanel .c{text-align:center;max-width:520px}
-  .noisepanel .c b{font-size:clamp(32px,6vw,44px);font-weight:700;font-family:var(--font-mono);line-height:1;display:block;margin-bottom:8px}
-  .noisepanel pre{text-align:left;white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);
-    font-size:11px;color:var(--mut);background:var(--panel);border:1px solid var(--line);border-radius:9px;
-    padding:12px 14px;max-height:40vh;overflow:auto;margin:0 0 14px}
-  .noisepanel button{margin-top:0}
+  .noisepanel .c{text-align:center;width:min(560px,90%)}
+  .noisepanel .c b{font-size:clamp(32px,6vw,44px);font-weight:500;line-height:1;display:inline-block;
+    padding:6px 18px;margin-bottom:14px;border:1px solid var(--ink)}
+  .noisepanel .c b.go{background:var(--ink);color:var(--bg)}
+  .noisepanel .c b.nogo{background:var(--bg);color:var(--ink);border-style:dashed}
+  .noisepanel pre{text-align:left;white-space:pre-wrap;word-break:break-word;font-family:inherit;
+    font-size:11px;color:var(--ink-2);border:1px solid var(--line-2);padding:12px 14px;max-height:40vh;overflow:auto;margin:0 0 16px}
 
-  .veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    background:rgba(10,14,20,.55);backdrop-filter:blur(2px);z-index:6}
-  .veil .box{text-align:center;max-width:360px}
-  .veil h2{font-weight:600;font-size:19px;margin:0 0 8px;font-family:var(--font-display)}
-  .veil p{color:var(--mut);font-size:13px;line-height:1.5;margin:0 0 18px;font-family:var(--font-body)}
-  .warn{margin-top:16px;font-size:11px;color:var(--dim);line-height:1.5;font-family:var(--font-body)}
+  .veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:6}
+  .veil .box{max-width:400px;padding:28px;border:1px solid var(--ink);background:var(--bg);margin:16px}
+  .veil h2{font-weight:500;font-size:14px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 12px}
+  .veil p{color:var(--ink-2);font-size:12px;line-height:1.6;margin:0 0 20px}
+  .warn{margin-top:16px;font-size:11px;color:var(--ink);line-height:1.5}
+  .warn:empty{display:none}
 
-  /* grid-auto-rows:max-content is load-bearing: S0 spanning both columns makes the
-     implicit rows uneven, and without it the grid stretches every row to an equal
-     share of the panel height — which is SHORTER than a card's content, so the
-     trace + roll/pitch/yaw get clipped by the card's overflow:hidden. max-content
-     lets each row take its natural height and the panel scroll instead. */
-  .cards{overflow-y:auto;padding:14px;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;gap:12px;align-content:start;position:relative;z-index:1}
-  .cards::-webkit-scrollbar{width:8px}.cards::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
-  .card{background:var(--panel);border:1px solid var(--line);
-    border-radius:13px;padding:2px;position:relative;overflow:hidden;
-    opacity:0;transform:translateY(10px);
-    transition:transform .18s cubic-bezier(0.32,0.72,0,1), border-color .18s cubic-bezier(0.32,0.72,0,1)}
-  /* S0 = the hand, root of the sensor topology — give it primacy: full width,
-     plus a live copper hairline along the top so it reads as the reference. */
+  /* ---------- sensor plates ---------- */
+  /* grid-auto-rows:max-content is load-bearing: S0 spans every column, so the implicit
+     rows are uneven; without it the grid stretches each row to an equal share of the
+     panel height, which is SHORTER than a plate's content and clips the trace and
+     roll/pitch/yaw. max-content lets each row take its natural height and the panel scroll. */
+  .cards{flex:1;min-height:0;overflow-y:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;
+    grid-auto-rows:max-content;gap:12px;align-content:start}
+  .cards::-webkit-scrollbar{width:8px}.cards::-webkit-scrollbar-thumb{background:var(--line-2)}
+  .card{position:relative;border:1px solid var(--ink-3);padding:12px 12px 14px}
   #card0{grid-column:1 / -1}
-  #card0 .core::after{content:"";position:absolute;left:0;right:0;top:0;height:1px;
-    background:linear-gradient(90deg,transparent,var(--accent) 18%,var(--accent-light) 50%,var(--accent) 82%,transparent);
-    opacity:.6}
-  .card:not(.dead):hover{transform:translateY(-2px);border-color:var(--line2)}
-  .cards.in .card{animation:cardIn .5s cubic-bezier(0.32,0.72,0,1) forwards}
-  .cards.in .card:nth-child(1){animation-delay:.02s}
-  .cards.in .card:nth-child(2){animation-delay:.08s}
-  .cards.in .card:nth-child(3){animation-delay:.14s}
-  .cards.in .card:nth-child(4){animation-delay:.20s}
-  .cards.in .card:nth-child(5){animation-delay:.26s}
-  .cards.in .card:nth-child(6){animation-delay:.32s}
-  @keyframes cardIn{to{opacity:1;transform:translateY(0)}}
-  .card .core{background:linear-gradient(180deg,#141414,var(--panel2));border-radius:11px;
-    padding:13px 14px 14px;position:relative;overflow:hidden;
-    box-shadow:inset 0 1px 0 rgba(240,219,198,.05)}
-  .card.dead .core{opacity:.42}
-  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--dim);z-index:2;
-    transition:background .25s, box-shadow .25s}
-  .card.live::before{background:var(--live);box-shadow:0 0 10px var(--live)}
-  .card.flag::before{background:var(--ref)}
-  .card.bad::before{background:var(--bad)}
-  .chead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-  .cid{font-family:var(--font-mono);font-size:11px;color:var(--dim)}
-  .cname{font-weight:600;font-size:13px;letter-spacing:.06em;font-family:var(--font-body)}
-  .cflag{font-size:10px;color:var(--ref);letter-spacing:.04em;font-family:var(--font-body)}
-  .cled{width:7px;height:7px;border-radius:50%;background:var(--dim);margin-left:auto}
-  .card.live .cled{background:var(--live);box-shadow:0 0 8px var(--live);animation:pulse 1.8s ease-in-out infinite}
-  .blabel{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin:8px 0 5px;display:flex;justify-content:space-between}
-  .blabel .mag{color:var(--mut)}
-  .row{display:grid;grid-template-columns:14px 1fr 60px;align-items:center;gap:7px;height:16px}
-  .axl{font-family:var(--font-mono);font-size:11px;font-weight:700;text-align:center}
-  .axl.x{color:var(--x)}.axl.y{color:var(--y)}.axl.z{color:var(--z)}
-  /* bar = an instrument channel: visible graphite track with a hairline centre
-     tick, filled from the middle by the axis colour with a soft signal glow.
-     Track was near-black before and read as empty/broken. */
-  .bar{position:relative;height:5px;background:var(--track);border-radius:3px;overflow:hidden;
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
-  .bar::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)}
+  .card.dead{border-color:var(--line-2)}
+  .card.dead .core{opacity:.4}
+  .card.bad{border:3px double var(--ink);padding:10px 10px 12px}   /* double rule = fault; readable without colour */
+  .card.live{border-color:var(--ink)}
+  .chead{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-bottom:10px}
+  .cid{font-size:10px;color:var(--ink-3);border:1px solid var(--line-2);padding:0 4px}
+  .cname{font-weight:700;font-size:12px;letter-spacing:.16em}
+  /* the flag text ("bias 52°/s · bad gyro") is long: give it its own full-width line under
+     the header instead of letting it squeeze the plate title into a tall column */
+  .chead .cflag{order:3;flex-basis:100%;font-size:10px;color:var(--ink);letter-spacing:.04em;
+    border-top:1px solid var(--line-2);padding-top:4px}
+  .chead .cflag:empty{display:none}
+  .blabel .cflag{font-size:10px;color:var(--ink);letter-spacing:.06em;text-transform:none}
+  .blabel .mag,.blabel .cflag{white-space:nowrap}
+  .cled{margin-left:auto;font-size:10px;letter-spacing:.14em;color:var(--ink-3);white-space:nowrap}
+  .cled::before{content:"○ NO DATA"}
+  .card.live .cled{color:var(--ink)}
+  .card.live .cled::before{content:"● LIVE"}
+  .card.flag .cled::before{content:"▲ CHECK"}
+  .card.bad .cled::before{content:"▲ FAULT"}
+  .card.bad .cled,.card.flag .cled{color:var(--ink)}
+  .blabel{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin:9px 0 5px;display:flex;justify-content:space-between}
+  .blabel .mag{color:var(--ink-2)}
+  .row{display:grid;grid-template-columns:14px 1fr 54px;align-items:center;gap:7px;height:16px}
+  .axl{font-size:10px;font-weight:700;text-align:center}
+  /* bar = a 1px-ruled channel with a centre tick, filled from the middle. The fill
+     pattern encodes the axis: X solid, Y hatched, Z dotted — same grammar as the traces. */
+  .bar{position:relative;height:6px;border:1px solid var(--line-2);overflow:hidden}
+  .bar::after{content:"";position:absolute;left:50%;top:-1px;bottom:-1px;width:1px;background:var(--ink-3)}
   .bar.curl::after{display:none}
-  .bar i{position:absolute;top:0;bottom:0;left:50%;width:0;border-radius:3px;transition:width .09s linear,left .09s linear}
-  .bar.x i{background:var(--x);box-shadow:0 0 6px -1px var(--x)}
-  .bar.y i{background:var(--y);box-shadow:0 0 6px -1px var(--y)}
-  .bar.z i{background:var(--z);box-shadow:0 0 6px -1px var(--z)}
-  .bar.curl i{background:linear-gradient(90deg,var(--accent-deep),var(--accent));left:0;box-shadow:0 0 8px -1px var(--accent)}
-  .val{font-family:var(--font-mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--glacier)}
-  canvas.trace{width:100%;height:52px;margin-top:11px;border-radius:7px;background:#08090a;display:block;
-    box-shadow:inset 0 0 0 1px var(--line)}
-  .rpy{display:flex;gap:14px;margin-top:11px;padding-top:10px;border-top:1px solid var(--line)}
-  .rpy div{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-family:var(--font-body)}
-  .rpy b{display:block;font-family:var(--font-mono);font-size:14px;font-weight:500;margin-top:3px;font-variant-numeric:tabular-nums;color:var(--tx)}
+  .bar i{position:absolute;top:0;bottom:0;left:50%;width:0;transition:width .09s linear,left .09s linear;background:var(--ink)}
+  .bar.y i{background:repeating-linear-gradient(90deg,var(--ink) 0 3px,transparent 3px 5px)}
+  .bar.z i{background:repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 3px)}
+  .bar.curl i{left:0}
+  .val{font-size:11px;text-align:right;color:var(--ink)}
+  .tracewrap{position:relative;margin-top:11px}
+  canvas.trace{width:100%;height:52px;display:block;border:1px solid var(--line-2)}
+  .tkey{position:absolute;right:4px;top:2px;font-size:8px;letter-spacing:.06em;color:var(--ink-3);pointer-events:none}
+  .rpy{display:flex;gap:16px;margin-top:11px;padding-top:9px;border-top:1px solid var(--line)}
+  .rpy div{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  .rpy b{display:block;font-size:13px;font-weight:500;margin-top:3px;color:var(--ink);letter-spacing:0}
 
+  /* key plate: documents the encoding, and fills the empty slot after the 5 fingers */
+  .card.legend{border-style:dashed;border-color:var(--line-2)}
+  .card.legend h3{margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+  .card.legend dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:10px;color:var(--ink-2)}
+  .card.legend dt{color:var(--ink);white-space:nowrap}
+  .card.legend dd{margin:0}
+  .card.legend svg{display:block}
+
+  @media (min-width:1360px){.cards{grid-template-columns:repeat(3,1fr)}}
   @media (max-width:900px){
-    main{grid-template-columns:1fr;grid-template-rows:minmax(280px,40vh) 1fr}
-    .stage{border-right:none;border-bottom:1px solid var(--line)}
-    .telem{display:none}
+    body{height:auto;min-height:100vh;overflow:auto}
+    main{grid-template-columns:1fr;flex:none}
+    .stage{border-right:0;border-bottom:1px solid var(--ink)}
+    .viewport{flex:none;height:56vh;min-height:300px}
+    .cards{overflow:visible;flex:none}
+    .telem{margin-left:0;width:100%;border-left:0;border-top:1px solid var(--line);overflow-x:auto}
+    .telem>div{flex:1;min-width:76px;padding:6px 12px}
+    .titleblock{border-right:0;width:100%}
+    .tb-meta{display:none}
+    .conn-state{flex:1;padding:10px 20px}
+    .grp{grid-template-columns:1fr}
+    .glabel{border-right:0;padding:10px 20px 0}
+    .batchgrid{grid-template-columns:repeat(7,22px)}
+  }
+  @media (max-width:560px){
+    .cards{grid-template-columns:1fr}
+    header>#conn{flex:1 1 100%;margin:0;border-width:1px 0 0;min-height:48px}   /* full-width bar under the telemetry */
+    .sechead span{display:none}   /* the frame caption doesn't fit; the key plate and triad still say it */
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
   }
 </style>
-
-<div class="ambient" aria-hidden="true">
-  <svg width="0" height="0" style="position:absolute">
-    <filter id="grain">
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.025 0"/>
-    </filter>
-  </svg>
-</div>
+</head>
+<body>
 
 <header>
-  <div class="brand">
-    <svg class="mark" viewBox="0 0 220 250" width="28" height="32" xmlns="http://www.w3.org/2000/svg" aria-label="Gestura mark"><line x1="110" y1="220" x2="60" y2="140" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="110" y1="220" x2="88" y2="128" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="110" y1="220" x2="113" y2="122" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="110" y1="220" x2="138" y2="130" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="110" y1="220" x2="160" y2="165" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="60" y1="140" x2="88" y2="128" stroke="#C87941" stroke-width="1.6" stroke-linecap="round" opacity="0.45"></line><line x1="88" y1="128" x2="113" y2="122" stroke="#C87941" stroke-width="1.6" stroke-linecap="round" opacity="0.45"></line><line x1="113" y1="122" x2="138" y2="130" stroke="#C87941" stroke-width="1.6" stroke-linecap="round" opacity="0.45"></line><line x1="138" y1="130" x2="160" y2="165" stroke="#C87941" stroke-width="1.6" stroke-linecap="round" opacity="0.45"></line><line x1="60" y1="140" x2="50" y2="108" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="50" y1="108" x2="43" y2="80" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="88" y1="128" x2="82" y2="88" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="82" y1="88" x2="77" y2="54" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="113" y1="122" x2="113" y2="80" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="113" y1="80" x2="113" y2="44" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="138" y1="130" x2="146" y2="94" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="146" y1="94" x2="152" y2="62" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="160" y1="165" x2="182" y2="140" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><line x1="182" y1="140" x2="200" y2="116" stroke="#C87941" stroke-width="2" stroke-linecap="round"></line><circle cx="113" cy="44" r="14" fill="none" stroke="#C87941" stroke-width="1.2" opacity="0.28"></circle><circle cx="113" cy="44" r="21" fill="none" stroke="#C87941" stroke-width="1.2" opacity="0.15"></circle><circle cx="60" cy="140" r="3.4" fill="#C87941"></circle><circle cx="50" cy="108" r="3.4" fill="#C87941"></circle><circle cx="88" cy="128" r="3.4" fill="#C87941"></circle><circle cx="82" cy="88" r="3.4" fill="#C87941"></circle><circle cx="113" cy="122" r="3.4" fill="#C87941"></circle><circle cx="113" cy="80" r="3.4" fill="#C87941"></circle><circle cx="138" cy="130" r="3.4" fill="#C87941"></circle><circle cx="146" cy="94" r="3.4" fill="#C87941"></circle><circle cx="160" cy="165" r="3.4" fill="#C87941"></circle><circle cx="182" cy="140" r="3.4" fill="#C87941"></circle><circle cx="43" cy="80" r="7" fill="none" stroke="#C87941" stroke-width="1.6"></circle><circle cx="43" cy="80" r="3.6" fill="#C87941"></circle><circle cx="77" cy="54" r="7" fill="none" stroke="#C87941" stroke-width="1.6"></circle><circle cx="77" cy="54" r="3.6" fill="#C87941"></circle><circle cx="113" cy="44" r="7" fill="none" stroke="#C87941" stroke-width="1.6"></circle><circle cx="113" cy="44" r="3.6" fill="#C87941"></circle><circle cx="152" cy="62" r="7" fill="none" stroke="#C87941" stroke-width="1.6"></circle><circle cx="152" cy="62" r="3.6" fill="#C87941"></circle><circle cx="200" cy="116" r="7" fill="none" stroke="#C87941" stroke-width="1.6"></circle><circle cx="200" cy="116" r="3.6" fill="#C87941"></circle><circle cx="110" cy="220" r="9" fill="#C87941"></circle><circle cx="110" cy="220" r="3.4" fill="#111111"></circle></svg>
-    <div class="wm"><b>Gestura</b><span>6-IMU LIVE</span></div>
+  <div class="titleblock">
+    <div class="tb-name"><b>GESTURA</b><span>6-IMU LIVE</span></div>
+    <div class="tb-meta">
+      <div><i>SENSORS</i>6 × IMU</div>
+      <div><i>HAND</i>LEFT</div>
+      <div><i>LINK</i>BLE · NUS</div>
+    </div>
   </div>
-  <div class="dot" id="dot"></div>
-  <div class="status" id="status">not connected</div>
-  <div class="spacer"></div>
+  <div class="conn-state"><span class="dot" id="dot"></span><span class="status" id="status" role="status" aria-live="polite">not connected</span></div>
   <div class="telem">
     <div><div class="k">gesture</div><div class="v mono" id="gest">—</div></div>
     <div><div class="k">rate</div><div class="v mono"><span id="thz">0</span> Hz</div></div>
@@ -251,94 +281,122 @@
 </header>
 
 <main>
-  <section class="stage">
-    <canvas id="gl"></canvas>
-    <div class="hint">drag to orbit · scroll to zoom</div>
+  <section class="stage" aria-label="Stage">
+    <div class="sechead"><b>01</b> Stage <span>frame: +X right · +Y up · +Z fingertips</span></div>
+    <div class="viewport">
+      <canvas id="gl" aria-label="3D hand model, drag to orbit"></canvas>
+      <i class="crop tl"></i><i class="crop tr"></i><i class="crop bl"></i><i class="crop br"></i>
+      <canvas id="triad" width="128" height="128" aria-hidden="true"></canvas>
+      <div class="hint">orbit: drag · zoom: wheel / pinch</div>
 
-    <div class="stagefoot">
-      <button class="ref" id="cal" disabled>Calibrate (20 s)</button>
-      <button class="mini info" id="zero" disabled>Zero orient.</button>
-      <div class="ctrl" title="Lower = smoother but weaker gravity correction, so residual gyro bias drifts more over time, even sitting still. Higher = snappier and more drift-resistant, slightly noisier instant readings. The floor is set at 0.1 because lower values visibly drift within seconds even when perfectly still — that's the filter converging too slowly to trust the accelerometer, not noise.">smoothing <input type="range" id="beta" min="0.1" max="0.3" step="0.01" value="0.1"><span class="mono" id="betav">0.10</span></div>
-      <div class="ctrl" title="Which sensor axis points at the fingers was never measured for the hand IMU. Tilt your hand forward: pick the option where the model tips forward too.">hand axes
-        <select id="handmap"></select>
-      </div>
-      <div class="spacer"></div>
-      <div class="seg" id="traceview">
-        <button data-v="gyro" class="on">gyro trace</button>
-        <button data-v="accel">accel trace</button>
-      </div>
-      <button class="rec mini" id="rec" disabled>● Record</button>
-      <button class="mini" id="csv" disabled>Export CSV</button>
-      <button class="mini" id="noisecheck" disabled title="GO/NO-GO check on the current recorded buffer: stuck-frame + dropped-frame detection, per-sensor gyro bias/noise vs. calibration thresholds, and a 50s minimum-duration guard.">Noise Check</button>
-      <div class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps — no need to stop the batch to switch letters.">label
-        <input type="text" id="batchLabel" maxlength="12" value="A">
-      </div>
-      <button class="ref" id="batchToggle" disabled title="20s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5s between reps to fight drift.">Batch Capture</button>
-      <span class="mono batchcount" id="batchCount">0 reps captured</span>
-      <button class="mini" id="batchCsv" disabled>Export Batch CSV</button>
-    </div>
+      <div class="batchhint" id="batchhint">■ armed — hold the pose, press <b>Space</b> to save · <b>Esc</b> to stop</div>
+      <div class="batchflash" id="batchflash"></div>
+      <div class="batchgrid" id="batchgrid" title="Reps captured per letter this session. A letter fills in once it reaches the coverage goal."></div>
 
-    <div class="batchhint" id="batchhint">● ARMED — hold the pose, press <b>Space</b> to save · <b>Esc</b> to stop</div>
-    <div class="batchflash" id="batchflash"></div>
-    <div class="batchgrid" id="batchgrid" title="Reps captured per letter this session — green once a letter reaches the coverage goal."></div>
-
-    <div class="calbanner" id="calbanner">
-      <div class="c">
-        <div class="big" id="calcount">20</div>
-        <div class="lab">Hold your hand flat &amp; still</div>
-        <div class="sub" id="calsub">measuring gyro bias on all sensors…</div>
+      <div class="calbanner" id="calbanner">
+        <div class="c">
+          <div class="big" id="calcount">20</div>
+          <div class="lab">Hold your hand flat &amp; still</div>
+          <div class="sub" id="calsub">measuring gyro bias on all sensors…</div>
+          <div class="calbar"><i id="calfill"></i></div>
+        </div>
       </div>
-    </div>
 
-    <div class="noisepanel" id="noisePanel">
-      <div class="c">
-        <b>—</b>
-        <pre></pre>
-        <button class="mini" id="noiseClose">Close</button>
+      <div class="noisepanel" id="noisePanel">
+        <div class="c">
+          <b>—</b>
+          <pre></pre>
+          <button id="noiseClose">Close</button>
+        </div>
+      </div>
+
+      <div class="veil" id="veil">
+        <div class="box">
+          <h2>Connect the glove</h2>
+          <p>Flash <b>08-ble-wireless-dashboard</b> (v4), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (20&nbsp;s)</b> lying flat and still. That removes gyro bias so the fingers stop drifting.</p>
+          <button class="primary" id="conn2">Connect over Bluetooth</button>
+          <div class="warn" id="unsupported"></div>
+        </div>
       </div>
     </div>
 
-    <div class="veil" id="veil">
-      <div class="box">
-        <h2>Connect your glove</h2>
-        <p>Flash <b>firmware/08_ble_dashboard</b> (v4), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (20&nbsp;s)</b> still lying flat — that removes gyro bias so the fingers stop drifting.</p>
-        <button class="primary" id="conn2">Connect over Bluetooth</button>
-        <div class="warn" id="unsupported"></div>
+    <div class="controls">
+      <div class="sechead"><b>03</b> Capture</div>
+      <div class="grp">
+        <div class="glabel">Calibrate</div>
+        <div class="gbody">
+          <button id="cal" disabled>Calibrate · 20 s</button>
+          <button id="zero" disabled>Zero orient.</button>
+          <label class="ctrl" title="Lower = smoother but weaker gravity correction, so residual gyro bias drifts more over time, even sitting still. Higher = snappier and more drift-resistant, slightly noisier instant readings. The floor is 0.1 because lower values visibly drift within seconds even when perfectly still: that is the filter converging too slowly to trust the accelerometer, not noise.">smoothing <input type="range" id="beta" min="0.1" max="0.3" step="0.01" value="0.1"><span id="betav">0.10</span></label>
+          <label class="ctrl" title="Which sensor axis points at the fingers was never measured for the hand IMU. Tilt your hand forward: pick the option where the model tips forward too.">hand axes <select id="handmap"></select></label>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="glabel">Record</div>
+        <div class="gbody">
+          <div class="seg" id="traceview" role="group" aria-label="Trace source">
+            <button data-v="gyro" class="on" aria-pressed="true">gyro trace</button>
+            <button data-v="accel" aria-pressed="false">accel trace</button>
+          </div>
+          <button class="rec" id="rec" disabled>● Record</button>
+          <button id="csv" disabled>Export CSV</button>
+          <button id="noisecheck" disabled title="GO/NO-GO check on the current recorded buffer: stuck-frame + dropped-frame detection, per-sensor gyro bias/noise vs. calibration thresholds, and a 50 s minimum-duration guard.">Noise check</button>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="glabel">Batch</div>
+        <div class="gbody">
+          <label class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps, so there is no need to stop the batch to switch letters.">label <input type="text" id="batchLabel" maxlength="12" value="A" aria-label="Batch label"></label>
+          <button id="batchToggle" disabled title="20 s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5 s between reps to fight drift.">Batch capture</button>
+          <span class="batchcount" id="batchCount">0 reps captured</span>
+          <button id="batchCsv" disabled>Export batch CSV</button>
+        </div>
       </div>
     </div>
   </section>
 
-  <section class="cards" id="cards"></section>
+  <aside class="side" aria-label="Sensors">
+    <div class="sechead"><b>02</b> Sensors <span>S0 hand · S1–S5 fingers</span></div>
+    <section class="cards" id="cards"></section>
+  </aside>
 </main>
 
 <script>
 "use strict";
 
-// ===== brand tokens (single source of truth for canvas/three.js colors) =====
-// Mirrors the :root CSS custom properties above; pushed into them at startup so
-// CSS and the canvas 2D / three.js renderers can never drift out of sync.
-const BRAND = {
-  accent:"#C87941", accentDeep:"#8F5527", accentLight:"#DA9A67",
-  good:"#4C8064", error:"#C0392B", warn:"#D8A23A", info:"#3F6FA8",
-  axis:["#B08D57","#4A7C6F","#7A6BA8"],
+// The fusion math below needs THREE.Quaternion, so a failed CDN load is fatal. Say so
+// in the connect panel instead of dying with "THREE is not defined" in the console.
+if(typeof THREE==="undefined"){
+  document.getElementById("unsupported").textContent=
+    "The 3D library failed to load (offline, or the CDN is blocked). Reload with a network connection.";
+  document.getElementById("conn").disabled=true;
+  document.getElementById("conn2").disabled=true;
+  throw new Error("three.js not loaded");
+}
+
+// ===== theme (the CSS :root tokens are the single source of truth) =====
+// The canvas 2D traces and the three.js scene can't use CSS directly, so read the
+// tokens back once at startup. Change a colour in :root and everything follows.
+// CSS shorthand matters here: "#fff" must expand to "ffffff" first. parseInt("fff",16) is
+// 0x000fff, which is BLUE, and the whole wireframe came out blue before this was handled.
+const hexNum=h=>{
+  let s=h.replace("#","");
+  if(s.length===3)s=s.split("").map(c=>c+c).join("");
+  return parseInt(s,16);
 };
-const hexNum=h=>parseInt(h.slice(1),16);
-(function(){
-  const root=document.documentElement.style;
-  root.setProperty("--accent",BRAND.accent);
-  root.setProperty("--accent-deep",BRAND.accentDeep);
-  root.setProperty("--accent-light",BRAND.accentLight);
-  root.setProperty("--good",BRAND.good);
-  root.setProperty("--error",BRAND.error);
-  root.setProperty("--warn",BRAND.warn);
-  root.setProperty("--info",BRAND.info);
-  root.setProperty("--x",BRAND.axis[0]);
-  root.setProperty("--y",BRAND.axis[1]);
-  root.setProperty("--z",BRAND.axis[2]);
-  root.setProperty("--live",BRAND.good);
-  root.setProperty("--ref",BRAND.warn);
-  root.setProperty("--bad",BRAND.error);
+const THEME=(function(){
+  const cs=getComputedStyle(document.documentElement);
+  const t=n=>cs.getPropertyValue(n).trim();
+  return {bg:t("--bg")||"#000",ink:t("--ink")||"#fff",ink2:t("--ink-2")||"#b4b4b4",
+          ink3:t("--ink-3")||"#8a8a8a",line:t("--line")||"#2a2a2a",line2:t("--line-2")||"#4a4a4a"};
 })();
+// Axis encoding without hue: X solid, Y dashed, Z dotted. Same grammar in the
+// traces, the bar fills (CSS), the legend plate and the viewport triad.
+const AXIS_STYLE=[
+  {name:"X",dash:[],      color:THEME.ink},
+  {name:"Y",dash:[6,3],   color:THEME.ink2},
+  {name:"Z",dash:[1.5,3], color:THEME.ink3},
+];
 
 const NUS="6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const TX ="6e400003-b5a3-f393-e0a9-e50e24dcca9e";
@@ -418,7 +476,11 @@ class Madgwick{
         qd0-=this.beta*s0;qd1-=this.beta*s1;qd2-=this.beta*s2;qd3-=this.beta*s3;}
     }
     q0+=qd0*dt;q1+=qd1*dt;q2+=qd2*dt;q3+=qd3*dt;
-    const qn=Math.hypot(q0,q1,q2,q3)||1;
+    const qn=Math.hypot(q0,q1,q2,q3);
+    // `||1` only catches 0. A NaN norm (from any NaN input) is truthy-false too, but a
+    // NaN quaternion that gets stored never recovers: every later update multiplies it.
+    // So refuse the step and keep the last good orientation.
+    if(!Number.isFinite(qn)||qn<1e-9)return;
     this.q=[q0/qn,q1/qn,q2/qn,q3/qn];
   }
   three(){return new THREE.Quaternion(this.q[1],this.q[2],this.q[3],this.q[0]);}
@@ -433,45 +495,51 @@ const S=META.map(()=>({
   bias:[0,0,0], noise:[0,0,0], accBias:[0,0,0], calibrated:false, flag:"", bad:false,
   qRef:new THREE.Quaternion(), rel:new THREE.Quaternion(), localQ:new THREE.Quaternion(),
   last:0, alive:false, dropCount:0,
+  dropBad:false, goodRun:0, prevFlag:"", prevBad:false,   // firmware-dropout latch (see parseFrame)
   hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
 }));
 
 // ===== 3D =====
 let renderer,scene,camera,palm;
 const fingerGroups=[];
-let camYaw=0.7,camPitch=0.5,camDist=9;
+let camYaw=0.7,camPitch=0.5,camDist=10.5;   // 10.5 (was 9): leaves a margin around the fingertips in the framed viewport
+
+// One solid drawn as hidden-line-removed linework. `angle` is EdgesGeometry's threshold:
+// an edge is kept when the two faces meeting there differ by more than that many degrees.
+function wire(geom,{color=THEME.ink,angle=20}={}){
+  const g=new THREE.Group();
+  g.add(new THREE.Mesh(geom,new THREE.MeshBasicMaterial({color:hexNum(THEME.bg),
+    polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})));
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geom,angle),
+    new THREE.LineBasicMaterial({color:hexNum(color)})));
+  return g;
+}
 
 function buildScene(){
   const cv=document.getElementById("gl");
-  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setClearColor(hexNum(THEME.bg),1);
   scene=new THREE.Scene();
-  // Fog the world into the onyx canvas so the grid dissolves at distance instead
-  // of ending in a hard line — cheap depth, reads "instrument bay" not "floor".
-  scene.fog=new THREE.Fog(0x0A0B0C,11,26);
+  // Black fog: far linework fades into the ground, which gives depth without shading.
+  scene.fog=new THREE.Fog(hexNum(THEME.bg),9,21);
   camera=new THREE.PerspectiveCamera(42,1,0.1,100);
-  // Cold neutral fill (cool sky/steel key), then a single COPPER rim light so the
-  // graphite hand catches one warm edge — the whole brand encoded in the lighting:
-  // cold precise field, one hot accent.
-  scene.add(new THREE.HemisphereLight(0xaeb6c2,0x07080a,0.55));
-  const key=new THREE.DirectionalLight(0xdfe6f0,0.85);key.position.set(5,9,6);scene.add(key);
-  const rim=new THREE.DirectionalLight(hexNum(BRAND.accent),0.9);rim.position.set(-7,3,-5);scene.add(rim);
 
-  const grid=new THREE.GridHelper(30,30,0x2a2e34,0x16181b);
-  grid.material.transparent=true;grid.material.opacity=.6;grid.position.y=-3.2;scene.add(grid);
+  // Hairline ground plane, like the ruling on a drawing sheet.
+  const grid=new THREE.GridHelper(30,30,hexNum(THEME.line2),hexNum(THEME.line));
+  grid.position.y=-3.2;scene.add(grid);
 
   palm=new THREE.Group();scene.add(palm);
-  // Hand + base are NEUTRAL machined graphite/steel — cold and metallic. Copper
-  // appears on exactly ONE object (the sensor cube) so the accent stays hero.
-  const palmMat=new THREE.MeshStandardMaterial({color:0x2b2f36,roughness:.42,metalness:.55});
-  palm.add(new THREE.Mesh(new THREE.BoxGeometry(2.4,0.55,2.6),palmMat));
-  // THE hero: the back-of-hand reference IMU, true Copper 500, self-lit, with a
-  // small copper point light so it casts a warm pool onto the neutral slab.
-  const mk=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.14,0.5),
-    new THREE.MeshStandardMaterial({color:hexNum(BRAND.accent),emissive:hexNum(BRAND.accent),
-      emissiveIntensity:.85,roughness:.32,metalness:.3}));
+  // Architectural line-drawing: every solid is drawn as its EDGES only (white on black).
+  // Underneath each edge set sits a black, unlit copy of the same solid. It writes depth
+  // but no visible colour, so lines behind a surface are hidden (hidden-line removal)
+  // instead of showing through as a tangle of wireframe. polygonOffset pushes that fill
+  // slightly away from the camera so the edges on the near faces don't z-fight with it.
+  palm.add(wire(new THREE.BoxGeometry(2.4,0.55,2.6)));
+  // The back-of-hand reference IMU: a small box on the palm. Drawn brightest so the eye
+  // finds the reference first; there is no hue to lean on.
+  const mk=wire(new THREE.BoxGeometry(0.5,0.14,0.5));
   mk.position.set(0,0.35,-0.2);palm.add(mk);
-  const glow=new THREE.PointLight(hexNum(BRAND.accent),0.85,4,2.2);glow.position.set(0,0.9,-0.2);palm.add(glow);
 
   // The palm box is BoxGeometry(2.4,0.55,2.6) centered on the origin, i.e. solid from
   // x:[-1.2,1.2] y:[-0.275,0.275] z:[-1.3,1.3]. The previous thumb design used a kinked
@@ -497,7 +565,6 @@ function buildScene(){
     RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05,bend:0},
     PINKY :{x:-0.80,z: 1.10,len:1.7,rad:0.16,yaw:-0.12,bend:0},
   };
-  const finMat=new THREE.MeshStandardMaterial({color:0x363b43,roughness:.5,metalness:.4});
   META.forEach(m=>{
     if(m.role==="palm"){fingerGroups[0]=null;return;}
     const a=anchors[m.name];
@@ -522,13 +589,15 @@ function buildScene(){
     // real measurement, not a second sensor.
     const baseLen=a.len*0.55, tipLen=a.len*0.45;
     const segBase=new THREE.Group();
-    const cylB=new THREE.Mesh(new THREE.CylinderGeometry(a.rad*0.9,a.rad,baseLen,16),finMat);
+    // 12 radial segments (30 degrees apart) is coarse enough that the edge pass draws
+    // each facet line, which is what gives the finger its drawn-from-a-pencil look.
+    const cylB=wire(new THREE.CylinderGeometry(a.rad*0.9,a.rad,baseLen,12));
     cylB.rotation.x=Math.PI/2;cylB.position.z=baseLen/2;segBase.add(cylB);
-    segBase.add(new THREE.Mesh(new THREE.SphereGeometry(a.rad*1.05,16,12),finMat));   // knuckle
+    segBase.add(wire(new THREE.SphereGeometry(a.rad*1.05,12,8),{color:THEME.ink2,angle:10}));   // knuckle
     const segTip=new THREE.Group();segTip.position.z=baseLen;
-    const cylT=new THREE.Mesh(new THREE.CylinderGeometry(a.rad*0.7,a.rad*0.9,tipLen,16),finMat);
+    const cylT=wire(new THREE.CylinderGeometry(a.rad*0.7,a.rad*0.9,tipLen,12));
     cylT.rotation.x=Math.PI/2;cylT.position.z=tipLen/2;segTip.add(cylT);
-    const tip=new THREE.Mesh(new THREE.SphereGeometry(a.rad*0.75,16,12),finMat);tip.position.z=tipLen;segTip.add(tip);
+    const tip=wire(new THREE.SphereGeometry(a.rad*0.75,12,8),{color:THEME.ink2,angle:10});tip.position.z=tipLen;segTip.add(tip);
     segBase.add(segTip);
 
     // restBend sits BETWEEN g (static yaw) and segBase (live rotation, overwritten every
@@ -547,35 +616,87 @@ function buildScene(){
   renderer.setAnimationLoop(render);
   initOrbit(cv);
 }
+// One pointer orbits, two pointers pinch-zoom. Pointers are tracked in a Map so a
+// cancelled gesture (browser takes over the touch, tab switch) can't leave a stale
+// "button held" flag behind, which is what the old single `down` boolean did.
+const clampDist=d=>Math.max(4,Math.min(20,d));
 function initOrbit(cv){
-  let down=false,px=0,py=0;
-  cv.addEventListener("pointerdown",e=>{down=true;px=e.clientX;py=e.clientY;cv.setPointerCapture(e.pointerId);});
-  cv.addEventListener("pointermove",e=>{if(!down)return;
-    camYaw-=(e.clientX-px)*0.008;camPitch-=(e.clientY-py)*0.008;
-    camPitch=Math.max(-1.3,Math.min(1.3,camPitch));px=e.clientX;py=e.clientY;});
-  cv.addEventListener("pointerup",()=>down=false);
-  cv.addEventListener("wheel",e=>{camDist=Math.max(4,Math.min(20,camDist+e.deltaY*0.01));e.preventDefault();},{passive:false});
+  const ptrs=new Map();let lastPinch=0;
+  cv.addEventListener("pointerdown",e=>{
+    ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});lastPinch=0;
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove",e=>{
+    const p=ptrs.get(e.pointerId);if(!p)return;
+    const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+    if(ptrs.size===1){
+      camYaw-=dx*0.008;camPitch-=dy*0.008;
+      camPitch=Math.max(-1.3,Math.min(1.3,camPitch));
+    }else if(ptrs.size===2){
+      const [a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y);
+      if(lastPinch&&d>0)camDist=clampDist(camDist*lastPinch/d);   // fingers apart => closer
+      lastPinch=d;
+    }
+  });
+  const end=e=>{ptrs.delete(e.pointerId);lastPinch=0;};
+  ["pointerup","pointercancel","lostpointercapture"].forEach(t=>cv.addEventListener(t,end));
+  cv.addEventListener("wheel",e=>{camDist=clampDist(camDist+e.deltaY*0.01);e.preventDefault();},{passive:false});
 }
-function resize(){const s=document.querySelector(".stage");const w=s.clientWidth,h=s.clientHeight;
+function resize(){const s=document.querySelector(".viewport");const w=s.clientWidth,h=s.clientHeight;
+  if(!w||!h)return;
   renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 
+// Viewport axis triad: projects the three world axes through the camera so it turns
+// with the model. A direction transformed by the view matrix lands in camera space,
+// where x is screen-right and y is screen-up. Drawn in the same solid/dashed/dotted
+// grammar as the traces, so "which line is Z" is learned once for the whole page.
+const _tv=new THREE.Vector3();
+const AXIS_DIR=[[1,0,0],[0,1,0],[0,0,1]];
+function drawTriad(){
+  const cv=document.getElementById("triad"),ctx=cv.getContext("2d");
+  const W=cv.width,c=W/2,L=W*0.36;
+  ctx.clearRect(0,0,W,W);
+  ctx.font="bold 18px "+getComputedStyle(document.body).fontFamily;
+  ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineWidth=2.4;
+  // far-to-near so the nearest axis is painted last
+  const items=AXIS_DIR.map((d,i)=>{
+    _tv.set(d[0],d[1],d[2]).transformDirection(camera.matrixWorldInverse);
+    return {i,x:_tv.x,y:_tv.y,z:_tv.z};
+  }).sort((a,b)=>a.z-b.z);
+  items.forEach(o=>{
+    const st=AXIS_STYLE[o.i],ex=c+o.x*L,ey=c-o.y*L;
+    ctx.strokeStyle=ctx.fillStyle=THEME.ink;
+    ctx.setLineDash(st.dash.map(v=>v*1.6));
+    ctx.beginPath();ctx.moveTo(c,c);ctx.lineTo(ex,ey);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillText(st.name,c+o.x*(L+14),c-o.y*(L+14));
+  });
+}
+
 const _tmp=new THREE.Quaternion();
+const _idQ=new THREE.Quaternion();    // identity, never mutated
+const _te=new THREE.Euler();          // scratch, segTip rotation
 const _ce=new THREE.Euler();          // scratch, curl extraction only
 const CURL_MAX_DEG=90;                // reference full-curl angle for the % readout
 const TIP_CURL_FRAC=0.4;              // extra cosmetic bend re-applied at segTip
 function render(){
   camera.position.set(camDist*Math.cos(camPitch)*Math.sin(camYaw),camDist*Math.sin(camPitch),camDist*Math.cos(camPitch)*Math.cos(camYaw));
   camera.lookAt(0,0,0);
-  const palmQ=S[0].bad?new THREE.Quaternion():S[0].rel;
+  const palmQ=S[0].bad?_idQ:S[0].rel;
   palm.quaternion.copy(palmQ);
   S[0].localQ.copy(palmQ);   // the hand IS the reference frame, so its own readout stays absolute
+  // q_rel = conj(q_hand) (x) q_finger. For a unit quaternion the conjugate IS the
+  // inverse, so invert() gives conj(q_hand). Waving the whole arm rotates both
+  // quaternions identically and cancels; only the finger's own motion survives.
   const invPalm=_tmp.copy(palmQ).invert();
   META.forEach(m=>{
     if(m.role==="palm")return;const g=fingerGroups[m.id];if(!g)return;
     const st=S[m.id];
-    const local=st.bad ? new THREE.Quaternion()                    // frozen straight
-              : new THREE.Quaternion().copy(invPalm).multiply(st.rel);
-    st.localQ.copy(local);   // cache: card readout below must match what's actually rendered
+    // computed in place into st.localQ (no per-frame allocation). A bad sensor is
+    // frozen straight (identity).
+    const local=st.bad ? st.localQ.copy(_idQ) : st.localQ.copy(invPalm).multiply(st.rel);
+    // st.localQ doubles as the cache the card readout and batch export read, so
+    // they always match what is actually drawn.
     g.userData.segBase.quaternion.copy(local);
 
     // curl = the pitch component of the SAME "local" rotation already driving the whole
@@ -584,10 +705,11 @@ function render(){
     _ce.setFromQuaternion(local,"YXZ");
     const curlRad=st.bad?0:_ce.x;
     st.curlRad=curlRad;
-    g.userData.segTip.quaternion.setFromEuler(new THREE.Euler(g.userData.restCurl+curlRad*TIP_CURL_FRAC,g.userData.restSweep,0));
+    g.userData.segTip.quaternion.setFromEuler(_te.set(g.userData.restCurl+curlRad*TIP_CURL_FRAC,g.userData.restSweep,0));
   });
   detectGesture();
   renderer.render(scene,camera);
+  drawTriad();     // after render: camera.matrixWorldInverse is now current
 }
 
 // ===== first threshold-based gesture rule =====
@@ -618,26 +740,81 @@ function detectGesture(){
 }
 
 // ===== BLE =====
-let device=null,rxBuf=new Uint8Array(0);
+let device=null,txChar=null,rxBuf=new Uint8Array(0);
 let lastSeq=-1,framesWin=0,bytesWin=0,lostWin=0,totWin=0,winT=0,lastT=0,badFrames=0;
+let linkUp=false,connecting=false;   // linkUp: onConnected() ran and onDisc() hasn't yet
 
 function supportOk(){return "bluetooth" in navigator;}
+
+// A new connection is a new stream. Without this, bytes left in rxBuf from the previous
+// link are glued onto the first new packet (one bad frame), and the old lastSeq makes
+// the first new frame look like ~100 lost packets in the loss % readout.
+function resetLink(){
+  rxBuf=new Uint8Array(0);
+  lastSeq=-1;lastT=0;
+  framesWin=0;bytesWin=0;lostWin=0;totWin=0;badFrames=0;
+  winT=performance.now();
+}
+// Listener hygiene: every listener we add is removed again, so reconnecting never
+// stacks duplicate handlers (a duplicate onNotify would parse every packet twice).
+function detachNotify(){
+  if(txChar){txChar.removeEventListener("characteristicvaluechanged",onNotify);txChar=null;}
+}
+function detachDevice(){
+  detachNotify();
+  if(device){device.removeEventListener("gattserverdisconnected",onDisc);device=null;}
+}
+const withTimeout=(p,ms,msg)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg)),ms))]);
+function setConnectBusy(b){
+  ["conn","conn2"].forEach(id=>document.getElementById(id).disabled=b||!supportOk());
+}
+
 async function connect(){
   if(!supportOk()){setStatus("Web Bluetooth not available","err");return;}
+  if(connecting)return;
+  connecting=true;setConnectBusy(true);
+  let inPicker=false;
   try{
-    setStatus("requesting device…");
-    device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[NUS]});
-    device.addEventListener("gattserverdisconnected",onDisc);
+    // After a drop we still hold the paired device, so reconnect without the picker.
+    // If that fails the reference is discarded and the next click opens the picker.
+    let dev=device;
+    if(!dev){
+      setStatus("requesting device…");
+      inPicker=true;
+      dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[NUS]});
+      inPicker=false;
+    }
+    device=dev;
+    device.addEventListener("gattserverdisconnected",onDisc);   // same fn reference => DOM dedupes
     setStatus("connecting…");
-    const srv=await device.gatt.connect();
-    const s=await srv.getPrimaryService(NUS);
-    const c=await s.getCharacteristic(TX);
-    await c.startNotifications();
+    const srv=await withTimeout(device.gatt.connect(),15000,"timed out connecting");
+    let svc;
+    try{svc=await srv.getPrimaryService(NUS);}
+    catch(e){throw Object.assign(new Error("no UART service on this device. Pick the HandRig-6IMU board."),{wrongDevice:true});}
+    const c=await svc.getCharacteristic(TX);
+    resetLink();
+    // Listener FIRST, then startNotifications(): the first packets can arrive before
+    // the awaited promise resolves, and a listener added after would miss them.
     c.addEventListener("characteristicvaluechanged",onNotify);
+    txChar=c;
+    await c.startNotifications();
     onConnected();
-  }catch(e){setStatus("connect failed: "+e.message,"err");}
+  }catch(e){
+    // Never leave a live GATT link behind a UI that says "Connect".
+    try{if(device&&device.gatt&&device.gatt.connected)device.gatt.disconnect();}catch(_){}
+    // NotFoundError is ALSO what a reconnect to an out-of-range device throws, so only
+    // treat it as "user closed the picker" when the failure happened inside the picker.
+    const cancelled=inPicker&&e&&e.name==="NotFoundError";
+    if(cancelled){setStatus("not connected");}
+    else{setStatus("connect failed: "+(e&&e.message||e),"err");}
+    // a device that failed to connect (or was the wrong one) must not be reused next click
+    detachDevice();
+  }finally{
+    connecting=false;setConnectBusy(false);
+  }
 }
 function onConnected(){
+  linkUp=true;
   document.getElementById("dot").className="dot on";
   document.getElementById("veil").style.display="none";
   document.getElementById("conn").textContent="Disconnect";
@@ -650,6 +827,16 @@ function onConnected(){
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
 }
 function onDisc(){
+  // A drop before onConnected() ran is handled by connect()'s catch; and the event can
+  // fire twice (our own disconnect() call, then the radio). Act once per real session.
+  if(!linkUp)return;
+  linkUp=false;
+  detachNotify();
+  // Stop an in-flight recording but KEEP what was captured: the buffer is still valid
+  // and Export CSV stays enabled. (Before, `recording` stayed true, which kept Export
+  // and Noise Check disabled forever, so the capture could not be saved.)
+  if(recording)toggleRec();
+  cancelCalibration();   // a half-finished hold has no data left to finish with
   document.getElementById("dot").className="dot err";
   document.getElementById("conn").textContent="Connect";
   ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
@@ -709,11 +896,21 @@ function parseFrame(f){
     // firmware sent zeros with the bit still set and we fused a 0 g gravity
     // vector as though it were real data. Skip it and say so on the card.
     if(!(mask&(1<<sid))){
-      st.dropCount++;
-      if(st.dropCount>25){st.flag="no valid data (firmware dropped it)";st.bad=true;}
+      st.dropCount++;st.goodRun=0;
+      if(st.dropCount>25&&!st.dropBad){
+        // remember what the calibration verdict was, so recovery restores THAT rather
+        // than blindly clearing a genuine calibration fault
+        st.dropBad=true;st.prevFlag=st.flag;st.prevBad=st.bad;
+        st.flag="no valid data (firmware dropped it)";st.bad=true;
+      }
       continue;
     }
     st.dropCount=0;
+    // The dropout latch used to be permanent: one bad second froze that finger straight
+    // until a full recalibration. Release it after a short run of valid frames.
+    if(st.dropBad&&++st.goodRun>=10){
+      st.dropBad=false;st.flag=st.prevFlag||"";st.bad=!!st.prevBad;
+    }
 
     // remap sensor frame -> viewer frame BEFORE fusion, so the Madgwick
     // quaternion is already expressed in the frame the 3D rig uses.
@@ -772,7 +969,13 @@ function parseFrame(f){
     // "raw stays reinterpretable" convention (see 08_ble_dashboard.ino SENSOR AXES note).
     pushBatchRaw(st,ax,ay,az,gx,gy,gz);
   }
-  if(recRow){recFrames.push(recRow);if(recFrames.length>REC_CAP)recording=false;}
+  if(recRow){
+    recFrames.push(recRow);
+    // At the cap, stop through toggleRec() so the button label, its active state and
+    // the Export/Noise-Check enables all follow (setting the flag alone left the
+    // button reading "Stop" on a recording that had already ended).
+    if(recFrames.length>=REC_CAP)toggleRec();
+  }
 }
 
 // ===== calibration =====
@@ -793,22 +996,42 @@ function parseFrame(f){
 const STILL_DEV_DPS=3;
 const CAL_INITIAL_MS=20000;   // full calibration: doubled from 10s -> roughly halves bias-estimate std error
 const CAL_RECAL_MS=5000;      // Batch Capture's between-rep drift recheck (see startCalibration's onDone param)
-let calState="idle", calEnd=0, calAcc=null, calOnDone=null;
+let calState="idle", calEnd=0, calDur=0, calAcc=null, calOnDone=null, calTimer=null;
 // durationMs/onDone let Batch Capture (below) reuse the exact same averaging/gating
 // logic for its short between-rep recalibration instead of re-deriving it.
 function startCalibration(durationMs=CAL_INITIAL_MS, onDone=null, kind="initial"){
   calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));
   S.forEach(st=>st.calGyroEMA=null);   // fresh trend baseline each hold, not stale pre-hold motion
-  calState="run";calEnd=performance.now()+durationMs;calOnDone=onDone;
+  calState="run";calDur=durationMs;calEnd=performance.now()+durationMs;calOnDone=onDone;
   document.getElementById("calcount").textContent=Math.ceil(durationMs/1000);
+  document.getElementById("calfill").style.width="0%";
   document.getElementById("calsub").textContent=kind==="recal"
     ? "quick refresh between reps — fighting bias drift…"
     : "measuring gyro bias on all sensors…";
   document.getElementById("calbanner").classList.add("show");
+  // Driven by a timer, NOT requestAnimationFrame: rAF is paused in a background tab
+  // while BLE notifications keep arriving, so a rAF-driven finish stalled and the
+  // banner hung until you came back to the tab.
+  clearInterval(calTimer);
+  calTimer=setInterval(calTick,100);
+}
+function calTick(){
+  if(calState!=="run"){clearInterval(calTimer);return;}
+  const now=performance.now();
+  document.getElementById("calcount").textContent=Math.max(0,Math.ceil((calEnd-now)/1000));
+  document.getElementById("calfill").style.width=Math.min(100,100*(1-(calEnd-now)/calDur))+"%";
+  if(now>=calEnd)finishCalibration();
+}
+// Abort without applying anything: used when the link drops mid-hold.
+function cancelCalibration(){
+  clearInterval(calTimer);
+  calState="idle";calOnDone=null;
+  document.getElementById("calbanner").classList.remove("show");
 }
 function finishCalibration(){
   META.forEach(m=>{
     const st=S[m.id],c=calAcc[m.id];
+    st.dropBad=false;   // a fresh calibration verdict supersedes any pending dropout latch
     if(c.n<5){st.flag="no data";st.bad=true;return;}
     for(let k=0;k<3;k++){
       const mean=c.gs[k]/c.n; st.bias[k]=mean;
@@ -864,6 +1087,7 @@ function finishCalibration(){
     st.qRef.copy(st.fil.three());
   });
   calState="done";
+  clearInterval(calTimer);
   document.getElementById("calbanner").classList.remove("show");
   const cb=calOnDone; calOnDone=null;
   if(cb)cb();
@@ -892,11 +1116,16 @@ function exportCSV(){
   for(const row of recFrames){
     lines.push(row.map((v,i)=>i===0?v:(+v).toFixed(4)).join(","));
   }
-  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
-  const url=URL.createObjectURL(blob);
+  downloadCSV(lines.join("\n"),"handrig_raw_"+Date.now()+".csv");
+}
+// Revoking the object URL in the same tick as click() can cancel the download in some
+// browsers (the fetch of the blob hasn't started yet), so give it a second.
+function downloadCSV(text,filename){
+  const url=URL.createObjectURL(new Blob([text],{type:"text/csv"}));
   const a=document.createElement("a");
-  a.href=url;a.download="handrig_raw_"+Date.now()+".csv";a.click();
-  URL.revokeObjectURL(url);
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 // ===== noise baseline GO/NO-GO (ported from tools/analyze_noise_baseline.py) =====
@@ -939,8 +1168,11 @@ function nbFindStuck(block){
   for(let i=1;i<n;i++){
     const same=block[i].every((v,k)=>v===block[i-1][k]);
     run=same?run+1:0;
+    // `run` counts identical PAIRS, so run===N-1 means N identical rows ending at i, i.e.
+    // rows i-(N-1)..i. (This used to start at i-(N-2) and mark N-1 rows; the Python
+    // original, analyze_noise_baseline.find_stuck, marks all N.)
     if(run>=NB_STUCK_RUN-1){
-      for(let j=i-(NB_STUCK_RUN-2);j<=i;j++)stuck[j]=true;
+      for(let j=i-(NB_STUCK_RUN-1);j<=i;j++)stuck[j]=true;
     }
   }
   return stuck;
@@ -1037,8 +1269,10 @@ function runNoiseBaselineCheck(){
 }
 function showNoisePanel(go,text){
   const panel=document.getElementById("noisePanel");
-  panel.querySelector(".c b").textContent=go?"GO":"NO-GO";
-  panel.querySelector(".c b").style.color=go?"var(--good)":"var(--bad)";
+  // verdict without hue: GO = solid white block, NO-GO = dashed outline (and the words)
+  const verdict=panel.querySelector(".c b");
+  verdict.textContent=go?"GO":"NO-GO";
+  verdict.className=go?"go":"nogo";
   panel.querySelector("pre").textContent=text;
   panel.classList.add("show");
 }
@@ -1066,7 +1300,9 @@ let batchActive=false, batchState="idle", batchRows=[], batchRepCounts={};
 // single biggest risk. These mirror batchRows/batchRepCounts into
 // localStorage; wiring them into the capture/export/startup flow happens in
 // a follow-up change so each piece lands as its own reviewable commit.
-const BATCH_STORAGE_KEY="gestura_batchRows_v1";
+// v2: the quaternion columns changed meaning (hand-relative, w>=0). Old v1 backups are left
+// untouched in storage rather than restored, so the two encodings can never be mixed in one CSV.
+const BATCH_STORAGE_KEY="gestura_batchRows_v2";
 function persistBatchRows(){
   try{
     localStorage.setItem(BATCH_STORAGE_KEY,JSON.stringify({rows:batchRows,repCounts:batchRepCounts}));
@@ -1138,6 +1374,8 @@ function startBatchCapture(){
   // shortcut, console, future UI) that bypasses the DOM disabled state.
   if(!window.BatchGate.satisfied(!!(device&&device.gatt&&device.gatt.connected)))return;
   batchActive=true;batchState="calibrating";
+  const ae=document.activeElement;
+  if(ae&&ae.id==="batchToggle")ae.blur();   // see the keydown handler: Space must not hit the button
   updateBatchUI();
   startCalibration(CAL_INITIAL_MS,()=>{
     if(!batchActive)return;
@@ -1149,13 +1387,30 @@ function stopBatchCapture(){
   updateBatchUI();
 }
 
+// Computed fresh from st.rel rather than read from st.localQ: localQ is only refreshed
+// inside render(), which runs on requestAnimationFrame and stalls in a background tab.
+const _hq=new THREE.Quaternion();
+function handRelQuat(id){
+  if(id===0)_hq.copy(S[0].rel);
+  else _hq.copy(S[0].rel).invert().multiply(S[id].rel);   // invert() = conjugate for a unit quaternion
+  // q and -q are the SAME rotation. Pin the sign (w >= 0) so the exported feature can't
+  // flip between two equivalent encodings run to run, which a classifier would read as
+  // a huge difference.
+  const s=_hq.w<0?-1:1;
+  return [s*_hq.w,s*_hq.x,s*_hq.y,s*_hq.z];
+}
+
 function captureBatchSample(){
   const label=(document.getElementById("batchLabel").value||"").trim().toUpperCase();
   if(!label){flashBatch(false);return;}
 
   // require every sensor to be alive and not flagged bad -- a sample missing a
   // finger is worse than no sample, since Phase 9's feature vector needs all 6
-  const active=META.filter(m=>{const st=S[m.id];return st.alive&&!st.bad;});
+  // st.alive alone is not enough: it is only cleared on disconnect, so a sensor whose
+  // packets stopped mid-session would still count as alive and its stale rawHist window
+  // would be sampled. Also require a recent frame (same 400 ms the cards use for LIVE).
+  const now=performance.now();
+  const active=META.filter(m=>{const st=S[m.id];return st.alive&&!st.bad&&now-st.last<400;});
   if(active.length<META.length){flashBatch(false);return;}
 
   const ready=active.every(m=>{const rh=S[m.id].rawHist;return rh&&rh.gx.length>=BATCH_MIN_SAMPLES;});
@@ -1175,11 +1430,14 @@ function captureBatchSample(){
       // median over the window, not one instantaneous frame -- this is the actual
       // noise-reduction step: cuts the per-sample noise floor roughly by sqrt(N)
       raw:["ax","ay","az","gx","gy","gz"].map(k=>median(rh[k])),
-      // fused relative orientation at capture time (viewer frame, bias-corrected).
+      // fused HAND-RELATIVE orientation at capture time: conj(q_hand) (x) q_finger,
+      // exactly what the 3D model draws (the hand itself stays relative to its own zero
+      // pose). This used to export st.rel, each sensor against its OWN zero, so tilting
+      // the whole hand changed every finger's features in the training data.
       // An instantaneous read is fine here: the stillness gate above already
       // guarantees the filter wasn't mid-motion when this was grabbed. Order
       // (w,x,y,z) per CLAUDE.md's quaternion convention.
-      relQuat:[st.rel.w,st.rel.x,st.rel.y,st.rel.z],
+      relQuat:handRelQuat(m.id),
     };
   });
   batchRows.push(sample);
@@ -1255,7 +1513,7 @@ function exportBatchCSV(){
   META.forEach(m=>["qw","qx","qy","qz"].forEach(c=>head+=","+m.name.toLowerCase()+"_"+c));
   const lines=[
     "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
-    "# q* = fused relative orientation (viewer frame, bias-corrected) at capture time, order (w,x,y,z).",
+    "# q* = hand-relative orientation conj(q_hand)*q_finger (viewer frame, bias-corrected) at capture time, order (w,x,y,z), sign pinned to w>=0. hand_q* is the hand against its own zero pose.",
     head,
   ];
   for(const s of batchRows){
@@ -1264,23 +1522,26 @@ function exportBatchCSV(){
     META.forEach(m=>row.push(...s[m.name].relQuat.map(v=>v.toFixed(6))));
     lines.push(row.join(","));
   }
-  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;a.download="handrig_batch_"+Date.now()+".csv";a.click();
-  URL.revokeObjectURL(url);
-  clearPersistedBatchRows(); // safely on disk now -- don't keep re-restoring an exported session
+  downloadCSV(lines.join("\n"),"handrig_batch_"+Date.now()+".csv");
+  // Safely on disk now. Clear memory AND storage: clearing only storage left batchRows
+  // in memory, so the next capture re-persisted (and the next export re-exported) every
+  // row that had already been exported. batchRepCounts is kept on purpose: it drives the
+  // A-Z coverage grid and the next rep number, which should carry on across exports.
+  batchRows=[];
+  clearPersistedBatchRows();
+  updateBatchUI();
 }
 
 document.addEventListener("keydown",e=>{
   if(!batchActive)return;
   const tag=(e.target&&e.target.tagName)||"";
-  if(tag==="INPUT"||tag==="SELECT")return;   // don't steal typing out of the label field
-  if(e.code==="Space"){
-    if(batchState==="armed"){e.preventDefault();captureBatchSample();}
-  } else if(e.code==="Escape"){
-    stopBatchCapture();
-  }
+  if(e.code==="Escape"){stopBatchCapture();return;}   // Esc is safe from anywhere, even a text field
+  // Space on a focused control belongs to that control: a button activates on Space, so
+  // handling it here too would fire a capture AND click the button (toggling the batch
+  // off). Don't steal typing out of the label field either. startBatchCapture() blurs
+  // its own button so the normal flow (click, then Space) still lands on <body>.
+  if(tag==="INPUT"||tag==="SELECT"||tag==="TEXTAREA"||tag==="BUTTON")return;
+  if(e.code==="Space"&&batchState==="armed"){e.preventDefault();captureBatchSample();}
 });
 
 function setStatus(t,cls){document.getElementById("status").textContent=t;
@@ -1301,7 +1562,8 @@ function buildCards(){
       ${axisRows(m.id,"a")}
       <div class="blabel">gyro · °/s <span class="mag mono" id="bias${m.id}"></span></div>
       ${axisRows(m.id,"g")}
-      <canvas class="trace" id="tr${m.id}" width="520" height="104"></canvas>
+      <div class="tracewrap"><canvas class="trace" id="tr${m.id}" width="520" height="104"></canvas>
+        <span class="tkey" aria-hidden="true">X ── Y ╌╌ Z ┈┈</span></div>
       <div class="rpy">
         <div>roll<b class="mono" id="r${m.id}">—</b></div>
         <div>pitch<b class="mono" id="p${m.id}">—</b></div>
@@ -1317,7 +1579,46 @@ function buildCards(){
     </div>`;
     wrap.appendChild(c);
   });
+  buildLegend(wrap);
+  cacheCardEls();
 }
+// The key plate: the page's colour-free encoding written down once. It also takes the
+// empty sixth slot in the three-column layout (hand + 5 fingers = 6 plates, plus this).
+function buildLegend(wrap){
+  const c=document.createElement("div");
+  c.className="card legend";
+  const line=(dash)=>`<svg width="44" height="8" viewBox="0 0 44 8" aria-hidden="true"><line x1="0" y1="4" x2="44" y2="4" stroke="#fff" stroke-width="1.6" stroke-dasharray="${dash}"/></svg>`;
+  c.innerHTML=`<h3>Key</h3><dl>
+    <dt>${line("")}</dt><dd>X axis</dd>
+    <dt>${line("6 3")}</dt><dd>Y axis</dd>
+    <dt>${line("1.5 3")}</dt><dd>Z axis</dd>
+    <dt>● LIVE</dt><dd>streaming</dd>
+    <dt>○ NO DATA</dt><dd>no packets</dd>
+    <dt>▲ CHECK</dt><dd>flagged</dd>
+    <dt>▲ FAULT</dt><dd>double rule, excluded</dd>
+  </dl>`;
+  wrap.appendChild(c);
+}
+// refreshCards() runs every frame and touches ~40 elements per sensor. Look each one up
+// once here instead of ~240 getElementById calls per frame.
+const UI=[];
+function cacheCardEls(){
+  const g=id=>document.getElementById(id);
+  META.forEach(m=>{
+    const i=m.id,e={card:g("card"+i),flag:g("flag"+i),am:g("am"+i),bias:g("bias"+i),
+      r:g("r"+i),p:g("p"+i),w:g("w"+i),tr:g("tr"+i),a:{},gy:{},cur:null,last:{}};
+    e.ctx=e.tr.getContext("2d");
+    ["x","y","z"].forEach(ax=>{
+      e.a[ax]={v:g("a"+i+ax),b:g("a"+i+ax+"b")};
+      e.gy[ax]={v:g("g"+i+ax),b:g("g"+i+ax+"b")};
+    });
+    if(m.role!=="palm")e.cur={pct:g("clpct"+i),lab:g("cllab"+i),v:g("clv"+i),b:g("clb"+i)};
+    UI[i]=e;
+  });
+}
+// Text writes are skipped when the value hasn't changed (layout + paint cost, and it
+// keeps screen readers from re-announcing identical text).
+function setText(el,t){if(el.textContent!==t)el.textContent=t;}
 function axisRows(id,kind){
   return ["x","y","z"].map(ax=>`
     <div class="row"><span class="axl ${ax}">${ax.toUpperCase()}</span>
@@ -1328,26 +1629,28 @@ function axisRows(id,kind){
 // ===== trace drawing =====
 let traceMode="gyro";
 function drawTrace(id){
-  const st=S[id],cv=document.getElementById("tr"+id),ctx=cv.getContext("2d");
-  const W=cv.width,H=cv.height;
+  const st=S[id],ctx=UI[id].ctx;
+  const W=ctx.canvas.width,H=ctx.canvas.height;
   ctx.clearRect(0,0,W,H);
-  // Idle isn't "empty" — it's "waiting". Lay down a faint graphite instrument
-  // grid + a copper zero-line so a flat/still sensor still reads as a live, quiet
-  // channel instead of an unimplemented black void.
-  ctx.strokeStyle="rgba(48,52,59,.5)";ctx.lineWidth=1;ctx.beginPath();
+  // Idle isn't "empty", it's "waiting": a faint instrument grid plus a brighter zero
+  // line, so a quiet sensor still reads as a live channel rather than a blank void.
+  ctx.setLineDash([]);
+  ctx.strokeStyle="rgba(255,255,255,.07)";ctx.lineWidth=1;ctx.beginPath();
   for(let gx=0;gx<=W;gx+=W/8){ctx.moveTo(gx,0);ctx.lineTo(gx,H);}
   ctx.moveTo(0,H/4);ctx.lineTo(W,H/4);ctx.moveTo(0,3*H/4);ctx.lineTo(W,3*H/4);
   ctx.stroke();
-  ctx.strokeStyle="rgba(200,121,65,.32)";ctx.lineWidth=1;   // copper zero-line
-  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();
+  ctx.strokeStyle="rgba(255,255,255,.32)";
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();   // zero line
 
   const keys=traceMode==="gyro"?["gx","gy","gz"]:["ax","ay","az"];
-  const cols=BRAND.axis;
   const fs=traceMode==="gyro"?300:2;   // full-scale +/-
   keys.forEach((k,ci)=>{
     const arr=st.hist[k];if(arr.length<2)return;
-    ctx.strokeStyle=cols[ci];ctx.lineWidth=1.4;
-    ctx.shadowColor=cols[ci];ctx.shadowBlur=5;      // soft signal glow
+    // Axis = line style (solid / dashed / dotted), not hue. Dash lengths are in canvas
+    // pixels (the canvas is 520 wide, drawn ~2x down), hence the 1.6 scale.
+    const as=AXIS_STYLE[ci];
+    ctx.strokeStyle=as.color;ctx.lineWidth=2;
+    ctx.setLineDash(as.dash.map(v=>v*1.6));
     ctx.beginPath();
     const step=W/(HLEN-1);
     for(let i=0;i<arr.length;i++){
@@ -1357,24 +1660,25 @@ function drawTrace(id){
     }
     ctx.stroke();
   });
-  ctx.shadowBlur=0;
+  ctx.setLineDash([]);
 }
 
 // ===== UI refresh =====
+// The loop itself is wrapped: an exception inside one pass used to propagate out before
+// the closing requestAnimationFrame() call, so a single bad frame silently froze the
+// whole UI for the rest of the session.
 function refreshCards(){
+  try{refreshOnce();}catch(err){console.error("refreshCards:",err);}
+  requestAnimationFrame(refreshCards);
+}
+function refreshOnce(){
   const now=performance.now();
-  // calibration timing
-  if(calState==="run"){
-    const rem=Math.ceil((calEnd-now)/1000);
-    document.getElementById("calcount").textContent=Math.max(0,rem);
-    if(now>=calEnd)finishCalibration();
-  }
 
   META.forEach(m=>{
-    const st=S[m.id],card=document.getElementById("card"+m.id);
+    const st=S[m.id],ui=UI[m.id],card=ui.card;
     const fresh=st.alive&&now-st.last<400;
     // provisional accel health before a full calibration
-    if(!st.calibrated&&fresh){
+    if(!st.calibrated&&fresh&&!st.dropBad){
       if(Math.abs(st.amag-1)>0.3){st.flag="|a|="+st.amag.toFixed(2)+"g · bad accel";st.bad=true;}
       else{st.flag="";st.bad=false;}
     }
@@ -1382,42 +1686,42 @@ function refreshCards(){
     card.classList.toggle("dead",!fresh);
     card.classList.toggle("flag",!!st.flag&&fresh&&!st.bad);
     card.classList.toggle("bad",!!st.bad&&fresh);
-    const fe=document.getElementById("flag"+m.id);
-    fe.textContent=fresh?st.flag:"";
-    fe.style.color=st.bad?"var(--bad)":"var(--ref)";
-    document.getElementById("am"+m.id).textContent="|a| "+(fresh?st.amag.toFixed(2):"—");
-    document.getElementById("bias"+m.id).textContent=st.calibrated?"bias-corr":"raw";
+    setText(ui.flag,fresh?st.flag:"");
+    setText(ui.am,"|a| "+(fresh?st.amag.toFixed(2):"—"));
+    setText(ui.bias,st.calibrated?"bias-corr":"raw");
     // post-calibration: show accel relative to the pose captured at Calibrate
     // time (raw - accBias), same idea as gyro's bias-corr — reads ~0 in that
     // pose, and the true raw signed value away from it (e.g. -0.9 if the axis
     // has since flipped sign relative to the calibration hold).
     const aDisp=st.calibrated?[st.a[0]-st.accBias[0],st.a[1]-st.accBias[1],st.a[2]-st.accBias[2]]:st.a;
-    setAxis("a",m.id,aDisp,2.0,3);
-    setAxis("g",m.id,st.gc,250,1);      // show CALIBRATED gyro (post-bias, deadbanded)
+    setAxis(ui.a,aDisp,2.0,3);
+    setAxis(ui.gy,st.gc,250,1);      // show CALIBRATED gyro (post-bias, deadbanded)
     // localQ is hand-relative for fingers (matches the 3D model exactly) and absolute
     // for the hand itself, which IS the reference frame. Using st.rel here directly used
     // to show each finger's absolute tilt, not its bend relative to the hand — so tilting
     // the whole hand (not curling anything) showed up identically on every finger card.
     _e.setFromQuaternion(st.localQ,"YXZ");
-    document.getElementById("r"+m.id).textContent=fresh?deg(_e.z):"—";
-    document.getElementById("p"+m.id).textContent=fresh?deg(_e.x):"—";
-    document.getElementById("w"+m.id).textContent=fresh?deg(_e.y):"—";
-    if(m.role!=="palm"){
+    setText(ui.r,fresh?deg(_e.z):"—");
+    setText(ui.p,fresh?deg(_e.x):"—");
+    setText(ui.w,fresh?deg(_e.y):"—");
+    if(ui.cur){
       // Same pitch value driving the visual bend in render() — one IMU per finger,
-      // so this is a curl reading, not per-joint flexion.
+      // so this is a curl reading, not per-joint flexion. Math.abs on purpose: which
+      // pitch sign means "curl" is not yet verified on the glove, so a signed reading
+      // could show 0 % for a fully curled finger. Revisit once that is measured.
       const curlDeg=fresh&&!st.bad?Math.abs(st.curlRad)/DEG:0;
       const pct=Math.max(0,Math.min(100,(curlDeg/CURL_MAX_DEG)*100));
       const lab=!fresh?"—":pct<20?"extended":pct>65?"curled":"bending";
-      document.getElementById("clpct"+m.id).textContent=fresh?pct.toFixed(0)+" %":"— %";
-      document.getElementById("cllab"+m.id).textContent=lab;
-      document.getElementById("clv"+m.id).textContent=fresh?curlDeg.toFixed(0)+"°":"—";
-      document.getElementById("clb"+m.id).style.width=pct+"%";
+      setText(ui.cur.pct,fresh?pct.toFixed(0)+" %":"— %");
+      setText(ui.cur.lab,lab);
+      setText(ui.cur.v,fresh?curlDeg.toFixed(0)+"°":"—");
+      const w=pct+"%";if(ui.cur.b.style.width!==w)ui.cur.b.style.width=w;
     }
     drawTrace(m.id);
   });
 
   const ge=document.getElementById("gest");
-  ge.textContent=GESTURE.active?"thumb·index":"—";
+  setText(ge,GESTURE.active?"thumb·index":"—");
   ge.classList.toggle("hl",GESTURE.active);
 
   const dt=now-winT;
@@ -1433,18 +1737,20 @@ function refreshCards(){
     document.getElementById("tbadv").classList.toggle("warnv",badFrames>50);
     framesWin=0;bytesWin=0;lostWin=0;totWin=0;winT=now;
     document.getElementById("csv").disabled=recording||recFrames.length===0;
-  document.getElementById("noisecheck").disabled=recording||recFrames.length===0;
+    document.getElementById("noisecheck").disabled=recording||recFrames.length===0;
   }
-  requestAnimationFrame(refreshCards);
 }
 const _e=new THREE.Euler();
-function setAxis(kind,id,v,fs,dp){
+// Bars fill from the centre: positive grows right, negative grows left. `els` is the
+// cached {x,y,z} -> {v,b} map for this sensor, so nothing is looked up per frame.
+function setAxis(els,v,fs,dp){
   ["x","y","z"].forEach((ax,k)=>{
-    document.getElementById(kind+id+ax).textContent=v[k].toFixed(dp);
-    const el=document.getElementById(kind+id+ax+"b");
+    const e=els[ax];
+    setText(e.v,v[k].toFixed(dp));
     const frac=Math.max(-1,Math.min(1,v[k]/fs));
-    if(frac>=0){el.style.left="50%";el.style.width=(frac*50)+"%";}
-    else{el.style.left=(50+frac*50)+"%";el.style.width=(-frac*50)+"%";}
+    const left=frac>=0?"50%":(50+frac*50)+"%",width=Math.abs(frac)*50+"%";
+    if(e.b.style.left!==left)e.b.style.left=left;
+    if(e.b.style.width!==width)e.b.style.width=width;
   });
 }
 function deg(r){return (r/DEG).toFixed(0)+"°";}
@@ -1469,8 +1775,15 @@ document.getElementById("beta").addEventListener("input",e=>{
   });
   sel.addEventListener("change",e=>{
     REMAP_OF[0]=e.target.value;
-    S[0].fil.q=[1,0,0,0];          // frame changed: restart fusion, drop the ref
-    S[0].qRef=new THREE.Quaternion();
+    const h=S[0];
+    h.fil.q=[1,0,0,0];          // frame changed: restart fusion, drop the ref
+    h.qRef=new THREE.Quaternion();
+    // The gyro bias and accel offset were measured in the OLD remapped frame. Subtracting
+    // them in the new frame would apply the right numbers to the wrong axes, so drop them
+    // and make the hand re-earn its calibration (the card falls back to "raw").
+    h.bias=[0,0,0];h.noise=[0,0,0];h.accBias=[0,0,0];h.calibrated=false;
+    h.flag="";h.bad=false;h.dropBad=false;h.aSmooth=null;
+    setStatus("hand axes changed: recalibrate (hold flat and still)");
   });
 })();
 
@@ -1492,17 +1805,21 @@ document.getElementById("batchLabel").addEventListener("input",updateBatchUI);
 document.querySelectorAll("#traceview button").forEach(b=>{
   b.addEventListener("click",()=>{
     traceMode=b.dataset.v;
-    document.querySelectorAll("#traceview button").forEach(x=>x.classList.toggle("on",x===b));
+    document.querySelectorAll("#traceview button").forEach(x=>{
+      x.classList.toggle("on",x===b);x.setAttribute("aria-pressed",x===b?"true":"false");
+    });
   });
 });
 
 if(!supportOk()){
   document.getElementById("unsupported").textContent=
     "This browser has no Web Bluetooth. Use Chrome or Edge on desktop (or Android).";
-  document.getElementById("conn").disabled=true;
+  setConnectBusy(false);   // disables both Connect buttons when Web Bluetooth is missing
 }
 
 buildScene();buildCards();buildBatchGrid();
 restoreBatchRows();updateBatchUI();
 refreshCards();
 </script>
+</body>
+</html>
