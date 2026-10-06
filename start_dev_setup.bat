@@ -1,7 +1,7 @@
 @echo off
-REM Starts the Cheirograph dev setup: dashboard in incognito Chrome, Arduino IDE, VS Code on this folder.
+REM Starts the Cheirograph dev setup: dashboard in Chrome (not incognito: batch-capture crash backup needs localStorage), Arduino IDE, VS Code on this folder.
 
-start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --incognito "C:\Users\anil1\Downloads\Cheirograph\tools\handrig_dashboard.html"
+start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" "C:\Users\anil1\Downloads\Cheirograph\tools\handrig_dashboard.html"
 
 start "" "C:\Users\anil1\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Arduino IDE.lnk"
 
