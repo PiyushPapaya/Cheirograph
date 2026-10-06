@@ -66,10 +66,14 @@ python plot_multi_imu.py ../04-all-six-imus-raw/movement_test.csv --save ../04-a
 ### `handrig_dashboard.html`  *(Phase 7.5)*
 Live BLE dashboard — no build step, no server, open the file directly in
 Chrome or Edge (desktop or Android, needs Web Bluetooth). Connects to the
-glove's Nordic UART service, decodes the 79-byte binary frame streamed by
+glove's Nordic UART service, decodes the 80-byte binary frame (sync, seq, timestamp, validity mask, six sensors, XOR checksum) streamed by
 `08-ble-wireless-dashboard/08_ble_dashboard.ino`, runs Madgwick fusion
 per-sensor client-side in JS, and renders a live Three.js 3D hand plus raw
-accel/gyro trace canvases and a 10-second gyro-bias calibration per sensor.
+accel/gyro trace canvases and a 20-second gyro-bias calibration per sensor.
+Also has Record / Export CSV, a Noise Check (GO/NO-GO on a recorded buffer),
+and Batch Capture (labelled static-pose samples, hand-relative quaternions,
+A-Z coverage grid, crash-safe via localStorage). The look is monochrome
+(see DECISIONS.md, 2026-10-06). `verify_*.mjs` in this folder test its pure logic.
 Flags a sensor "bad" and freezes it in the 3D view if its calibrated accel
 magnitude, gyro bias, or gyro noise falls outside a healthy-at-rest range,
 so a broken finger sensor can't make the whole hand look broken.
