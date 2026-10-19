@@ -89,3 +89,10 @@ These two captures are the actual raw data that made the clone-chip diagnosis po
 ## Not there yet
 
 Not the classifier. This stage proves the whole sensing and communication chain works live and wirelessly. The actual gesture recognition model hasn't been trained yet, that's the next real milestone, and it depends on this stage's data quality being trustworthy first.
+
+## Toolchain
+
+Read from the build machine on 2026-10-19 (Arduino IDE, `%LOCALAPPDATA%/Arduino15`), not logged at flash time.
+
+- Board package: **Seeed nRF52 Boards 1.1.13** (the Adafruit-based core; `bluefruit.h` only exists in this one), board *Seeed XIAO nRF52840 Sense*.
+- Libraries: Seeed Arduino LSM6DS3 **2.0.7**. Bluefruit and `Wire` come with the board package. The finger IMUs use the sketch's own raw-register driver, no MPU-6050 library.

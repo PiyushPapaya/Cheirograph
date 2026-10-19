@@ -30,3 +30,10 @@ No fusion yet, no mux, no finger sensors. Just confirming this one chip is hones
 
 - [`01_xiao_imu_test.ino`](01_xiao_imu_test.ino), the sketch.
 - [`story.md`](story.md), how this session actually went.
+
+## Toolchain
+
+Read from the build machine on 2026-10-19 (Arduino IDE, `%LOCALAPPDATA%/Arduino15`), not logged at flash time.
+
+- Board package: not recorded when this stage was flashed. This machine has both **Seeed nRF52 Boards 1.1.13** and **Seeed nRF52 mbed-enabled Boards 2.9.3** installed; either builds this sketch. Use 1.1.13 to match stage 08.
+- Libraries: Seeed Arduino LSM6DS3 **2.0.7**.

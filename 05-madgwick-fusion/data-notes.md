@@ -104,7 +104,7 @@ noisy endpoint can't move the answer. Same file:
 Roll/pitch are flatter than the endpoint numbers suggested (finger 1 roll was
 1.70, is 0.01: the old figure was endpoint noise). Yaw keeps the same sign and
 scale, with the hand still the largest at ~2.2 deg/min. 29.5 s is still too short
-to call these final; the multi-minute A/B run below is what closes Phase 5.
+to call these final; a multi-minute bias on/off A/B run is what closes Phase 5.
 
 **Roll and pitch are essentially flat** (≤ ~1.7 deg/min, most under 0.5) —
 exactly what's expected, since Madgwick's accel correction anchors both

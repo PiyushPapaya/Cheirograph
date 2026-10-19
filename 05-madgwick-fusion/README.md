@@ -67,3 +67,10 @@ Roll and pitch pinned flat by gravity correction, yaw slowly creeping, the unbou
 ## Not there yet
 
 Not relative orientation yet. These quaternions are still each sensor's own absolute orientation in space. Subtracting out the hand's motion to get a finger's relative pose is the next stage.
+
+## Toolchain
+
+Read from the build machine on 2026-10-19 (Arduino IDE, `%LOCALAPPDATA%/Arduino15`), not logged at flash time.
+
+- Board package: not recorded when this stage was flashed. This machine has both **Seeed nRF52 Boards 1.1.13** and **Seeed nRF52 mbed-enabled Boards 2.9.3** installed; either builds this sketch. Use 1.1.13 to match stage 08.
+- Libraries: Seeed Arduino LSM6DS3 **2.0.7**, MPU6050_light **1.2.1**.

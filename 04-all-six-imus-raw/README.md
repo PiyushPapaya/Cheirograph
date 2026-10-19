@@ -74,3 +74,10 @@ Static views of the six-sensor accelerometer trajectories; animated GIF versions
 ## Not there yet
 
 Not fused yet, this is raw accel and gyro only, no orientation math.
+
+## Toolchain
+
+Read from the build machine on 2026-10-19 (Arduino IDE, `%LOCALAPPDATA%/Arduino15`), not logged at flash time.
+
+- Board package: not recorded when this stage was flashed. This machine has both **Seeed nRF52 Boards 1.1.13** and **Seeed nRF52 mbed-enabled Boards 2.9.3** installed; either builds this sketch. Use 1.1.13 to match stage 08.
+- Libraries: Seeed Arduino LSM6DS3 **2.0.7**, MPU6050_light **1.2.1**.

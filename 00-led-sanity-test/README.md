@@ -30,6 +30,7 @@ The board wouldn't show up as a programmable COM port the first time I plugged i
 1. File → Preferences → Additional Boards Manager URLs, add:
    `https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json`
 2. Tools → Board → Boards Manager, search "seeed nrf52", install it.
+   Installed on the build machine (checked 2026-10-19): **Seeed nRF52 Boards 1.1.13**, the one stage 08 needs for Bluetooth. The *mbed-enabled* variant (2.9.3) is also installed, but which of the two this stage was first flashed with wasn't recorded.
 3. Tools → Board → Seeed XIAO nRF52840 Sense.
 4. Tools → Port → the port that shows up as the XIAO (double-tap RESET first if it's not there).
 5. Open `00_led_sanity_test.ino`, hit Upload.
