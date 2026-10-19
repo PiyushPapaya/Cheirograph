@@ -123,6 +123,7 @@
   .gbody{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:10px 16px}
   .ctrl{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-size:11px;letter-spacing:.04em}
   .batchcount{font-size:11px;color:var(--ink-2);white-space:nowrap}
+  .ctrlnote{flex-basis:100%;font-size:10px;color:var(--ink-3);letter-spacing:.04em}
 
   /* ---------- overlays on the viewport ---------- */
   .calbanner{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:8;background:rgba(0,0,0,.94)}
@@ -332,6 +333,14 @@
         </div>
       </div>
       <div class="grp">
+        <div class="glabel">Display</div>
+        <div class="gbody">
+          <label class="ctrl" title="Which pitch sign means curling toward the palm is not measured yet. |pitch| counts either direction. Signed modes count one direction and read 0 for the other.">curl sign <select id="curlsign"></select></label>
+          <label class="ctrl" title="The glove is a LEFT hand. The original model is drawn as a right hand (thumb at +X), so thumb spread may swing the wrong way. Left mirrors the model's geometry to match the glove.">model hand <select id="handmodel"></select></label>
+          <span class="ctrlnote">Curl one finger slowly: pick the curl sign where its % rises. Swing the thumb away from the index: pick the model hand where it moves away too. Display only, exports are unaffected.</span>
+        </div>
+      </div>
+      <div class="grp">
         <div class="glabel">Record</div>
         <div class="gbody">
           <div class="seg" id="traceview" role="group" aria-label="Trace source">
@@ -499,6 +508,44 @@ const S=META.map(()=>({
   hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
 }));
 
+// ===== display-only settings: curl sign + model hand =====
+// Two things not yet measured on the glove, offered as a choice instead of a guess.
+// Defaults reproduce the old behaviour exactly (|pitch|, right-hand model).
+//
+// DISPLAY ONLY. Neither setting reaches recorded or exported numbers:
+//  - exportCSV() writes recFrames, the raw sensor frame captured in parseFrame.
+//  - runNoiseBaselineCheck() runs on that same recFrames buffer.
+//  - captureBatchSample() takes raw medians from st.rawHist and quaternions from
+//    handRelQuat(), which is built from S[].rel (filter output vs. zero pose).
+// None of those read DISPLAY, st.curlRad, st.localQ or the 3D scene graph. The curl
+// sign only changes curlDegFor() (the card readout); the model hand only changes the
+// static finger geometry in buildFingers(). Training data never depends on a toggle.
+const DISPLAY_STORAGE_KEY="gestura_display_v1";
+const CURL_MODES={abs:"|pitch| (current)",pos:"+pitch = curl",neg:"-pitch = curl"};
+const HAND_MODELS={right:"right (current)",left:"left"};
+const DISPLAY={curlMode:"abs",handModel:"right"};
+function loadDisplay(){
+  try{
+    const d=JSON.parse(localStorage.getItem(DISPLAY_STORAGE_KEY)||"null");
+    if(d&&Object.prototype.hasOwnProperty.call(CURL_MODES,d.curlMode))DISPLAY.curlMode=d.curlMode;
+    if(d&&Object.prototype.hasOwnProperty.call(HAND_MODELS,d.handModel))DISPLAY.handModel=d.handModel;
+  }catch(e){ /* unavailable or corrupt -- keep the defaults */ }
+}
+function saveDisplay(){
+  try{localStorage.setItem(DISPLAY_STORAGE_KEY,JSON.stringify(DISPLAY));}catch(e){}
+}
+loadDisplay();   // before buildScene(), which reads DISPLAY.handModel
+// Curl in degrees from the signed pitch (radians) that render() extracts.
+// "abs" is the old Math.abs reading: right for either sign, but it also counts a
+// finger bent BACKWARD as curl. Once the curling sign is known, a signed mode reads
+// only that direction and clamps the other one to 0 (bending back is not curl).
+function curlDegFor(rad,mode){
+  const d=rad/DEG;
+  if(mode==="pos")return Math.max(0,d);
+  if(mode==="neg")return Math.max(0,-d);
+  return Math.abs(d);
+}
+
 // ===== 3D =====
 let renderer,scene,camera,palm;
 const fingerGroups=[];
@@ -558,16 +605,77 @@ function buildScene(){
   // y:0.1 keeps it level with the fingers (points the same forward direction as them at
   // rest). This gives up literally touching the index in exchange for something that
   // reliably renders as a clean, recognizable digit instead of gambling on another kink.
-  const anchors={
-    THUMB :{x: 1.45,y:0.1, z:-0.9, len:1.8,rad:0.21,yaw:-0.15,bend:0,restCurl:0,restSweep:0},
-    INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06,bend:0},
-    MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0, bend:0},
-    RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05,bend:0},
-    PINKY :{x:-0.80,z: 1.10,len:1.7,rad:0.16,yaw:-0.12,bend:0},
-  };
+  // (The anchors live in FINGER_ANCHORS below, and the digits are built by buildFingers()
+  // so the "model hand" display setting can rebuild them mirrored without a page reload.)
+  buildFingers(DISPLAY.handModel);
+
+  addEventListener("resize",resize);resize();
+  renderer.setAnimationLoop(render);
+  initOrbit(cv);
+}
+
+// Anchors as drawn for a RIGHT hand (thumb at +X). This is the original model.
+const FINGER_ANCHORS={
+  THUMB :{x: 1.45,y:0.1, z:-0.9, len:1.8,rad:0.21,yaw:-0.15,bend:0,restCurl:0,restSweep:0},
+  INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06,bend:0},
+  MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0, bend:0},
+  RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05,bend:0},
+  PINKY :{x:-0.80,z: 1.10,len:1.7,rad:0.16,yaw:-0.12,bend:0},
+};
+
+/* ===== model handedness: how "left" mirrors the rig =========================
+ *
+ * The sensor data is already in a right-handed viewer frame (every REMAPS entry is a
+ * proper rotation, det +1). In that frame +Y is up out of the back of the hand and +Z
+ * points at the fingertips, so +X = Y x Z. Put a left hand palm-down in front of you,
+ * fingers pointing away: "up x away" points to YOUR left, and the thumb is on your
+ * right. So on the real glove the thumb sits at -X. The original model puts it at +X,
+ * which is a right hand. Curl (rotation about X) looks the same on either hand, but
+ * spread (rotation about Y) of a +X thumb driven by -X-thumb data swings the wrong way.
+ *
+ * Two ways to draw a left hand. They give the SAME picture; we use the first.
+ *
+ *  (a) Mirror the static geometry and leave the live quaternions alone.  <- chosen
+ *      Reflecting across the YZ-plane is S = diag(-1,1,1). Positions map x -> -x.
+ *      A static rotation about Y by angle t becomes a rotation about Y by -t (the
+ *      rotation axis Y lies in the mirror plane, but the mirror reverses the sense
+ *      of turning), so every rest yaw / bend / sweep flips sign. A rotation about X
+ *      (restCurl) is unchanged because X is perpendicular to the mirror. Moving the
+ *      thumb to -X without negating its yaw would aim it outward, away from the hand,
+ *      and the live rotation is applied INSIDE that yawed frame, so it would be off too.
+ *      The live data needs no change: it already describes a left hand in a proper
+ *      frame, and now the geometry matches it.
+ *
+ *  (b) Put scale.x = -1 on the palm group and keep the right-hand anchors. The scale
+ *      sits between the palm's own rotation and the fingers, so a finger rotation R
+ *      shows up on screen as S R S (mirror, rotate, mirror back). Conjugating a
+ *      rotation by a reflection keeps its angle and maps its axis n to -S n, so a
+ *      quaternion (w,x,y,z) becomes (w,x,-y,-z). To get the physical R on screen you
+ *      would have to feed (w,x,-y,-z) into every finger, plus mirror the cosmetic
+ *      tip bend. With R' = S R S, a finger point v draws at
+ *      S Y(yaw) R' v = (S Y(yaw) S) R (S v) = Y(-yaw) R (S v), i.e. exactly (a).
+ *
+ * Why (a): it needs no quaternion rewriting, and it keeps every matrix a proper
+ * rotation. A negative scale makes the world matrix determinant -1. three.js r128 does
+ * notice that and flips the front-face winding for the hidden-line fill (the black
+ * MeshBasicMaterial in wire()), so the edges would still render. But
+ * getWorldQuaternion() would then decompose a mirrored matrix, and detectGesture()
+ * reads the thumb's world quaternion. With (a) nothing in the scene graph is mirrored,
+ * so the fill, the EdgesGeometry linework and the gesture rule work unchanged.
+ */
+function buildFingers(side){
+  // Drop the previous digits (if any) and free their GPU buffers.
+  fingerGroups.forEach(g=>{
+    if(!g)return;
+    palm.remove(g);
+    g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});
+  });
+  const mx=side==="left"?-1:1;   // S = diag(mx,1,1)
   META.forEach(m=>{
     if(m.role==="palm"){fingerGroups[0]=null;return;}
-    const a=anchors[m.name];
+    const r=FINGER_ANCHORS[m.name];
+    // x and every rotation about Y flip under the mirror; z, y, restCurl do not.
+    const a={...r,x:r.x*mx,yaw:r.yaw*mx,bend:(r.bend||0)*mx,restSweep:(r.restSweep||0)*mx};
     // g's rotation.y=a.yaw is the STATIC anatomical rest pose (thumb sideways, others
     // near-forward) and is set ONCE here, never touched per-frame. It used to get
     // overwritten every frame in render() by folding it into the same quaternion as the
@@ -611,10 +719,6 @@ function buildScene(){
     g.userData={restYaw:a.yaw,restCurl:a.restCurl||0,restSweep:a.restSweep||0,segBase,segTip};
     palm.add(g);fingerGroups[m.id]=g;
   });
-
-  addEventListener("resize",resize);resize();
-  renderer.setAnimationLoop(render);
-  initOrbit(cv);
 }
 // One pointer orbits, two pointers pinch-zoom. Pointers are tracked in a Map so a
 // cancelled gesture (browser takes over the touch, tab switch) can't leave a stale
@@ -702,6 +806,10 @@ function render(){
     // curl = the pitch component of the SAME "local" rotation already driving the whole
     // finger; a bent finger has real forward-pitch, an extended one doesn't. Re-applied
     // at reduced weight on segTip only (see buildScene comment) — not new data.
+    // This stays SIGNED whatever the "curl sign" control says: the tip just continues
+    // the base's real rotation in the same direction, so it needs no sign convention.
+    // The control only affects the curl % readout (curlDegFor). detectGesture() reads
+    // the tip's world pose, so it follows this signed geometry, not the readout.
     _ce.setFromQuaternion(local,"YXZ");
     const curlRad=st.bad?0:_ce.x;
     st.curlRad=curlRad;
@@ -1706,10 +1814,10 @@ function refreshOnce(){
     setText(ui.w,fresh?deg(_e.y):"—");
     if(ui.cur){
       // Same pitch value driving the visual bend in render() — one IMU per finger,
-      // so this is a curl reading, not per-joint flexion. Math.abs on purpose: which
-      // pitch sign means "curl" is not yet verified on the glove, so a signed reading
-      // could show 0 % for a fully curled finger. Revisit once that is measured.
-      const curlDeg=fresh&&!st.bad?Math.abs(st.curlRad)/DEG:0;
+      // so this is a curl reading, not per-joint flexion. Which pitch sign means "curl"
+      // is not yet verified on the glove, so the default stays |pitch|; the "curl sign"
+      // control switches to a signed reading once that is measured (see curlDegFor).
+      const curlDeg=fresh&&!st.bad?curlDegFor(st.curlRad,DISPLAY.curlMode):0;
       const pct=Math.max(0,Math.min(100,(curlDeg/CURL_MAX_DEG)*100));
       const lab=!fresh?"—":pct<20?"extended":pct>65?"curled":"bending";
       setText(ui.cur.pct,fresh?pct.toFixed(0)+" %":"— %");
@@ -1784,6 +1892,23 @@ document.getElementById("beta").addEventListener("input",e=>{
     h.bias=[0,0,0];h.noise=[0,0,0];h.accBias=[0,0,0];h.calibrated=false;
     h.flag="";h.bad=false;h.dropBad=false;h.aSmooth=null;
     setStatus("hand axes changed: recalibrate (hold flat and still)");
+  });
+})();
+// Display-only pickers (see DISPLAY above). Unlike hand axes, neither touches the
+// fusion state, so no recalibration is needed: curl sign takes effect on the next
+// readout refresh, and the model hand rebuilds the finger meshes in place.
+(function(){
+  const fill=(sel,opts,cur)=>Object.keys(opts).forEach(k=>{
+    const o=document.createElement("option");
+    o.value=k;o.textContent=opts[k];o.selected=k===cur;sel.appendChild(o);
+  });
+  const cs=document.getElementById("curlsign"),hm=document.getElementById("handmodel");
+  fill(cs,CURL_MODES,DISPLAY.curlMode);
+  fill(hm,HAND_MODELS,DISPLAY.handModel);
+  cs.addEventListener("change",e=>{DISPLAY.curlMode=e.target.value;saveDisplay();});
+  hm.addEventListener("change",e=>{
+    DISPLAY.handModel=e.target.value;saveDisplay();
+    buildFingers(DISPLAY.handModel);
   });
 })();
 

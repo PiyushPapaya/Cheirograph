@@ -77,6 +77,15 @@ A-Z coverage grid, crash-safe via localStorage). The look is monochrome
 Flags a sensor "bad" and freezes it in the 3D view if its calibrated accel
 magnitude, gyro bias, or gyro noise falls outside a healthy-at-rest range,
 so a broken finger sensor can't make the whole hand look broken.
+Two Display controls wait on a hardware check. **Curl sign** picks how pitch
+becomes the curl %: `|pitch|` (the old reading), `+pitch = curl` or
+`-pitch = curl`. The signed modes read 0 for bending the other way. To choose,
+curl one finger slowly and keep the mode where its % rises. **Model hand**
+switches the 3D rig between the original right-hand model (thumb at +X) and a
+left-hand model mirrored to match the glove. To choose, swing the thumb away
+from the index and keep the model where it moves away too. Both are display
+only and saved in localStorage. Record, Export CSV, Noise Check and Batch
+Capture produce the same numbers whatever they are set to.
 - Dependency: none (vanilla JS + Three.js from CDN).
 - Frame format and the clone-IMU init bug this uncovered are documented in
   `08-ble-wireless-dashboard/README.md`.
