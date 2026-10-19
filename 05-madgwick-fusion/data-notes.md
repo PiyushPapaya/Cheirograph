@@ -87,6 +87,25 @@ Run with `python analyze_drift.py`:
 | finger 4 | 0.04 | -0.06 | -0.97 |
 | finger 5 | 0.51 | -0.02 | -0.53 |
 
+**Re-run 2026-10-19 with a line fit.** The table above compares only the first
+and last sample. `analyze_drift.py` now fits a straight line through the whole
+run (skipping the first 2 s of filter snap-in) and reports its slope, so one
+noisy endpoint can't move the answer. Same file:
+
+| sensor | droll/min | dpitch/min | dyaw/min |
+|---|---|---|---|
+| hand | -0.00 | 0.07 | 2.18 |
+| finger 1 | 0.01 | -0.05 | -0.48 |
+| finger 2 | 0.15 | 0.01 | -0.03 |
+| finger 3 | -0.06 | 0.03 | -0.56 |
+| finger 4 | 0.11 | -0.02 | -1.01 |
+| finger 5 | 0.35 | 0.04 | -0.32 |
+
+Roll/pitch are flatter than the endpoint numbers suggested (finger 1 roll was
+1.70, is 0.01: the old figure was endpoint noise). Yaw keeps the same sign and
+scale, with the hand still the largest at ~2.2 deg/min. 29.5 s is still too short
+to call these final; the multi-minute A/B run below is what closes Phase 5.
+
 **Roll and pitch are essentially flat** (≤ ~1.7 deg/min, most under 0.5) —
 exactly what's expected, since Madgwick's accel correction anchors both
 against gravity every tick regardless of gyro bias. **Yaw drifts at

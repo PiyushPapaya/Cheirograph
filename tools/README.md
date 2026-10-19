@@ -127,6 +127,17 @@ pattern is: random split says 100 % at any yaw error; leave-one-session-out drop
 from 100 % to ~87 % for `quat` as the per-session yaw error grows from 0 to 25°;
 `curl` holds ~90 % regardless but can never separate U from V.
 
+### `analyze_drift.py`  *(Phase 5)*
+Roll/pitch/yaw drift in deg/min per sensor from a still fused capture
+(`millis,sensor_id,qw,qx,qy,qz,roll,pitch,yaw`). Fits a line through each
+unwrapped angle (skipping the first 2 s of filter snap-in) and reports the
+slope. `--compare` prints two captures side by side, for the Phase 5 closing
+test: one still run with `SUBTRACT_GYRO_BIAS 0`, one with `1`, same session.
+- Dependency: `numpy`.
+```bash
+python analyze_drift.py bias_off.csv --compare bias_on.csv
+```
+
 ## Planned scripts
 
 ### `plot_raw.py`
