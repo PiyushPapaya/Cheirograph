@@ -110,6 +110,23 @@ these into the real dataset.
 python make_synthetic_batch.py --out synth/ --sessions 3 --reps 30
 ```
 
+### `train_baseline.py`  *(Phase 9 prep)*
+A k-nearest-neighbours baseline to compare Edge Impulse against. Compares three
+feature sets built from the hand-relative quaternions: `quat` (raw, 20 numbers),
+`dir` (the direction each finger points in the hand's frame, 15) and `curl`
+(only the palm-ward component of that direction, 5, which yaw drift can't
+touch). Reports accuracy on a random 80/20 split and with leave-one-session-out,
+plus a confusion matrix and the most confused letter pairs. Leave-one-session-out
+is the number to trust: the random split mixes reps from the same sitting.
+- Dependency: `numpy`.
+```bash
+python train_baseline.py path/to/exports/
+```
+On synthetic data (illustration of the method only, NOT a glove result) the
+pattern is: random split says 100 % at any yaw error; leave-one-session-out drops
+from 100 % to ~87 % for `quat` as the per-session yaw error grows from 0 to 25°;
+`curl` holds ~90 % regardless but can never separate U from V.
+
 ## Planned scripts
 
 ### `plot_raw.py`
