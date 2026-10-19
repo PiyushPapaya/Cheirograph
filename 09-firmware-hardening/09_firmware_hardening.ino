@@ -2,8 +2,8 @@
  * HandRig BLE v5 — 6-IMU live streamer, clone-robust + self-healing
  * Seeed XIAO nRF52840 SENSE
  *
- * Stage 09 = stage 08's v4 sketch plus four runtime-recovery fixes (WHAT v5
- * ADDS, at the end of this header). The BLE frame is byte-for-byte unchanged,
+ * Stage 09 = stage 08's v4 sketch plus four runtime-recovery fixes and three
+ * BLE/power fixes (WHAT v5 ADDS, at the end of this header). The BLE frame is byte-for-byte unchanged,
  * so tools/handrig_dashboard.html works with either.
  *
  *   sensor 0    = onboard LSM6DS3TR-C (hand / palm reference)  @ 0x6A
@@ -126,6 +126,23 @@
  *                              an 80 B frame is split over two packets and the
  *                              second can be lost.
  *
+ *  14. FULL NAME ADVERTISED  — one advertising packet holds 31 bytes. Flags (3)
+ *                              + TX power (3) + the 128-bit UART service UUID
+ *                              (18) leave 7, and "HandRig-6IMU" needs 14, so
+ *                              addName() chopped it to a 5-char short name
+ *                              "HandR". The name now goes in the scan response,
+ *                              a second 31-byte packet a scanner asks for; the
+ *                              service UUID stays in the advertising packet.
+ *  15. MTU LOGGED WHEN KNOWN — Bluefruit has no MTU-changed callback, but
+ *                              setEventCallback() hands us every raw SoftDevice
+ *                              event after the library has processed it. We
+ *                              catch the MTU exchange there and print the
+ *                              negotiated value once ("# BLE mtu negotiated=").
+ *  16. NO BUSY-WAIT          — loop() used to return straight away when the
+ *                              next 20 ms tick wasn't due, so the CPU spun flat
+ *                              out between frames. It now sleeps (delay()) for
+ *                              the time left. Same schedule, less battery.
+ *
  *   A sensor whose reads keep FAILING (not frozen, just failing) now also gets
  *   re-initialised: v4 only re-initialised sensors flagged stuck.
  *
@@ -195,6 +212,7 @@ uint8_t  busDeadRun = 0;                   // consecutive frames with every fing
 uint16_t busRecoveries = 0;
 uint32_t lastBusRecoverMs = 0;
 uint16_t txFail = 0;                       // frames bleuart.write() did not fully send
+volatile uint16_t mtuNegotiated = 0;       // (15) set by the BLE task, printed by loop()
 
 // =========================================================================
 // I2C plumbing
@@ -644,7 +662,8 @@ void sendFrame(){
 void connect_callback(uint16_t conn_handle){
   BLEConnection* c = Bluefruit.Connection(conn_handle);
   // mtu here is usually still the 23 B default: the exchange that raises it
-  // finishes after this callback. The 2 s report line shows the real value.
+  // finishes after this callback. ble_event_callback() below logs the real
+  // value when it lands, and the 2 s report line shows it too.
   Serial.print("# BLE connected: mtu(pre-exchange)="); Serial.print(c->getMtu());
   Serial.print(" interval="); Serial.print(c->getConnectionInterval() * 1.25f, 1);
   Serial.println(" ms");
@@ -653,11 +672,53 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason){
   Serial.print("# BLE disconnected, HCI reason=0x"); Serial.println(reason, HEX);
 }
 
+/*
+ * (15) The MTU exchange finishing. Bluefruit 1.1.13 has no MTU callback
+ * (BLEConnection.h only offers getMtu() and requestMtuExchange()), but
+ * Bluefruit.setEventCallback() is called with EVERY SoftDevice event, after
+ * the library's own handlers. So by the time we see the exchange event,
+ * BLEConnection has already stored the agreed MTU and getMtu() returns it.
+ *
+ * Two events, depending on who started the exchange:
+ *   GATTS_EVT_EXCHANGE_MTU_REQUEST  the central (phone/browser) asked; the
+ *                                   library replied with min(theirs, ours).
+ *                                   This is the usual case for the dashboard.
+ *   GATTC_EVT_EXCHANGE_MTU_RSP      we asked. We never do, but it costs nothing
+ *                                   to handle.
+ *
+ * This runs in the BLE task, not in loop(), so it only stores the number and
+ * loop() does the printing. Keeps Serial use in one task. If the central never
+ * asks for an exchange at all, the MTU stays 23 and nothing is logged here;
+ * the report line still shows mtu=23.
+ */
+void ble_event_callback(ble_evt_t* evt){
+  uint16_t id = evt->header.evt_id;
+  if(id != BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST && id != BLE_GATTC_EVT_EXCHANGE_MTU_RSP) return;
+  BLEConnection* c = Bluefruit.Connection(evt->evt.common_evt.conn_handle);
+  if(c) mtuNegotiated = c->getMtu();
+}
+
+/*
+ * (14) Advertising packet budget. A legacy BLE advertising packet carries at
+ * most 31 bytes of data, each field costing 2 bytes of header (length, type)
+ * plus its payload:
+ *   flags          2 + 1  =  3
+ *   TX power       2 + 1  =  3
+ *   NUS UUID       2 + 16 = 18   (128-bit custom UUID, the expensive one)
+ *                           24   -> 7 bytes left
+ *   name           2 + 12 = 14   doesn't fit
+ * addName() in BLEAdvertising.cpp handles that by switching to the "short
+ * name" type and cutting the name to whatever fits: "HandR". The scan response
+ * is a second 31-byte packet the scanner requests after hearing the advert,
+ * and Bluefruit sends Bluefruit.ScanResponse's contents as that packet. The
+ * full name fits there easily. The UUID stays in the advert, so a scanner
+ * filtering by service still finds the glove from the first packet.
+ */
 void startAdv(){
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
   Bluefruit.Advertising.addService(bleuart);
-  Bluefruit.Advertising.addName();
+  Bluefruit.ScanResponse.addName();               // (14) full "HandRig-6IMU" here
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244);
   Bluefruit.Advertising.setFastTimeout(30);
@@ -713,14 +774,44 @@ void setup(){
   Bluefruit.Periph.setConnInterval(12, 24);
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
+  Bluefruit.setEventCallback(ble_event_callback);   // (15)
   bleuart.begin(); startAdv();
   Serial.print("# advertising as "); Serial.println(DEV_NAME);
 }
 
+/*
+ * (16) Waiting for the next frame. v4 did `if(not due yet) return;`. On this
+ * core loop() runs inside a FreeRTOS task (cores/nRF5/main.cpp, loop_task),
+ * which calls loop() then yield() forever. yield() only hands the CPU to tasks
+ * of equal or higher priority that are ready to run. The idle task, the one
+ * that puts the chip to sleep between ticks (tickless idle is on in this
+ * core's FreeRTOSConfig.h), is lower priority, so it never got a turn: the CPU
+ * ran flat out ~14 ms out of every 20 just checking the clock.
+ *
+ * delay() on this core is not a busy loop: cores/nRF5/delay.c turns it into
+ * vTaskDelay(), which blocks this task and lets everything else run. The BLE
+ * task and the SoftDevice keep servicing the radio, and when nothing is ready
+ * the idle task sleeps the CPU until the wake-up. That is different from the
+ * `while(!Serial)` problem in the gotchas: that loop waits for an event that
+ * may never come (no USB host on battery), so it hangs forever. Here we wait
+ * for a time we computed ourselves, at most SAMPLE_MS, so it always ends.
+ *
+ * Timing: FreeRTOS here ticks at 1024 Hz, not 1000, so delay(n) can wake a
+ * fraction of a ms early as seen by millis(). That's why we `return` after the
+ * delay instead of falling through: the next loop() re-checks millis() and
+ * waits the last ms if needed, so a frame never fires early. The schedule
+ * itself (next += SAMPLE_MS, resync after a stall) is unchanged from v4.
+ */
 void loop(){
   static uint32_t next = 0, rptT = 0, frames = 0;
   if(next == 0){ next = millis(); rptT = millis(); }
-  if((int32_t)(millis() - next) < 0) return;
+
+  // (15) print the negotiated MTU once, from this task (see ble_event_callback)
+  uint16_t m = mtuNegotiated;
+  if(m){ mtuNegotiated = 0; Serial.print("# BLE mtu negotiated="); Serial.println(m); }
+
+  int32_t wait = (int32_t)(next - millis());
+  if(wait > 0){ delay((uint32_t)wait); return; }   // (16) sleep, don't spin
 
   next += SAMPLE_MS;
   // after a recovery stall, resync instead of firing a burst of catch-up frames
