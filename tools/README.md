@@ -81,6 +81,35 @@ so a broken finger sensor can't make the whole hand look broken.
 - Frame format and the clone-IMU init bug this uncovered are documented in
   `08-ble-wireless-dashboard/README.md`.
 
+---
+
+### `check_dataset.py`  *(Phase 8)*
+Quality gate for the dashboard's **Export batch CSV** files. Run it on every
+export before it goes into training. It fails on anything that makes a row
+unusable: a pre-2026-10-06 export (quaternions not hand-relative), NaN, a
+non-unit or unpinned (`qw < 0`) quaternion, a sensor not reading ~1 g (zeros =
+dropped), a sensor whose raw values repeat exactly between reps (frozen
+register), or the same rows saved twice. Then it prints reps per letter per
+session against the target (30 reps over 3 sessions). It reads the session
+number from the renamed file name (`handrig_batch_<letter>_<session#>_<ts>.csv`).
+Exit code 0 = pass, 1 = problems (`--strict` also fails on short coverage).
+- Dependency: `numpy`. Shares the file loader `batch_io.py`.
+```bash
+python check_dataset.py path/to/exports/
+```
+`verify_check_dataset.py` plants each of those faults in synthetic data and
+checks the gate catches every one (13 checks).
+
+### `make_synthetic_batch.py`  *(Phase 8, testing only)*
+Writes fake batch CSVs in the exact export format (10 rough fingerspelling
+shapes, a random hand tilt per rep, a per-session yaw error on each finger's
+quaternion) so the data tools can be built before real data exists. Every
+file is marked `# SYNTHETIC` and `check_dataset.py` warns about it. Never mix
+these into the real dataset.
+```bash
+python make_synthetic_batch.py --out synth/ --sessions 3 --reps 30
+```
+
 ## Planned scripts
 
 ### `plot_raw.py`
