@@ -104,6 +104,27 @@ Pass for the re-run: about 50 Hz, 0 clipped samples (at `--clip 2000`), gyro ret
 
 Other results from the same run: no all-zero frames (no bus dropouts) and no accel clipping in any test. The dashboard showed RATE 15 to 17 Hz with LOSS 0.0 % and 0 bad frames, which means the firmware sent a frame every 60 ms (median dt exactly 60 ms) and did not drop any. See DOCUMENTATION 2026-10-31.
 
+### Second run, after the fixes (2026-10-31, afternoon)
+
+I re-ran the motion tests on the fixed system: v5 firmware with ±2000 °/s gyro and the BLE link requests, plus the self-healing dashboard. I recorded a real-hand video and a dashboard screen recording for each test. These are the "after" videos for the comparison with the first run. Videos are in `after-fix_2026-10-31/` (local only, gitignored like the first run, about 286 MB).
+
+| File | Real hand video | Dashboard screen recording |
+|---|---|---|
+| t0 | none | `t0_v5-fixed_2026-10-31_screen.mp4` |
+| t1 | `t1_v5-fixed_2026-10-31_hand.mp4` | `t1_v5-fixed_2026-10-31_screen.mp4` |
+| t2 | `t2_v5-fixed_2026-10-31_hand.mp4` | `t2_v5-fixed_2026-10-31_screen.mp4` |
+| t3 | `t3_v5-fixed_2026-10-31_hand.mp4` | `t3_v5-fixed_2026-10-31_screen.mp4` |
+| t4 | `t4_v5-fixed_2026-10-31_hand.mp4` | `t4_v5-fixed_2026-10-31_screen.mp4` |
+| t5 | `t5_v5-fixed_2026-10-31_hand.mp4` | `t5_v5-fixed_2026-10-31_screen.mp4` |
+| t6 | `t6_v5-fixed_2026-10-31_hand.mp4` | `t6_v5-fixed_2026-10-31_screen.mp4` |
+| t7 | none | `t7_v5-fixed_2026-10-31_screen.mp4` |
+
+Original names were `tN_realfixed.mp4` (hand) and `tN_fixed.mp4` (screen). They are kept as tN, not renamed to protocol IDs. There are eight screen recordings (t0 to t7) and six hand videos (t1 to t6), so how they map onto T0 to T6 is not recorded (unverified). In the first run, t1 to t7 meant T0 to T6.
+
+Recorded between about 17:23 and 17:30 (screen recordings). That is before the last two dashboard changes the same day: the live mount-angle learner and the tilt correction with the hand-axes picker removed. So these videos show the fixed firmware plus the earlier dashboard fixes (calibration settle, pinky offset, self-healing, fwd +X and left model defaults), not the final dashboard. (Order inferred from file times, unverified.)
+
+No dashboard CSVs were saved with this run, so the "Re-run" column in the table above stays without numbers. The comparison is visual only. For numbers, record the CSV (● Record before Calibrate) and run `analyze_motion_test.py`.
+
 ## Analysis commands
 
 ```

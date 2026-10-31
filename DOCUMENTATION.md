@@ -219,6 +219,8 @@ Verification so far:
   The palm matched the real hand within 2.4 deg in every case after learning. A tipped XIAO is fixed immediately at calibration. A turned one needs about 2 s of turning the hand. All `verify_*.mjs` tests pass, no console errors, copies byte-identical (md5 `a8c4ec4ad9277e1e109ccacf749f4fa5`). **Not verified on the glove.**
 - **Limit:** the tilt fix assumes the hand is flat with straight fingers during calibration. That is the calibration pose, so it holds as long as calibration is done properly.
 
+**Motion tests re-run after the fixes (afternoon, videos only).** I re-ran the motion tests on the fixed system and saved them as the "after" set: 8 dashboard screen recordings (t0 to t7) and 6 real-hand videos (t1 to t6). They are logged in `09-firmware-hardening/motion-tests/README.md` ("Second run, after the fixes") and stored locally in `09-firmware-hardening/motion-tests/after-fix_2026-10-31/` (gitignored, about 286 MB). No CSVs were recorded, so there are no numbers, and the mapping of t0 to t7 onto T0 to T6 isn't recorded. From the file times, the recordings came before the mount-angle learner and the tilt fix, so they don't show the final dashboard (unverified).
+
 **Ideas raised today, not built yet:**
 - Keep sideways spread on a flat hand. Auto re-zero erases it (T4). Option: only re-zero yaw for fingers that were straight at calibration, or skip re-zero while the spread gesture is active. Needs the re-run data first.
 - Revisit accel down-weighting during fast moves once there is clean 50 Hz, ±2000 °/s data (rejected for now, DECISIONS 2026-10-31).
