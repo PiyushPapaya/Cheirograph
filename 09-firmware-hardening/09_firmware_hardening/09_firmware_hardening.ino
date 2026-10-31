@@ -67,7 +67,8 @@
  *   [79]     XOR checksum of bytes 0..78
  *
  *   accel int16 = g   * 8192      (+/-4 g)
- *   gyro  int16 = dps * 65.536    (+/-500 dps)
+ *   gyro  int16 = dps * 16.384    (+/-2000 dps; was +/-500, which clipped
+ *                                  on fast finger snaps, motion tests 2026-10-31)
  *
  * SENSOR AXES (measured on the glove, 2026-07-19)
  *   fingers: -Y -> fingertip, +Z -> up
@@ -162,7 +163,7 @@
 #define SAMPLE_MS     20
 #define DEV_NAME      "HandRig-6IMU"
 #define ACC_SCALE     8192.0f     // +/-4 g    -> 8192 LSB/g
-#define GYR_SCALE     65.536f     // +/-500 dps-> 65.536 LSB/(deg/s)
+#define GYR_SCALE     16.384f     // +/-2000 dps -> 16.384 LSB/(deg/s)
 #define I2C_HZ        400000      // drop to 100000 if a channel is flaky
 #define INIT_TRIES    3           // init attempts per channel at boot
 #define STUCK_FRAMES  50          // ~1 s @ 50 Hz of bit-identical data = frozen
@@ -339,7 +340,7 @@ bool initFingerOnce(uint8_t sid, uint8_t ch, bool hardReset){
   if(!wReg(R_CONFIG,   0x03)) return false;   // gyro DLPF ~44 Hz
   if(!wReg(R_ACC_CFG2, 0x03)) return false;   // accel DLPF ~44 Hz (6500 family)
   if(!wReg(R_SMPLRT,   0x04)) return false;   // 1 kHz/(1+4) = 200 Hz
-  if(!wReg(R_GYRO_CFG, 0x08)) return false;   // FS_SEL=1  -> +/-500 dps
+  if(!wReg(R_GYRO_CFG, 0x18)) return false;   // FS_SEL=3  -> +/-2000 dps
   if(!wReg(R_ACC_CFG,  0x08)) return false;   // AFS_SEL=1 -> +/-4 g
   delay(20);
 
@@ -353,7 +354,7 @@ bool initFingerOnce(uint8_t sid, uint8_t ch, bool hardReset){
 
   if((p1 & 0x47) != 0x01) return false;   // sleep clear (bit6) + CLKSEL==1
   if((p2 & 0x3F) != 0x00) return false;   // all six axes enabled
-  if((gc & 0x18) != 0x08) return false;   // gyro full scale
+  if((gc & 0x18) != 0x18) return false;   // gyro full scale
   if((ac & 0x18) != 0x08) return false;   // accel full scale
   return true;
 }
@@ -667,6 +668,16 @@ void connect_callback(uint16_t conn_handle){
   Serial.print("# BLE connected: mtu(pre-exchange)="); Serial.print(c->getMtu());
   Serial.print(" interval="); Serial.print(c->getConnectionInterval() * 1.25f, 1);
   Serial.println(" ms");
+  // The 2026-10-31 motion tests ran at a steady 60 ms per frame (16.7 Hz) with
+  // 0 % loss: write() blocking, i.e. the link drained one 80 B frame per 60 ms.
+  // That fits an unraised 23 B MTU (4 packets per frame) at one packet per
+  // 15 ms connection event. The central decides all of these, so we can only
+  // ask: 2M PHY, longer link-layer packets, a 247 B MTU (one frame = one
+  // packet) and a 15 ms interval. Same requests as Adafruit's throughput example.
+  c->requestPHY();
+  c->requestDataLengthUpdate();
+  c->requestMtuExchange(247);
+  c->requestConnectionParameter(12);   // 12 x 1.25 ms = 15 ms
 }
 void disconnect_callback(uint16_t conn_handle, uint8_t reason){
   Serial.print("# BLE disconnected, HCI reason=0x"); Serial.println(reason, HEX);
@@ -742,7 +753,7 @@ void setup(){
   // hand (onboard, on its own bus Wire1, not behind the mux). tcaDisable() is
   // for the finger bus: it starts the fingers' init with every channel off.
   tcaDisable();
-  mcuIMU.settings.gyroRange = 500;
+  mcuIMU.settings.gyroRange = 2000;   // match the fingers' +/-2000 dps
   mcuIMU.settings.accelRange = 4;
   present[0] = (mcuIMU.begin() == 0);
 
@@ -828,7 +839,9 @@ void loop(){
     // exchange finishes, so the value it logs is usually the 23 B default.
     if(Bluefruit.connected()){
       Serial.print(" mtu=");
-      Serial.print(Bluefruit.Connection(Bluefruit.connHandle())->getMtu());
+      BLEConnection* c = Bluefruit.Connection(Bluefruit.connHandle());
+      Serial.print(c->getMtu());
+      Serial.print(" ci_ms="); Serial.print(c->getConnectionInterval() * 1.25f, 1);
     }
     Serial.print(" hz=");     Serial.print(frames * 1000.0f / (now - rptT), 1);
     Serial.print(" read_us="); Serial.print(accN ? accReadUs / accN : 0);
