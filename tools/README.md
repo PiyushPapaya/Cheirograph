@@ -86,6 +86,25 @@ left-hand model mirrored to match the glove. To choose, swing the thumb away
 from the index and keep the model where it moves away too. Both are display
 only and saved in localStorage. Record, Export CSV, Noise Check and Batch
 Capture produce the same numbers whatever they are set to.
+Self-healing (2026-10-31, not yet tried on the glove): per sensor it detects
+stillness, tracks gyro bias slowly while still, raises the Madgwick beta in
+proportion to the tilt error to snap back, and re-zeroes automatically when the
+hand lies flat in the calibration pose. The header **HEALTH** cell shows `OK`,
+`re-zero`, `slow link` (under 40 Hz) or `zero? <fingers>` for sensors that
+clipped or dropped frames since their last zero. Batch Capture rejects a rep in
+those states. The drawn hand is eased (40 ms) for smoothness. None of this
+changes the raw CSV or the batch CSV format. It expects v5 firmware (gyro
+±2000 °/s); v4 gyro reads 4x too small here.
+Live accel-offset learning: the same sphere fit as `fit_accel_offsets.py`, run
+in the browser. While a sensor is quiet (steady gyro, accel not creeping) for
+0.5 s, one raw accel sample every 0.25 s feeds running least-squares sums (no
+samples stored). It refits every 10 samples after 60 and only trusts the result
+if the samples cover enough directions and the fit is a clean sphere (radius
+within 0.05 of 1 g, rms under 0.03 g). A trusted offset is applied and saved in
+localStorage (`gestura_acc_offset_v1`); the built-in constants are the defaults.
+It needs about 15 s of still time over different hand orientations. Tested on
+synthetic frames only (unverified on the glove). Batch Capture reps also need
+every sensor's tilt error under 2 deg.
 - Dependency: none (vanilla JS + Three.js from CDN).
 - Frame format and the clone-IMU init bug this uncovered are documented in
   `08-ble-wireless-dashboard/README.md`.
@@ -145,6 +164,23 @@ test: one still run with `SUBTRACT_GYRO_BIAS 0`, one with `1`, same session.
 - Dependency: `numpy`.
 ```bash
 python analyze_drift.py bias_off.csv --compare bias_on.csv
+```
+
+### `analyze_motion_test.py`  *(Phase 8)*
+Checks a dashboard raw CSV from a motion test (`09-firmware-hardening/motion-tests/`):
+frame rate, dropped frames, clipped gyro samples (`--clip`, default 2000 °/s),
+|a|, and the return error between the start hold and the end hold.
+- Dependency: `numpy`.
+```bash
+python analyze_motion_test.py path/to/test.csv
+```
+
+### `fit_accel_offsets.py`  *(Phase 8)*
+Sphere fit over quasi-static samples to find each sensor's accel zero-g offset
+and radius. Used to get the pinky `ACC_OFFSET` in the dashboard.
+- Dependency: `numpy`.
+```bash
+python fit_accel_offsets.py path/to/test.csv
 ```
 
 ## Dropped from the original plan

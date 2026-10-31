@@ -8,9 +8,21 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 | Date | Decision | Area |
 |---|---|---|
+| open | [Finger-vs-hand relative formula](#open-finger-vs-hand-relative-formula) | Fusion |
+| open | [BLE throughput if the central refuses the link requests](#open-ble-throughput-if-the-central-refuses-the-link-requests) | BLE |
+| open | [Guided functional calibration](#open-guided-functional-calibration) | Calibration |
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-10-31 | [Accel offsets learned live, saved per browser](#2026-10-31--accel-offsets-learned-live-saved-per-browser) | Calibration |
+| 2026-10-31 | [Accel-magnitude gating rejected for now](#2026-10-31--accel-magnitude-gating-rejected-for-now) | Fusion |
+| 2026-10-31 | [Heading drift: automatic re-zero in the calibration pose](#2026-10-31--heading-drift-automatic-re-zero-in-the-calibration-pose) | Fusion |
+| 2026-10-31 | [Snap-back: beta scaled by tilt error when still](#2026-10-31--snap-back-beta-scaled-by-tilt-error-when-still) | Fusion |
+| 2026-10-31 | [Quality gate rejects reps, no new CSV columns](#2026-10-31--quality-gate-rejects-reps-no-new-csv-columns) | Data |
+| 2026-10-31 | [Gyro full scale ±2000 °/s](#2026-10-31--gyro-full-scale-2000-s) | Firmware |
+| 2026-10-31 | [Pinky accel offset corrected by a dashboard constant](#2026-10-31--pinky-accel-offset-corrected-by-a-dashboard-constant) | Calibration |
+| 2026-10-31 | [Calibration settle in closed form](#2026-10-31--calibration-settle-in-closed-form) | Fusion |
+| 2026-10-31 | [Calibrate before every motion test, not once per session](#2026-10-31--calibrate-before-every-motion-test-not-once-per-session) | Calibration |
 | 2026-10-06 | [Batch export uses the hand-relative quaternion](#2026-10-06--batch-export-uses-the-hand-relative-quaternion) | Data |
 | 2026-10-06 | [Dashboard goes monochrome](#2026-10-06--dashboard-goes-monochrome) | UI |
 | 2026-08-08 | [Calibration stillness gate uses deviation, not an absolute threshold](#2026-08-08--calibration-stillness-gate-uses-deviation-not-an-absolute-threshold) | Calibration |
@@ -50,6 +62,35 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 ## Open decisions
 
+### Open: finger-vs-hand relative formula
+
+**Options:** (a) keep `rel_h^-1 * rel_f` (each sensor relative to its own calibration zero, then finger relative to hand). (b) Use `(qRef_h^-1 qRef_f)^-1 (q_h^-1 q_f)`, which compares the raw hand and finger quaternions and removes the zero offset between them.
+
+**Leaning:** keep (a) for now.
+
+**Why it's open:** I replayed the 2026-10-31 captures with (b), with beta 0.3, and with the deadband removed. None was a clear win. Those captures are 17 Hz, clipped and had a wrong calibration zero, so the comparison is weak. Re-test on clean captures after the fixes (unverified until then).
+
+### Open: BLE throughput if the central refuses the link requests
+
+**Options:** (a) keep asking for 2M PHY, data length update, MTU 247 and a 15 ms connection interval and hope the central grants them. (b) Shrink the frame so it fits fewer packets per connection event (for example drop fields or send fewer sensors per frame). (c) Try a different host or browser. (d) Lower the rate to what the link carries and fix it in the analysis.
+
+**Leaning:** (a). Update 2026-10-31: the updated v5 is flashed. On this host the central accepted the requests (serial report: `mtu=527 ci_ms=15.0 hz=50.0 tx_fail=0`). Resolved pending confirmation: it stays open until the dashboard RATE readout and a recorded CSV show about 50 Hz. `write_us=0` while connected is odd (unverified), possibly because the dashboard had not subscribed yet. Other hosts or browsers may still refuse, so (b) remains the fallback.
+
+**Why it's open:** the motion tests ran at about 17 Hz with 0 % loss, which points at `bleuart.write()` blocking on a slow link (unverified, needs the `mtu=`, `ci_ms=`, `hz=`, `write_us=` report line). If the central refuses, (b) costs frame format changes in firmware, dashboard parser and `check_dataset.py` together, and (d) is not acceptable for ML data. Decide after reading the report line.
+
+### Open: guided functional calibration
+
+**Options:** (a) keep the current one-step calibration: hold still, flat. It sets gyro bias and the zero pose. (b) Add a guided routine with several movement sets, per finger and multi-finger, to calibrate each sensor and how they relate. This is called functional calibration in motion capture. Steps:
+- still on the table (gyro bias, already done)
+- flat hand (zero pose)
+- several fists (each finger's real bend axis and sign, replaces guessing the curl sign and hand axes)
+- spread (the sideways axis)
+- six-face placement, done offline (accel scale per sensor, could explain the pinky reading 25 to 28 % low)
+
+**Leaning:** (b), but only after the gyro range is settled and the dashboard tracks bias in the background.
+
+**Why it's open:** it cannot fix gyro clipping, and it cannot stop yaw drift during use. Calibrating against clipped data would bake the error in. The cost is more dashboard UI work, plus a routine of about a minute that has to be done each session. The gain is that axes and signs are measured instead of picked by hand. Unverified until tried.
+
 ### Open: hardware watchdog for a stuck SCL line
 
 **Options:** (a) leave it. A stuck SCL hangs the glove until someone power-cycles it. (b) Enable the nRF52 hardware watchdog so a hung loop reboots the chip.
@@ -73,6 +114,84 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-10-31 | Accel offsets learned live, saved per browser
+
+**Options:** (a) fixed constants in the dashboard. (b) Run `tools/fit_accel_offsets.py` offline after each recording and paste the result. (c) Learn the offsets live in the dashboard from still moments, save them in the browser, and keep the constants as defaults.
+**Choice:** (c). Every 0.25 s while a sensor has been quiet for 0.5 s, one raw accel sample goes into running least-squares sums for a sphere fit. It refits every 10 samples after 60 and applies the result only if the directions are spread out and the sphere is clean (radius within 0.05 of 1 g, radial rms under 0.03 g). Saved under `gestura_acc_offset_v1`.
+**Why:** the offset is a property of the sensor, so it should follow the sensor, and a fit that runs by itself needs no remembering. Constants alone break when a sensor is swapped or its offset shifts. The offline script works but needs a manual step each time. In a synthetic test it recovered the pinky offset within 0.003 g after 5 orientations.
+- Cost: the saved value is tied to one browser profile. A different browser or cleared storage starts from the constants again.
+- Cost: a wrong fit could get saved. The sphere-quality and direction-coverage checks reduce that risk, but they are not proof. Clearing localStorage resets it.
+- Cost: needs about 15 s of still time spread over different orientations before it can confirm anything. Real-glove behaviour is unverified.
+
+### 2026-10-31 | Accel-magnitude gating rejected for now
+
+**Options:** (a) always trust the accelerometer at the same weight. (b) Down-weight it when |a| is far from 1 g, since then the sensor is feeling motion on top of gravity.
+**Choice:** (a), for now.
+**Why:** I replayed the 7 motion-test recordings with (b). Nothing changed measurably, and the fast-fist index got slightly worse (106 to 116 deg). The error in this data comes from gyro clipping and yaw, not linear acceleration. The recordings are 17 Hz and clipped, so this is a weak test.
+- Cost: during very fast moves the accel may still pull the filter the wrong way. Not seen in the data so far.
+- Revisit with clean 50 Hz, ±2000 deg/s captures (unverified until then).
+
+### 2026-10-31 | Heading drift: automatic re-zero in the calibration pose
+
+**Options:** (a) add a magnetometer for a yaw reference. (b) Manual re-zero only (the Zero Orient button). (c) Re-zero automatically whenever the hand is back in the calibration pose and still.
+**Choice:** (c). When every non-bad sensor has been still for 1 s or more, has tilt error under 2 deg and has its up within 8 deg of the calibration up, each zero is slerped toward the current orientation (0.4 s time constant).
+**Why:** a 6-DOF IMU cannot observe yaw, so heading drifts by physics. A magnetometer is new hardware on every finger, and magnetometers are generally unreliable indoors near metal (unverified here). A manual button works but the drift is gone only when I remember to press it. The calibration pose is the one place where the right answer is known, so correcting there is safe. In the replay, T3, T5 and T6 end under 1 deg per finger.
+- Cost: fingers spread sideways while the hand lies flat palm-down look identical to gravity, so that spread is zeroed too. T4 still ends at 13.9 deg for the thumb after healing.
+- Cost: it only fires palm-down flat. Letter poses are not that pose, so they do not trigger it, but it also means no yaw fix during long use in other poses.
+- Thresholds are first guesses tuned on old captures. Unverified on the glove.
+
+### 2026-10-31 | Snap-back: beta scaled by tilt error when still
+
+**Options:** (a) a fixed higher Madgwick beta. (b) Raise beta from the slider value toward 1.0 in proportion to the tilt error, only after 0.2 s still.
+**Choice:** (b). Full at 20 deg error. 2 deg gives 0.19, 0.5 deg gives about 0.12.
+**Why:** Madgwick steps a fixed beta along a normalised gradient. A big fixed beta therefore chatters once the filter has converged. Scaling by error gives a fast pull when the drift is large and almost no change near zero. Max correction is 2 * beta rad/s, 115 °/s.
+- Cost: two more tuning constants (the 0.2 s still time and the 20 deg full-scale error) to explain and keep right.
+- Cost: it only helps pitch and roll. Yaw still needs the re-zero above.
+
+### 2026-10-31 | Quality gate rejects reps, no new CSV columns
+
+**Options:** (a) add quality columns to the batch CSV (link rate, trust per sensor). (b) Reject a rep in the dashboard when the link is under 40 Hz or any sensor is untrusted, and leave the format unchanged.
+**Choice:** (b). The rep flashes red and Batch Capture stays armed.
+**Why:** a changed format means changing `check_dataset.py` and `train_baseline.py` in the same commit, and old files stop matching. Rejecting at capture time keeps bad reps out of the data in the first place. A sensor is untrusted if it clipped (|g| at or above 1990 °/s) or dropped a frame since its last zero.
+- Cost: the reason for a rejection is not stored in the file. I only see it live on the HEALTH cell.
+- Cost: the rule can be too strict (a single dropped frame blocks that sensor until the next re-zero). Unverified on real captures.
+
+### 2026-10-31 | Gyro full scale ±2000 °/s
+
+**Options:** (a) keep ±500 °/s. (b) ±1000 °/s. (c) ±2000 °/s on the fingers and the hand IMU.
+**Choice:** (c). Finger `GYRO_CONFIG 0x18` (16.384 LSB per °/s), hand LSM6DS3 `gyroRange 2000`, `GYR_SCALE 16.384` in firmware and dashboard together.
+**Why:** the fast-fist test (T2) had 84 to 120 clipped samples per finger, 11 to 15 % of all samples, at the ±500 limit. A clipped rate integrates too little rotation. ±1000 would probably still clip on a snap and I have no peak measurement, so I took the range that cannot clip on a hand.
+- Cost: 4x coarser resolution, 0.061 °/s per LSB instead of 0.015. That is still far below the sensor noise (unverified at ±2000, not measured).
+- Cost: firmware and dashboard now have to match. The new dashboard reads v4 (stage 08) gyro 4x too small.
+- The slow fist (T1) also failed to return, so clipping is not the only cause. See DOCUMENTATION 2026-10-31.
+
+### 2026-10-31 | Pinky accel offset corrected by a dashboard constant
+
+**Options:** (a) subtract a fitted constant in the dashboard. (b) subtract it in the firmware. (c) write the offset into the MPU offset registers.
+**Choice:** (a). `ACC_OFFSET` per sensor in `handrig_dashboard.html`, pinky [0.250, 0.190, -0.165] g, others 0. Applied in the raw sensor frame before remap, fusion and the calibration checks. The CSV export stays raw.
+**Why:** a sphere fit over the quasi-static samples gave the pinky a centre of (0.250, 0.190, -0.165) g and a radius of 1.005 g, so the scale is right and the zero point is off. The other five are within 0.025 g. Keeping the CSV raw means the correction can be redone or changed later from the same files.
+- Cost: the constant must be re-fitted if the sensor changes or moves, and the dashboard is now tied to this glove.
+- Cost: firmware (b) would have kept every client correct, but it hides the raw data and needs a reflash for each re-fit. Registers (c) are unverified on this chip and lost on a power cycle unless the firmware writes them.
+- Root cause of the offset is unverified (the pinky is the only genuine MPU-6050).
+
+### 2026-10-31 | Calibration settle in closed form
+
+**Options:** (a) keep stepping the Madgwick filter at high beta until it settles (40 steps). (b) Compute the settled quaternion directly from the averaged gravity vector.
+**Choice:** (b). The shortest rotation taking the measured up `u` onto +Z: `q = normalise(1+uz, uy, -ux, 0)`, with the upside-down case handled separately.
+**Why:** 40 steps at beta 1.0 and dt 0.02 turn at most 40 * 0.04 rad, about 92 deg. Every sensor starts 97 to 109 deg away, so replaying the captures left 17 to 27 deg of error in every zero. More steps would work (100+ gave under 1.6 deg), but the closed form does not depend on a step count. Checked against the dashboard's own Madgwick run to convergence: within 0.2 deg including heading.
+- Cost: one more piece of quaternion math to explain and keep right. It sets heading to the shortest rotation, so heading is arbitrary, which is fine since yaw cannot be observed anyway.
+
+### 2026-10-31 | Calibrate before every motion test, not once per session
+
+**Options:** (a) calibrate once at the start of the session and run all tests on that bias and zero. (b) Run the full 20 s calibration before every test, with the calibration hold inside the recording.
+**Choice:** (b). Press ● Record, then Calibrate, then clap, 5 s flat, movement, 5 s flat, Stop.
+**Why:**
+- Each test is independent. It starts from a fresh gyro bias and a fresh zero pose, so one bad test can't spoil the next.
+- The CSV is raw (no bias correction, no remap, no calibration markers). With the 20 s hold inside the recording, the analysis can recompute the exact bias and zero the dashboard used. The clap marks where calibration ended.
+- Cost: it hides bias drift across the session, for example while the MEMS gyros warm up. T0 and T6 still show drift within one test, but not between tests. Powering the glove about 5 minutes before the first calibration should remove most of the warm-up drift (unverified for these sensors).
+- Cost: about 20 s more per test.
+- Calibrate in the same flat pose and on the same surface as the 5 s flat holds. "Did the fingers return" is measured against the calibration zero.
 
 ### 2026-10-06 | Batch export uses the hand-relative quaternion
 

@@ -23,7 +23,8 @@ I'm building this alone, from soldering to firmware to the browser dashboard. Th
 | Mounted on a glove | ✅ Passed a 30 min wear test | [07](07-full-glove-assembly/) |
 | Bluetooth stream + live 3D dashboard | ✅ Running on the glove, ~47 Hz | [08](08-ble-wireless-dashboard/) |
 | Finger pose relative to the hand | 🟡 In the dashboard, not yet in firmware | [06](06-relative-orientation/), [tools](tools/) |
-| Runtime fault recovery (v5 firmware) | 🟡 Written, not flashed yet | [09](09-firmware-hardening/) |
+| Runtime fault recovery (v5 firmware) | 🟡 Flashed 2026-10-31, recovery paths untested | [09](09-firmware-hardening/) |
+| Self-healing dashboard (snap-back, auto re-zero, live offset learning) | 🟡 Works on the glove by eye. Motion tests not re-run yet | [tools](tools/) |
 | Dataset tooling (quality gate, baseline model) | 🟡 Built, tested on synthetic data | [tools](tools/) |
 | Labelled dataset | ⬜ Next | [ml](ml/) |
 | On-device classifier + Bluetooth keyboard | ⬜ After that | [ml](ml/) |
@@ -42,6 +43,16 @@ Right now it's a working sensing and visualisation system. Recognition is the pa
 | Yaw drift, held still | 0.03–2.2 °/min. Expected: no magnetometer |
 | Wear test | 30 min, glove taken off and on, no dropped connection |
 | Dataset checker | 13/13 planted faults caught |
+
+Fixes from the 2026-10-31 motion tests (serial and replay evidence, not yet re-measured on the glove):
+
+| What | Before | After |
+|---|---|---|
+| Frame rate over Bluetooth | 16.7 Hz | 50 Hz (serial report, MTU 527, 15 ms interval) |
+| Gyro range | ±500 °/s, 11–15 % of fast-fist samples clipped | ±2000 °/s |
+| Calibration zero error | 17–27 ° on every sensor | within 0.2 ° of a converged filter |
+| Pinky accel | read "25–28 % low" | fixed zero-point offset found (0.25, 0.19, -0.17 g) and corrected |
+| Worst finger error at end of test (replay) | up to 94 ° | under 5 ° in most tests (T2 unchanged) |
 
 Not measured yet: Bluetooth latency, drift over several minutes, and any classifier accuracy on real data.
 
@@ -79,6 +90,8 @@ Wave your arm and both quaternions rotate together, so `q_rel` stays put. Curl a
 **3. A training-data bug no test would have caught by looking.** The batch export saved each finger relative to its own starting pose instead of relative to the hand. The numbers looked fine, but tilting your hand would have changed the finger features in the training set. I caught it in a code review before any real data was collected. → [decision](DECISIONS.md#2026-10-06--batch-export-uses-the-hand-relative-quaternion)
 
 **4. A fix that made things worse.** To keep motion out of calibration, I first dropped samples with gyro above 6 °/s. But a still sensor reads its own bias, not zero, and the pinky's bias was above 6 °/s. It never calibrated. The real fix compares each sensor against its own rolling average. → [decision](DECISIONS.md#2026-08-08--calibration-stillness-gate-uses-deviation-not-an-absolute-threshold)
+
+**5. A calibration that could only turn 92 degrees.** After calibration the fingers kept moving and never sat at zero. The dashboard "settled" each filter with 40 small steps, and 40 steps can turn about 92 deg at most. Every sensor started about 100 deg away, so each zero was off by 17 to 27 deg. I found it by replaying the recorded CSVs. The fix computes the settled orientation directly, and it matches a converged filter within 0.2 deg. → [decision](DECISIONS.md#2026-10-31--calibration-settle-in-closed-form)
 
 ## The build, stage by stage
 

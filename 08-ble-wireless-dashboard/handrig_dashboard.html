@@ -277,6 +277,7 @@
     <div><div class="k">throughput</div><div class="v mono"><span id="tkb">0.0</span> KB/s</div></div>
     <div><div class="k">loss</div><div class="v mono" id="tlossv"><span id="tloss">0.0</span>%</div></div>
     <div><div class="k">bad frames</div><div class="v mono" id="tbadv"><span id="tbad">0</span></div></div>
+    <div><div class="k">health</div><div class="v mono" id="thealth" title="Self-healing status. OK = 40+ Hz and every sensor trusted. 'zero?' lists sensors that clipped or dropped a frame since their last zero: lay the hand flat and still for a second and auto re-zero fixes it. 're-zero' = it is doing that now.">—</div></div>
   </div>
   <button class="primary" id="conn">Connect</button>
 </header>
@@ -314,7 +315,7 @@
       <div class="veil" id="veil">
         <div class="box">
           <h2>Connect the glove</h2>
-          <p>Flash <b>08-ble-wireless-dashboard</b> (v4), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (20&nbsp;s)</b> lying flat and still. That removes gyro bias so the fingers stop drifting.</p>
+          <p>Flash <b>09-firmware-hardening</b> (v5, ±2000 °/s gyro; v4 reads 4× too small here), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (20&nbsp;s)</b> lying flat and still. That removes gyro bias so the fingers stop drifting.</p>
           <button class="primary" id="conn2">Connect over Bluetooth</button>
           <div class="warn" id="unsupported"></div>
         </div>
@@ -410,7 +411,25 @@ const AXIS_STYLE=[
 const NUS="6e400001-b5a3-f393-e0a9-e50e24dcca9e";
 const TX ="6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 // v4 frame: 80 B, last byte is an XOR checksum over bytes 0..78.
-const SYNC=0xAB, FRAME_LEN=80, ACC_SCALE=8192.0, GYR_SCALE=65.536, DEG=Math.PI/180;
+// Gyro is +/-2000 dps (16.384 LSB/dps) from v5 on 2026-10-31: +/-500 clipped on fast
+// finger snaps. Must match GYR_SCALE in the firmware; v4 (08) still sends 65.536.
+const SYNC=0xAB, FRAME_LEN=80, ACC_SCALE=8192.0, GYR_SCALE=16.384, DEG=Math.PI/180;
+// Per-sensor accel zero-g offset in g, RAW sensor frame, subtracted before anything
+// else uses the accel (the CSV keeps the raw value). Fitted with
+// tools/fit_accel_offsets.py on the 2026-10-31 motion tests: the pinky (the one
+// genuine MPU-6050) sits on a sphere of radius 1.005 g centred at (0.25, 0.19, -0.17),
+// so its scale is fine but its zero point is off, which read as |a|~0.75 g and tilted
+// its gravity vector up to ~20 deg. The other five fit within 0.025 g of zero.
+const ACC_OFFSET=[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0.250,0.190,-0.165]];
+// Offsets the dashboard learned itself (learnAccOffset, below) override these defaults
+// and survive a reload. Clear the key in DevTools to go back to the constants above.
+const ACC_OFFSET_KEY="gestura_acc_offset_v1";
+try{
+  const o=JSON.parse(localStorage.getItem(ACC_OFFSET_KEY)||"null");
+  if(Array.isArray(o)&&o.length===6)o.forEach((v,i)=>{
+    if(Array.isArray(v)&&v.length===3&&v.every(Number.isFinite))ACC_OFFSET[i]=v;
+  });
+}catch(e){}
 const HLEN=400;              // trace history length
 const REC_CAP=300000;       // recording row cap
 
@@ -505,6 +524,8 @@ const S=META.map(()=>({
   qRef:new THREE.Quaternion(), rel:new THREE.Quaternion(), localQ:new THREE.Quaternion(),
   last:0, alive:false, dropCount:0,
   dropBad:false, goodRun:0, prevFlag:"", prevBad:false,   // firmware-dropout latch (see parseFrame)
+  // self-healing state (see "self-healing" below parseFrame)
+  stillS:0, aSlow:null, tiltErr:180, calUp:null, clipT:-Infinity, dropT:-Infinity, zeroT:0, curlView:0,
   hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
 }));
 
@@ -783,11 +804,18 @@ const _te=new THREE.Euler();          // scratch, segTip rotation
 const _ce=new THREE.Euler();          // scratch, curl extraction only
 const CURL_MAX_DEG=90;                // reference full-curl angle for the % readout
 const TIP_CURL_FRAC=0.4;              // extra cosmetic bend re-applied at segTip
+const VIEW_SMOOTH_MS=40;   // display easing time constant (see render)
 function render(){
   camera.position.set(camDist*Math.cos(camPitch)*Math.sin(camYaw),camDist*Math.sin(camPitch),camDist*Math.cos(camPitch)*Math.cos(camYaw));
   camera.lookAt(0,0,0);
   const palmQ=S[0].bad?_idQ:S[0].rel;
-  palm.quaternion.copy(palmQ);
+  // Display smoothing: frames arrive at 50 Hz, the screen draws at 60-144 Hz, so the
+  // model used to step. Each drawn rotation now eases toward the true one with a
+  // 40 ms time constant (frame-rate independent: k = 1 - e^(-dt/tau)). Display only:
+  // st.localQ, the cards and the exports keep the unsmoothed value.
+  const rnow=performance.now(), k=1-Math.exp(-Math.min(100,rnow-(render.t||rnow))/VIEW_SMOOTH_MS);
+  render.t=rnow;
+  palm.quaternion.slerp(palmQ,k||1);
   S[0].localQ.copy(palmQ);   // the hand IS the reference frame, so its own readout stays absolute
   // q_rel = conj(q_hand) (x) q_finger. For a unit quaternion the conjugate IS the
   // inverse, so invert() gives conj(q_hand). Waving the whole arm rotates both
@@ -801,7 +829,7 @@ function render(){
     const local=st.bad ? st.localQ.copy(_idQ) : st.localQ.copy(invPalm).multiply(st.rel);
     // st.localQ doubles as the cache the card readout and batch export read, so
     // they always match what is actually drawn.
-    g.userData.segBase.quaternion.copy(local);
+    g.userData.segBase.quaternion.slerp(local,k||1);
 
     // curl = the pitch component of the SAME "local" rotation already driving the whole
     // finger; a bent finger has real forward-pitch, an extended one doesn't. Re-applied
@@ -813,7 +841,8 @@ function render(){
     _ce.setFromQuaternion(local,"YXZ");
     const curlRad=st.bad?0:_ce.x;
     st.curlRad=curlRad;
-    g.userData.segTip.quaternion.setFromEuler(_te.set(g.userData.restCurl+curlRad*TIP_CURL_FRAC,g.userData.restSweep,0));
+    st.curlView+=(curlRad-st.curlView)*(k||1);   // same easing as segBase, so the tip doesn't lead it
+    g.userData.segTip.quaternion.setFromEuler(_te.set(g.userData.restCurl+st.curlView*TIP_CURL_FRAC,g.userData.restSweep,0));
   });
   detectGesture();
   renderer.render(scene,camera);
@@ -986,7 +1015,10 @@ function parseFrame(f){
   const seq=dv.getUint8(1), t=dv.getUint32(2,true), mask=dv.getUint8(6);
   if(lastSeq>=0){lostWin+=(seq-lastSeq-1)&0xff;}
   totWin++;lastSeq=seq;framesWin++;
-  let dt=(t-lastT)/1000;lastT=t;if(dt<=0||dt>0.25)dt=0.02;
+  // dt==0 can happen when the firmware sends catch-up frames in the same ms after
+  // a stalled BLE write. Those frames add no elapsed time, so they must not add
+  // rotation either (substituting 0.02 here would integrate each one twice).
+  let dt=(t-lastT)/1000;lastT=t;if(dt<0||dt>0.25)dt=0.02;
 
   const recRow=recording?[t]:null;
   let off=7;
@@ -997,6 +1029,9 @@ function parseFrame(f){
     // CSV always stores the RAW sensor frame, never the remapped one — the
     // remap is a viewing convention and may change; the capture must not.
     if(recRow)recRow.push(ax,ay,az,gx,gy,gz);
+    const ao=ACC_OFFSET[sid], cax=ax-ao[0], cay=ay-ao[1], caz=az-ao[2];
+    // a sample at the gyro's full scale is a lower bound, not a reading: rotation was lost
+    if(Math.max(Math.abs(gx),Math.abs(gy),Math.abs(gz))>=GYR_CLIP_DPS)S[sid].clipT=performance.now();
 
     const st=S[sid];
     // v4: a clear mask bit means the firmware itself does not trust this
@@ -1004,6 +1039,7 @@ function parseFrame(f){
     // firmware sent zeros with the bit still set and we fused a 0 g gravity
     // vector as though it were real data. Skip it and say so on the card.
     if(!(mask&(1<<sid))){
+      st.dropT=performance.now();   // a missing frame is missing rotation: orientation untrusted until re-zero
       st.dropCount++;st.goodRun=0;
       if(st.dropCount>25&&!st.dropBad){
         // remember what the calibration verdict was, so recovery restores THAT rather
@@ -1022,7 +1058,7 @@ function parseFrame(f){
 
     // remap sensor frame -> viewer frame BEFORE fusion, so the Madgwick
     // quaternion is already expressed in the frame the 3D rig uses.
-    const [rax,ray,raz]=applyRemap(REMAP_OF[sid],[ax,ay,az]);
+    const [rax,ray,raz]=applyRemap(REMAP_OF[sid],[cax,cay,caz]);
     const [rgx,rgy,rgz]=applyRemap(REMAP_OF[sid],[gx,gy,gz]);
 
     st.a=[rax,ray,raz];st.g=[rgx,rgy,rgz];st.amag=Math.hypot(rax,ray,raz);
@@ -1062,11 +1098,15 @@ function parseFrame(f){
       c.as[0]+=rax;c.as[1]+=ray;c.as[2]+=raz;
     }
 
+    healStillness(st,devX,devY,devZ,rgx,rgy,rgz,dt);
+    learnAccOffset(sid,st,ax,ay,az,dt);
+
     // apply bias + deadband -> calibrated gyro (all in the viewer frame)
     const gc=[rgx-st.bias[0],rgy-st.bias[1],rgz-st.bias[2]];
     for(let k=0;k<3;k++){const db=Math.max(0.6,3*st.noise[k]);if(Math.abs(gc[k])<db)gc[k]=0;}
     st.gc=gc;
 
+    healBeta(st);
     st.fil.update(gc[0],gc[1],gc[2],st.aSmooth[0],st.aSmooth[1],st.aSmooth[2],dt);
     st.rel.copy(st.qRef).invert().multiply(st.fil.three());
 
@@ -1084,7 +1124,156 @@ function parseFrame(f){
     // button reading "Stop" on a recording that had already ended).
     if(recFrames.length>=REC_CAP)toggleRec();
   }
+  healRezero(dt);
 }
+
+// ===== self-healing (2026-10-31) =====
+// Built from the motion tests: after a fast move the fingers stayed bent for seconds
+// (tilt converging at beta 0.1), the sideways angle never came back (6-DOF: no yaw
+// reference), and bias can wander between calibrations. Four small mechanisms, all
+// keyed off one per-sensor "still" detector. None of them changes the raw CSV.
+//
+// Still = gyro close to its own recent trend (same bias-agnostic test as calibration)
+// AND the accel direction not creeping (fast EMA vs slow EMA of the accel) AND |a|~1 g.
+// The accel-creep check is what stops a slow, steady rotation (gyro flat, so it
+// passes the first test) from being mistaken for stillness.
+const GYR_CLIP_DPS=1990;        // +/-2000 full scale, a hair under so int16 rounding still counts
+const HEAL_ACC_DRIFT_G=0.03;    // fast-vs-slow accel EMA gap allowed while "still"
+// Durations are in seconds of frame time, not frame counts: counted in frames, "1 s"
+// took 3 s at the 16.7 Hz the motion tests ran at, and the short end holds never qualified.
+const HEAL_SNAP_S=0.2;          // still this long -> trust the accel more (snap-back)
+const HEAL_STILL_S=1.0;         // still this long -> bias tracking may run
+const HEAL_REZERO_S=1.0;        // still this long in the calibration pose -> auto re-zero
+const HEAL_BETA=1.0;            // snap-back beta: Madgwick turns up to 2*beta rad/s = 115 deg/s
+const HEAL_ERR_FULL_DEG=20;     // tilt error at which the full snap-back beta applies
+const HEAL_BIAS_K=0.002;        // bias EMA per frame: ~10 s time constant at 50 Hz
+const HEAL_BIAS_MAX_DPS=1.5;    // only nudge bias by residuals this small (never absorb motion)
+const HEAL_POSE_DEG=8;          // every sensor's "up" within this of its calibration "up"
+const HEAL_TILT_OK_DEG=2;       // and its filter already converged on tilt
+const HEAL_REZERO_TAU=0.4;      // re-zero slerp time constant, s: ~95 % in 1.2 s, no visible jump
+const HEAL_MIN_HZ=40;           // below this, gyro integration loses angle (motion tests: 16.7 Hz)
+let betaUser=0.1, linkHz=0, rezeroActive=false;
+const _rz=new THREE.Quaternion();
+
+function healStillness(st,devX,devY,devZ,rgx,rgy,rgz,dt){
+  if(!st.aSlow)st.aSlow=st.aSmooth.slice();
+  for(let k=0;k<3;k++)st.aSlow[k]+=(st.aSmooth[k]-st.aSlow[k])*0.05;
+  const creep=Math.hypot(st.aSmooth[0]-st.aSlow[0],st.aSmooth[1]-st.aSlow[1],st.aSmooth[2]-st.aSlow[2]);
+  // gyro gate scales with the sensor's own calibration noise: a fixed 3 deg/s let one
+  // noisy clone sample reset the timer over and over on a hand that was in fact still
+  const gate=k=>Math.max(STILL_DEV_DPS,4*st.noise[k]);
+  const quiet=devX<gate(0)&&devY<gate(1)&&devZ<gate(2)&&creep<HEAL_ACC_DRIFT_G;
+  st.quietS=quiet?(st.quietS||0)+dt:0;   // still, without trusting |a| (the offset learner needs this)
+  st.stillS=quiet&&Math.abs(st.amag-1)<0.1?st.stillS+dt:0;
+  // Live bias tracking: a still sensor's gyro reading IS its bias, so drift the
+  // estimate toward it, slowly. The 1.5 deg/s cap means it can only fine-tune the
+  // calibrated value (warm-up drift), never swallow a real rotation.
+  if(st.calibrated&&calState!=="run"&&st.stillS>=HEAL_STILL_S){
+    const rg=[rgx,rgy,rgz];
+    for(let k=0;k<3;k++){const d=rg[k]-st.bias[k];if(Math.abs(d)<HEAL_BIAS_MAX_DPS)st.bias[k]+=d*HEAL_BIAS_K;}
+  }
+}
+
+// Snap-back. Madgwick's accel correction steps a FIXED beta along a normalised
+// gradient, so a big beta also means big chatter once converged. So the boost scales
+// with the actual tilt error: 20+ deg off -> beta 1.0 (a 120 deg error clears in ~1 s),
+// 2 deg off -> 0.19, 0.5 deg off -> barely above the user's setting. While moving, the user's beta stands.
+// Tilt error: the filter's predicted "up" in the body frame is world +Z rotated by
+// conj(q), i.e. the third row of q's rotation matrix; compare it with the measured accel.
+function healBeta(st){
+  const [q0,q1,q2,q3]=st.fil.q, a=st.aSmooth, an=Math.hypot(a[0],a[1],a[2])||1;
+  const ux=2*(q1*q3-q0*q2), uy=2*(q0*q1+q2*q3), uz=q0*q0-q1*q1-q2*q2+q3*q3;
+  st.tiltErr=Math.acos(Math.min(1,Math.max(-1,(ux*a[0]+uy*a[1]+uz*a[2])/an)))/DEG;
+  st.fil.beta=st.stillS>=HEAL_SNAP_S
+    ? betaUser+(HEAL_BETA-betaUser)*Math.min(1,st.tiltErr/HEAL_ERR_FULL_DEG)
+    : betaUser;
+}
+
+// Auto re-zero. Heading (rotation about gravity) has no reference on a 6-DOF IMU, so
+// sideways drift can only be removed by a known pose. The calibration pose is one:
+// when every sensor is still, its tilt has converged, and its "up" matches the "up"
+// it had at calibration, the hand is back in that pose, so each sensor's zero is
+// slid (slerp, not snapped) onto its current orientation. Cost: fingers spread
+// sideways while the hand lies flat look the same to gravity, so that spread is
+// zeroed too. Fingerspelling poses are not palm-down-flat, so they never trigger it.
+function healRezero(dt){
+  if(calState==="run"||!S[0].calibrated||S[0].bad){rezeroActive=false;return;}
+  const used=S.filter(st=>!st.bad);
+  const ok=used.every(st=>{
+    if(!st.calibrated||!st.calUp||st.stillS<HEAL_REZERO_S||st.tiltErr>HEAL_TILT_OK_DEG)return false;
+    const a=st.aSmooth, an=Math.hypot(a[0],a[1],a[2])||1;
+    const c=(a[0]*st.calUp[0]+a[1]*st.calUp[1]+a[2]*st.calUp[2])/an;
+    return Math.acos(Math.min(1,c))/DEG<HEAL_POSE_DEG;
+  });
+  rezeroActive=ok;
+  if(!ok)return;
+  const now=performance.now();
+  const k=1-Math.exp(-dt/HEAL_REZERO_TAU);
+  used.forEach(st=>{st.qRef.slerp(_rz.copy(st.fil.three()),k);st.zeroT=now;});
+}
+
+// ===== self-improving: accel offset learning (2026-10-31) =====
+// The same sphere fit as tools/fit_accel_offsets.py, but live. A still accelerometer
+// reads only gravity, so its RAW samples lie on a sphere of radius 1 g whose centre is
+// the zero-g offset b. |a - b|^2 = r^2 rearranges to |a|^2 = 2 a.b + c with
+// c = r^2 - |b|^2, linear in (b, c). Least squares only needs the running sums
+// M = sum(row row^T) and v = sum(row |a|^2) with row = (2ax, 2ay, 2az, 1), so nothing
+// is stored per sample. One sample per 0.25 s of stillness (a long hold must not
+// outweigh the other orientations). The fit is only trusted when the samples cover
+// enough directions (two axes spanning >= 1.0 in unit-vector terms) and land on a
+// clean sphere (radius 0.95-1.05 g, radial rms < 0.03 g). Then the offset is applied
+// and saved, so every later session starts from it.
+// Stillness here uses quietS, not stillS: stillS also wants |a| ~ 1 g, which a sensor
+// with a big unknown offset never shows, so it could never learn its way out.
+const ACCFIT_EVERY_S=0.25, ACCFIT_STILL_S=0.5, ACCFIT_MIN_N=60, ACCFIT_SPREAD=1.0;
+const ACCFIT_R_TOL=0.05, ACCFIT_MAX_RMS=0.03, ACCFIT_ANNOUNCE_G=0.02;
+const accFit=META.map(()=>({M:new Float64Array(16),v:new Float64Array(4),yy:0,n:0,lo:[1,1,1],hi:[-1,-1,-1],t:0,last:0}));
+
+function learnAccOffset(sid,st,ax,ay,az,dt){
+  const f=accFit[sid];
+  f.t+=dt;
+  if(calState==="run"||st.quietS<ACCFIT_STILL_S||f.t-f.last<ACCFIT_EVERY_S)return;
+  f.last=f.t;
+  const row=[2*ax,2*ay,2*az,1], y=ax*ax+ay*ay+az*az, n=Math.sqrt(y);
+  if(n<0.3)return;
+  for(let i=0;i<4;i++){f.v[i]+=row[i]*y;for(let j=0;j<4;j++)f.M[4*i+j]+=row[i]*row[j];}
+  f.yy+=y*y; f.n++;
+  [ax,ay,az].forEach((c,k)=>{f.lo[k]=Math.min(f.lo[k],c/n);f.hi[k]=Math.max(f.hi[k],c/n);});
+  if(f.n<ACCFIT_MIN_N||f.n%10)return;                     // refit every 10 new samples
+  if([0,1,2].filter(k=>f.hi[k]-f.lo[k]>=ACCFIT_SPREAD).length<2)return;
+  const x=solve4(f.M,f.v); if(!x)return;
+  const b=[x[0],x[1],x[2]], r2=x[3]+b[0]*b[0]+b[1]*b[1]+b[2]*b[2];
+  if(r2<=0)return;
+  const r=Math.sqrt(r2);
+  // residual of |a|^2 without revisiting samples: SSE = yy - 2 x.v + x.M.x.
+  // Divided by 2r it becomes (to first order) the radial error in g.
+  let xMx=0,xv=0;
+  for(let i=0;i<4;i++){xv+=x[i]*f.v[i];for(let j=0;j<4;j++)xMx+=x[i]*f.M[4*i+j]*x[j];}
+  const rms=Math.sqrt(Math.max(0,f.yy-2*xv+xMx)/f.n)/(2*r);
+  st.accFit={b,r,rms,n:f.n};                              // for inspection in DevTools
+  if(Math.abs(r-1)>ACCFIT_R_TOL||rms>ACCFIT_MAX_RMS)return;
+  const old=ACC_OFFSET[sid], moved=Math.hypot(b[0]-old[0],b[1]-old[1],b[2]-old[2]);
+  ACC_OFFSET[sid]=b.map(v=>+v.toFixed(4));
+  try{localStorage.setItem(ACC_OFFSET_KEY,JSON.stringify(ACC_OFFSET));}catch(e){}
+  if(moved>ACCFIT_ANNOUNCE_G)
+    setStatus(`${META[sid].name.toLowerCase()} accel offset learned (${ACC_OFFSET[sid].map(v=>v.toFixed(2)).join(", ")} g): recalibrate to use it fully`);
+}
+
+// 4x4 linear solve, Gaussian elimination with partial pivoting. null if singular.
+function solve4(Min,vin){
+  const A=[0,1,2,3].map(i=>[Min[4*i],Min[4*i+1],Min[4*i+2],Min[4*i+3],vin[i]]);
+  for(let c=0;c<4;c++){
+    let p=c;for(let r=c+1;r<4;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;
+    if(Math.abs(A[p][c])<1e-12)return null;
+    [A[c],A[p]]=[A[p],A[c]];
+    for(let r=0;r<4;r++){if(r===c)continue;const k=A[r][c]/A[c][c];for(let j=c;j<5;j++)A[r][j]-=k*A[c][j];}
+  }
+  return A.map((row,i)=>row[4]/row[i]);
+}
+
+// A sensor's orientation is trusted when nothing has cost it rotation since its last
+// zero (calibration, Zero Orient, or auto re-zero): no clipped gyro, no dropped frame.
+function sensorTrusted(st){return st.clipT<st.zeroT&&st.dropT<st.zeroT;}
 
 // ===== calibration =====
 // STILL_DEV_DPS: gates the calibration average on stillness, but critically on DEVIATION
@@ -1176,19 +1365,26 @@ function finishCalibration(){
     // visibly keeps rotating on its own (this is the "hand still slowly rotating
     // downward" bug) even though the glove itself is dead still.
     //
-    // Fix: solve for the settled orientation directly, synchronously, using the
-    // SAME update() math (so the axis convention can't drift from the live
-    // path) but fed the calibration-average accel (not live per-frame noisy
-    // samples) with zero gyro input and beta cranked to 1.0. A few dozen
-    // synthetic steps converge a gradient-descent correction to the same fixed
-    // point live frames would eventually reach — just in ~0ms instead of
-    // however long the slider's beta happens to take.
-    st.fil.q=[1,0,0,0];
+    // Fix: set the settled orientation directly from the calibration-average
+    // accel (not live per-frame noisy samples), so qRef is captured only once
+    // the filter already sits where live frames would eventually take it.
+    //
+    // 2026-10-31: the 40-step loop that used to sit here did not converge. Each step
+    // turns q by at most 2*beta*dt = 0.04 rad, so 40 steps cover ~92 deg, but in the
+    // viewer frame "up" is +Y while Madgwick's reference is +Z, so every sensor starts
+    // ~100 deg away. Replaying the motion-test CSVs left 17-27 deg of error in every
+    // qRef, which the live filter then slowly corrected: the model drifted after each
+    // calibration and never zeroed. Now solved in closed form instead. The settled q
+    // is the shortest rotation taking the measured "up" u (normalised average accel)
+    // onto world +Z: axis u x Z = (uy,-ux,0), angle acos(uz). As a quaternion that is
+    // normalise(1+uz, uy, -ux, 0) (half-angle trick: no trig needed). Same fixed point
+    // the old loop was heading for, with zero heading as before.
     const axAvg=c.as[0]/c.n, ayAvg=c.as[1]/c.n, azAvg=c.as[2]/c.n;
-    const savedBeta=st.fil.beta;
-    st.fil.beta=1.0;
-    for(let i=0;i<40;i++)st.fil.update(0,0,0,axAvg,ayAvg,azAvg,0.02);
-    st.fil.beta=savedBeta;
+    const an=Math.hypot(axAvg,ayAvg,azAvg), ux=axAvg/an, uy=ayAvg/an, uz=azAvg/an;
+    if(uz<-0.9999) st.fil.q=[0,1,0,0];   // upside down: u x Z vanishes, any 180 deg turn about a horizontal axis works
+    else{const qn=Math.hypot(1+uz,uy,ux); st.fil.q=[(1+uz)/qn,uy/qn,-ux/qn,0];}
+    st.calUp=[ux,uy,uz];   // the calibration pose, as each sensor sees gravity (auto re-zero target)
+    st.zeroT=performance.now();
 
     // Zero immediately — no deferred timer, no window where the model can drift
     // away from a reference that was captured before the filter actually settled.
@@ -1200,7 +1396,7 @@ function finishCalibration(){
   const cb=calOnDone; calOnDone=null;
   if(cb)cb();
 }
-function zeroOrient(){S.forEach(st=>st.qRef.copy(st.fil.three()));}
+function zeroOrient(){const now=performance.now();S.forEach(st=>{st.qRef.copy(st.fil.three());st.zeroT=now;});}
 
 // ===== recording =====
 let recording=false, recFrames=[];
@@ -1530,6 +1726,15 @@ function captureBatchSample(){
   });
   if(!stillOk){flashBatch(false);return;}   // in-transition pose -- reject, stay ARMED, try again
 
+  // quality gate (2026-10-31): a rep is only worth training on if the fused orientation
+  // behind it is: link fast enough to integrate (40+ Hz) and no sensor clipped or dropped
+  // a frame since its last zero. The recal between reps re-zeros, so this only rejects
+  // reps where the move INTO the pose already lost rotation. Reject, stay armed, retry.
+  if(linkHz<HEAL_MIN_HZ||!active.every(m=>sensorTrusted(S[m.id]))){flashBatch(false);return;}
+  // and every filter has settled on the pose: right after a move the tilt is still
+  // converging (snap-back), so a rep grabbed then would store a half-way orientation
+  if(!active.every(m=>S[m.id].tiltErr<HEAL_TILT_OK_DEG)){flashBatch(false);return;}
+
   const idx=(batchRepCounts[label]||0)+1;
   const sample={label,idx,t:Date.now()};
   META.forEach(m=>{
@@ -1834,7 +2039,13 @@ function refreshOnce(){
 
   const dt=now-winT;
   if(dt>=500){
-    document.getElementById("thz").textContent=Math.round(framesWin*1000/dt);
+    linkHz=framesWin*1000/dt;
+    document.getElementById("thz").textContent=Math.round(linkHz);
+    const connected=!!(device&&device.gatt&&device.gatt.connected);
+    const untrusted=META.filter(m=>S[m.id].calibrated&&!S[m.id].bad&&!sensorTrusted(S[m.id])).map(m=>m.name.toLowerCase());
+    const health=!connected?"—":linkHz<HEAL_MIN_HZ?"slow link":rezeroActive?"re-zero":untrusted.length?"zero? "+untrusted.join(","):"OK";
+    setText(document.getElementById("thealth"),health);
+    document.getElementById("thealth").classList.toggle("warnv",connected&&health!=="OK"&&health!=="re-zero");
     document.getElementById("tkb").textContent=(bytesWin/dt).toFixed(1);
     const loss=totWin?((lostWin/(totWin+lostWin))*100):0;
     document.getElementById("tloss").textContent=loss.toFixed(1);
@@ -1867,7 +2078,7 @@ function deg(r){return (r/DEG).toFixed(0)+"°";}
 document.getElementById("beta").addEventListener("input",e=>{
   const b=parseFloat(e.target.value);
   document.getElementById("betav").textContent=b.toFixed(2);
-  S.forEach(s=>s.fil.beta=b);
+  betaUser=b;   // healBeta() sets fil.beta every frame from this
 });
 // hand-axis picker: the finger remap is measured and fixed, but which sensor
 // axis points forward on the back of the hand was never checked. Rather than
@@ -1890,7 +2101,7 @@ document.getElementById("beta").addEventListener("input",e=>{
     // them in the new frame would apply the right numbers to the wrong axes, so drop them
     // and make the hand re-earn its calibration (the card falls back to "raw").
     h.bias=[0,0,0];h.noise=[0,0,0];h.accBias=[0,0,0];h.calibrated=false;
-    h.flag="";h.bad=false;h.dropBad=false;h.aSmooth=null;
+    h.flag="";h.bad=false;h.dropBad=false;h.aSmooth=null;h.aSlow=null;h.calUp=null;
     setStatus("hand axes changed: recalibrate (hold flat and still)");
   });
 })();

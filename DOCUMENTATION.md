@@ -21,11 +21,11 @@ Roadmap: [GENERAL_PLAN.md](GENERAL_PLAN.md). Design choices: [DECISIONS.md](DECI
 | Glove mount | 30 min wear test passed | [07](07-full-glove-assembly/) |
 | BLE stream + live 3D dashboard | Live on the glove since 2026-08-07, ~47 Hz | [08](08-ble-wireless-dashboard/) |
 | Hand-relative quaternion | In the dashboard (JS), not in firmware | [tools/](tools/) |
-| v5 firmware (runtime fault recovery) | Written, **not compiled or flashed** | [09](09-firmware-hardening/) |
+| v5 firmware (runtime fault recovery) | **v5 plus the self-healing dashboard works on the glove (user-observed, 2026-10-31). Motion tests not re-run, no new numbers.** Dashboard also learns accel offsets live (synthetic test only). Flashed 2026-10-31. Motion tests found gyro clipping, a 17 Hz frame rate and a dashboard calibration bug. Fixes written and compiled (gyro ±2000 °/s, BLE link requests, closed-form calibration settle). Updated v5 flashed: serial shows 50 Hz connected, MTU 527, 15 ms interval. Dashboard RATE and CSV rate not yet confirmed, motion tests not re-run. Dashboard now has self-healing (stillness-based bias tracking, adaptive snap-back, auto re-zero on a flat hand, HEALTH readout): replay on the old captures cut end-of-test finger error to under 5 deg in most tests, not yet tried on the glove. Recovery paths still untested | [09](09-firmware-hardening/) |
 | Dataset tooling (checker, kNN baseline) | Built, tested on synthetic data only | [tools/](tools/) |
 | Real labelled data, classifier, BLE HID | Not started | |
 
-Known hardware issue: the pinky accel reads 25–28 % low, on and off (2026-08-07).
+Pinky accel "25–28 % low" (2026-08-07): explained on 2026-10-31. It is a zero-g offset of about (0.250, 0.190, -0.165) g, not a scale error. Corrected by a constant in the dashboard. Root cause of the offset is unverified. Not yet re-checked on the glove.
 
 ---
 
@@ -43,6 +43,141 @@ Known hardware issue: the pinky accel reads 25–28 % low, on and off (2026-08-0
 ---
 
 ## Entries
+
+### 2026-10-31 | Phase 7.5/8: v5 flashed, finger drift found
+
+#### What changed today, and why the glove works now
+
+**The symptom.** With v5 flashed, the fingers drifted while held straight. After big or fast moves they did not come back to the rest pose. The pinky worked only some of the time. After the fixes below were flashed and the new dashboard loaded, it works on the glove. That is a visual, qualitative observation. No new CSV has been recorded, so there are no new numbers yet.
+
+There was no single bug. There were four, and a missing safety net on top.
+
+1. **The glove sent 16.7 frames per second, not 50.**
+   - Cause: the firmware waited on every Bluetooth write. The link was moving small packets (most likely the default 23-byte MTU), so one 80-byte frame took four packets, at one packet per 15 ms. That is one frame per 60 ms.
+   - Why it hurts: gyro integration loses angle when samples are far apart. Even the hand IMU, which never clipped, ended 24 to 35 deg off in two tests.
+   - Fix: on connect, the firmware now asks the browser for a 247-byte MTU, 2M PHY, longer packets and a 15 ms interval.
+   - Evidence: the serial report now shows `mtu=527 ci_ms=15.0 hz=50.0 tx_fail=0`.
+2. **The gyros clipped at ±500 deg/s.**
+   - Cause: a fast finger snap goes well past that. In the fast-fist test 11 to 15 % of finger samples sat at the limit, and those fingers ended 43 to 127 deg off.
+   - Fix: ±2000 deg/s on all six sensors. Firmware and dashboard scale were changed together.
+3. **The dashboard's calibration was wrong by 17 to 27 deg on every sensor.**
+   - Cause: it "settled" each filter with 40 small steps that can turn about 92 deg in total. Every sensor starts about 100 deg away (the model's up is +Y, the filter's is +Z). So the model kept moving after every calibration and never sat at zero.
+   - Fix: compute the settled orientation directly (shortest rotation from the measured up to +Z).
+   - Evidence: it matches a fully converged filter within 0.2 deg.
+4. **The pinky's accelerometer has a fixed offset of (0.25, 0.19, -0.17) g.**
+   - Cause: its scale is fine (sphere radius 1.005 g), but the zero point is off. That tilted its gravity reading by up to about 20 deg. Its |a| of about 0.75 g also sat right on the dashboard's "bad accel" cutoff, so the sensor was switched off in some tests and not in others. That is the "pinky worked sometimes".
+   - Fix: subtract the offset before fusion.
+5. **Self-healing on top (all in the dashboard).**
+   - Snap-back: when a finger stops, trust the accelerometer more, scaled by how far off it is. It settles in about a second without jitter.
+   - Auto re-zero: hand flat and still for about 1 s slides every finger's zero back. This is the only cure for sideways (yaw) drift, because the sensors have no yaw reference.
+   - Live gyro-bias tracking, trust flags with the HEALTH readout, and a smoothed 3D display.
+   - Evidence (replay of the 7 recorded tests, worst finger at the end): T0 9 to 2.5 deg, T1 16 to 5, T3 15 to 0.8, T5 5.5 to 0.4, T6 94 to 0.5. T2 is unchanged because the hand never held still for a full second at the end of that recording.
+
+**What is still limited.** Yaw has no absolute reference, so only the re-zero fixes it. Fingers spread on a flat palm-down hand get zeroed too. All thresholds are first guesses tuned on the old captures. The motion tests have not been re-run on the fixed system, so the glove is "works by eye", not measured.
+
+---
+
+**Plan:** Compile and flash v5 on the glove for the first time and see how it behaves with the current dashboard.
+
+**Achieved:**
+- v5 (`09-firmware-hardening/09_firmware_hardening/09_firmware_hardening.ino`) compiles and is flashed. The Arduino IDE moved the sketch into a subfolder with the same name as the sketch (it requires that), so the folder layout changed.
+- Wrote a motion test protocol in `09-firmware-hardening/motion-tests/README.md`. Tests T0 to T6: still baseline, slow fist, fast fist, single fingers, spread, whole-hand rotation, mixed movement then hold. Each test records a hand video, a dashboard screen recording and the dashboard raw CSV. The CSV is the raw sensor frame (g and °/s), so clipping would show as a gyro trace sitting flat at ±500. The CSVs get committed, the videos stay local.
+- Decided to run the dashboard's full 20 s calibration before every motion test, not once per session (DECISIONS 2026-10-31). Order per test: ● Record, Calibrate (20 s), clap, 5 s flat, movement, 5 s flat, Stop. The dashboard clears its buffer on Record, so one test is one CSV. The CSV is raw (no bias correction, no remap, no calibration markers), so keeping the calibration hold inside the recording lets the analysis recompute the bias and zero the dashboard used. The clap marks the end of calibration.
+- Checked in `tools/handrig_dashboard.html`: `finishCalibration()` re-estimates gyro bias, noise and accel offset per sensor, flags bad sensors (|a| off by more than 0.25 g, bias over 40 °/s, noise over 15 °/s), re-settles each Madgwick filter from the averaged gravity vector and captures a new zero reference.
+
+**Problems:**
+- The first compile failed with `'LSM6DS3' does not name a type`. Two libraries ship an `LSM6DS3.h`, and the IDE picked `Arduino_LSM6DS3` instead of `Seeed_Arduino_LSM6DS3` 2.0.7. Fix: uninstall `Arduino_LSM6DS3`. After that it compiled and flashed.
+- With v5 and the current dashboard, the fingers drift and tilt by themselves while held straight. Small movements look fine. After big movements the fingers don't return to the rest pose. Nothing is confirmed yet. Suspects:
+  - **Gyro clipping.** The finger gyros are at ±500 °/s (`GYRO_CONFIG 0x08`, `GYR_SCALE 65.536` in firmware and dashboard), and the hand LSM6DS3 is at 500 dps too. A fast finger snap can go over 500 °/s. A clipped rate integrates less rotation, so the finger ends up in the wrong place. Accel slowly pulls pitch and roll back, but yaw never comes back. That fits "small is fine, big doesn't return".
+  - **Leftover gyro bias** that moves with temperature after the one-time calibration.
+  - **Yaw drift.** No magnetometer, so nothing anchors yaw (DECISIONS 2026-07-14).
+  - **Weak accel correction.** The dashboard smoothing slider (Madgwick β) defaults to 0.1, range 0.1 to 0.3.
+  - **Tape wobble** on a single finger.
+- Not tested yet: the v5 recovery paths (SDA-to-GND test, hand IMU re-init). Unverified.
+- Recalibrating every test hides bias drift between tests (for example gyro warm-up). T0 and T6 still show drift inside one test. Mitigation: power the glove about 5 minutes before the first calibration (unverified for these sensors).
+- If the dashboard flags a sensor after calibration, the calibration is redone before the test starts.
+
+**Motion tests, later the same day (evening).** I ran all seven tests (recorded as t1 to t7, renamed to T0 to T6) with a hand video, a dashboard screen recording and the dashboard CSV each. What I saw: fingers drift and don't return after movement, and the pinky "didn't work in between but at the end it did". Deviations from the protocol: calibration was done before pressing Record (so no 20 s hold in the CSVs, only about 3 s of stillness), no clap, and the hand-axes setting differed between tests (T0 "fwd +X, up -Z", T2 "fwd +Y, up -Z"). Results are in `09-firmware-hardening/motion-tests/README.md`. I wrote two scripts to analyse them: `tools/analyze_motion_test.py` (rate, dropped frames, clipped samples, |a|, return error) and `tools/fit_accel_offsets.py` (sphere fit of accel zero-g offsets).
+
+**Findings:**
+1. **Frame rate collapsed.** Six of seven tests ran at 16.5 to 20 Hz instead of 50 Hz (median dt exactly 60 ms). T5 ran at 43 Hz. The dashboard showed RATE 15 to 17 Hz, LOSS 0.0 %, BAD FRAMES 0. Zero loss with a steady 60 ms means the firmware itself only sent a frame every 60 ms, so `bleuart.write()` blocks until the link drains. 60 ms fits an unraised 23 byte MTU (an 80 byte frame is 4 packets) at one packet per 15 ms connection event. **Unverified:** needs the firmware's 2 s serial report line (mtu, hz, write_us, tx_fail). v4 reached about 47 Hz with the same BLE config, so link conditions vary between connections.
+2. **Gyro clipping at ±500 °/s confirmed.** T2 fast fist: 84 to 120 clipped samples per finger (11 to 15 % of samples). T6: 13 to 34 per finger. Single samples elsewhere.
+3. **Return error** (gyro integrated from the start hold to the end hold, compared with the accel-measured up direction, yaw not included). T0 still: 2 to 4 deg. T1 slow fist: hand 7, thumb 4, index 15, middle 24, ring 37, pinky 30. T2 fast fist: thumb 18, index 127, middle 95, ring 43, pinky 69. T3: middle 29, pinky 25, others 3 to 8. T4: 14 to 25. T5 (43 Hz): 10 to 15. T6: 25 to 35, pinky 78. The hand IMU (LSM6DS3, never clipped) still lost 24 to 35 deg in T4 and T6 at 16.7 Hz, so the low sample rate is a cause on its own, not only clipping. Slow fist already fails (T1), so clipping is not the whole story.
+4. **Dashboard calibration bug.** `finishCalibration()` settled each filter with 40 Madgwick steps at beta 1.0, dt 0.02. One step turns at most 2 * beta * dt = 0.04 rad, so 40 steps cover about 92 deg. Every sensor starts about 97 to 109 deg away (viewer "up" is +Y, the Madgwick reference is +Z). Replaying the CSVs left 17 to 27 deg of error in every sensor's zero. The live filter then corrected it slowly, so the model drifted after every calibration and never sat at zero. 100+ steps converge to under 1.6 deg.
+5. **Pinky accel zero-g offset.** Sphere fit over all quasi-static samples: pinky centre (0.250, 0.190, -0.165) g, radius 1.005 g, rms 0.014. The other five sensors are within 0.025 g of zero with radius 0.98 to 1.01. So the pinky's scale is fine and its zero point is off. This is the old "pinky reads 25 to 28 % low" item. It tilts the measured gravity direction by up to about 20 deg. It also explains "pinky works sometimes": the dashboard flags a sensor "bad accel" when calibration |a| is off by more than 0.25 g, and the pinky's calibration |a| was 0.74 to 0.82, right at the 0.75 cut, so it was dropped in some tests and not in others. **Unverified:** why the offset exists (the pinky is the only genuine MPU-6050, `WHO_AM_I` 0x68).
+6. **Video vs dashboard.** At the end of T2 the real hand is flat, the dashboard shows index pitch 44 deg and yaw -105 deg, middle pitch 58 deg. Yaw is never corrected (6-DOF, no magnetometer). Pitch is corrected by Madgwick at beta 0.1 (about 11 deg/s at most), so it recovers over seconds.
+7. **No firmware dropouts** (no all-zero frames) and no accel clipping in any test.
+8. **Tried in a replay, not changed:** switching the finger-vs-hand formula from `rel_h^-1 * rel_f` to `(qRef_h^-1 qRef_f)^-1 (q_h^-1 q_f)`, beta 0.3, and removing the deadband. None was a clear win on these captures. Left open (DECISIONS, open).
+
+**Changes (not committed, not yet tested on the glove):**
+- Firmware `09_firmware_hardening.ino` (compiles: 133312 B flash, 14688 B RAM, `Seeeduino:nrf52:xiaonRF52840Sense`): gyro ±2000 °/s (`GYR_SCALE 16.384`, finger `GYRO_CONFIG 0x18` plus its readback check, hand LSM6DS3 `gyroRange 2000`). `connect_callback` now asks the central for 2M PHY, data length update, MTU 247 and a 15 ms connection interval (non-blocking SoftDevice requests, the central may refuse). The 2 s report line also prints `ci_ms`.
+- Dashboard `tools/handrig_dashboard.html` (copied byte-identical to `08-ble-wireless-dashboard/` and `Data/html/`, md5 `0c660afef0af30e9457dab7fa8eada33`): `GYR_SCALE 16.384` to match v5. **Breaking:** this dashboard now reads v4 (stage 08) gyro 4x too small. `ACC_OFFSET` per sensor (pinky [0.250, 0.190, -0.165], others 0) subtracted in the raw sensor frame before remap, fusion and calibration checks. The CSV export stays raw. Calibration settle is now a closed form: shortest rotation taking measured up onto +Z, `q = normalise(1+uz, uy, -ux, 0)`, upside-down case handled. Checked against the dashboard's own Madgwick run to convergence: within 0.2 deg including heading. A frame with dt == 0 (same-ms catch-up) now integrates 0 instead of 0.02 s. Not seen in these captures, preventive.
+- Verification done: firmware compiles. All existing `verify_*.mjs` and `verify_check_dataset.py` tests pass with the new dashboard. The closed-form settle was compared with the iterative one offline. Not done: flash, link rate, anything on the glove.
+
+**Result of the updated v5 (serial log, 14:15 to 14:17):**
+- Before the browser connects: `# link=down hz=50.0 read_us=3906 write_us=0 tx_fail=0 bus_rec=0 stuck=none failing=none`.
+- After connecting: `# link=up mtu=527 ci_ms=15.0 hz=50.0 read_us=3906..3925 write_us=0 tx_fail=0 bus_rec=0 stuck=none failing=none`.
+- So the loop holds 50 Hz while connected. The central granted a 15 ms interval and offered an MTU of 527, more than the 247 the firmware asked for. No tx failures, no stuck or failing sensors, no bus recoveries. Reading all six sensors takes about 3.9 ms.
+
+**Problems (additional):**
+- `write_us=0` while connected is suspicious (unverified). A real notify should take tens of microseconds. It may mean the dashboard had not subscribed to notifications yet, so the firmware skipped the writes. Until the dashboard RATE readout and a recorded CSV show about 50 Hz, the throughput fix is not verified.
+- The motion tests were recorded with the wrong order (calibrate before Record), so the bias and zero the dashboard used cannot be recomputed from the CSVs.
+- Data recorded before these fixes should not be used for ML training: 17 Hz frames, clipped gyro, off pinky accel and a wrong calibration zero.
+
+**Self-healing dashboard (later the same day).** After the 50 Hz serial line I asked for the dashboard to fix drift on its own, using what the seven test captures showed, and to do it during live viewing so the hand looks smooth. Everything is in a "self-healing" block in `tools/handrig_dashboard.html` (copied byte-identical to `08-ble-wireless-dashboard/` and `Data/html/`, md5 `f1f6480f8a8cac7a6e2a8b99648b366a`). None of it changes the raw CSV.
+1. **Stillness detector** per sensor. A sensor is still if its gyro is within max(3 °/s, 4x its calibration noise) of its own recent average on every axis, its accel direction is not creeping (fast average vs slow average differ by under 0.03 g, so a slow steady turn does not count), and |a| is within 0.1 g of 1. Time is measured in seconds of frame time, not frame counts. Counted in frames, "1 s" took 3 s at the 16.7 Hz of the motion tests and short end holds never qualified.
+2. **Live gyro-bias tracking.** After 1 s still (and calibrated), the bias moves toward the current reading by 0.002 per frame (about a 10 s time constant at 50 Hz), only for residuals under 1.5 °/s. It fine-tunes warm-up drift and cannot swallow real motion.
+3. **Adaptive snap-back.** After 0.2 s still, Madgwick beta rises from the slider value toward 1.0 in proportion to the tilt error (full at 20 deg, 2 deg gives 0.19, 0.5 deg gives about 0.12). A fixed big beta chatters once converged, because Madgwick steps a fixed beta along a normalised gradient. Tilt error is the angle between the filter's predicted up and the smoothed accel. Max correction is 2 * beta rad/s, 115 °/s. The beta slider now sets the user value.
+4. **Auto re-zero on a flat hand.** When every non-bad sensor (hand required) has been still for 1 s or more, has tilt error under 2 deg, and its up is within 8 deg of the up it had at calibration, each sensor's zero is slerped toward its current orientation with a 0.4 s time constant (about 95 % in 1.2 s, no visible jump). This removes yaw drift, which a 6-DOF IMU cannot observe. Letter poses are not palm-down flat, so they do not trigger it.
+5. **Trust and HEALTH readout.** Each sensor records the time of its last clipped gyro sample (|g| at or above 1990 °/s) and its last dropped frame. A sensor is trusted if neither happened since its last zero (calibration, Zero Orient or auto re-zero). The header has a new HEALTH cell: "—" disconnected, "slow link" under 40 Hz, "re-zero" while auto re-zero runs, "zero? index,pinky" for untrusted sensors, else "OK". Batch Capture now rejects a rep (flashes red, stays armed) if the link is under 40 Hz or any sensor is untrusted. The batch CSV format is unchanged.
+6. **Display smoothing.** The drawn palm and finger rotations ease toward the true ones (slerp, 40 ms time constant, frame-rate independent). The fingertip curl uses the same easing. Display only: stored quaternions, cards and exports keep the unsmoothed values.
+7. The Connect panel text now says to flash `09-firmware-hardening` (v5) and that v4 gyro reads 4x too small in this dashboard.
+
+Verification so far:
+- Replay of all seven motion-test CSVs in a Python port of the pipeline (with ACC_OFFSET and the closed-form settle). Displayed finger-vs-hand angle averaged over the last 1 s, in degrees, thumb/index/middle/ring/pinky, before then with healing:
+
+| Test | Before | With healing |
+|---|---|---|
+| T0 still | 6.4 / 9.0 / 8.8 / 6.0 / 6.7 | 2.5 / 2.1 / 2.1 / 1.5 / 1.7 |
+| T1 slow fist | 1.5 / 5.6 / 7.7 / 15.7 / 11.6 | 0.4 / 1.9 / 2.5 / 4.9 / 3.6 (re-zero still sliding when the CSV ended) |
+| T2 fast fist | 26.8 / 106.4 / 70.0 / 78.8 / 162.0 | unchanged (hand never still for a full second at the end) |
+| T3 each finger | 5.6 / 9.8 / 4.7 / 1.9 / 14.5 | 0.4 / 0.6 / 0.4 / 0.2 / 0.8 |
+| T4 spread | 53.7 / 2.8 / 10.0 / 6.9 / 18.6 | 13.9 / 0.8 / 2.5 / 1.5 / 5.1 |
+| T5 hand rotate | 3.4 / 4.1 / 5.5 / 3.3 / 1.3 | 0.4 / 0.1 / 0.4 / 0.4 / 0.3 |
+| T6 mixed | 8.1 / 18.0 / 16.8 / 5.4 / 93.7 | 0.4 / 0.3 / 0.4 / 0.3 / 0.5 |
+
+- Synthetic frames through the real dashboard code in a browser, no console errors. Pinky with its offset calibrates to |a| 0.998 and is not flagged. A 40 deg sideways drift on a flat hand fell to 2.2 deg after 2.5 s still (auto re-zero fired). A clipped burst over 2000 °/s (115 deg error) fell to 1.2 deg after 3 s, sensors untrusted after the clip and trusted again after re-zero. A held 90 deg curl stayed at 90 deg for 3 s (no re-zero). A slow 2 °/s turn changed the bias by 0.008 °/s or less.
+- Existing `verify_*.mjs` tests: 0 failures.
+
+**Live accel-offset learning and a stricter rep gate (later the same day).** The pinky offset above was a constant from an offline fit. The dashboard now learns it live (`learnAccOffset`, `solve4` in `tools/handrig_dashboard.html`, three copies byte-identical, md5 `08e1b8bf40872c65133454cf94b659da`).
+- It is the same sphere fit as `tools/fit_accel_offsets.py`, running while the glove is worn. A sensor counts as "quiet" when its gyro is steady and its accel is not creeping, for 0.5 s. While quiet, one raw accel sample is added every 0.25 s to running sums of the least-squares normal equations (`|a|^2 = 2 a.b + c`, row `(2ax, 2ay, 2az, 1)`). No samples are stored. It refits every 10 samples after the first 60.
+- "Quiet" and not "still", because "still" also wants |a| near 1 g, and a sensor with a big unknown offset never shows that.
+- The fit is only trusted when the samples cover enough directions (two axes spanning at least 1.0 in unit-vector terms) and it is a clean sphere (radius within 0.05 of 1 g, radial rms under 0.03 g, computed from the sums: SSE = yy - 2 x.v + x.M.x, divided by 2r).
+- Once trusted, the offset is applied and saved in the browser (localStorage key `gestura_acc_offset_v1`), so later sessions start from it. The old constants are the defaults. If the offset moves by more than 0.02 g, a status message asks to recalibrate.
+- Verified in a browser with synthetic frames: pinky offset wiped to 0, 14 orientations held 5 s each. It learned (0.2512, 0.1906, -0.165) against the true (0.25, 0.19, -0.165), radius 0.9975, rms 0.006, after the 5th orientation. The other five sensors stayed within 0.002 g of zero. The value was saved. **Real-glove behaviour is unverified.** It needs about 15 s of total still time spread over different hand orientations.
+- Batch Capture reps now also need every sensor's tilt error under 2 deg (filter settled), so a rep grabbed mid snap-back is rejected.
+- Checks: all `verify_*` tests pass, 13/13 dataset checks pass.
+
+**Problems (self-healing):**
+- Fingers spread sideways while the hand lies flat palm-down look identical to gravity, so auto re-zero erases that spread too. T4 shows it: the thumb stays at 13.9 deg and the pinky at 5.1 deg after healing.
+- T2 (fast fist) is unchanged. The recording ends before the hand is still for a full second, so nothing fires. This is a test-protocol gap, not proof that healing fails there.
+- Not verified in numbers on the glove. It looks right by eye (user-observed). The thresholds (8 deg pose, 2 deg tilt, 1 s still, 0.03 g creep) are first guesses tuned on these captures, which were recorded at 17 Hz with ±500 °/s clipping, not on the new firmware.
+- **Tried, not kept:** down-weighting the accelerometer when |a| is far from 1 g during fast moves (a standard trick). On the 7 recordings it changed nothing measurable and made the fast-fist index slightly worse (106 to 116 deg). The error in this data comes from clipping and yaw, not from linear acceleration. Revisit with clean 50 Hz, ±2000 deg/s data. See DECISIONS 2026-10-31.
+
+**Next (added, in order):**
+- Re-run the motion tests on the fixed system, with at least 3 s of stillness at the end of each.
+- Move the hand through many orientations for about 30 s so the offset learner can confirm the pinky value.
+- Then start Phase 8 data collection.
+
+**Next (earlier list, still valid):**
+0. Try it live. Move fast, lay the hand flat for 1 to 2 s, and watch HEALTH go "re-zero" then "OK". Check the 3D hand looks smooth and not laggy. Then re-run the motion tests with at least 3 s of stillness at the end of each, so the end-of-test numbers can be compared with the table above.
+1. Confirm 50 Hz where it counts. Connect the dashboard, check that RATE shows about 50 Hz, record a short CSV and run `python tools/analyze_motion_test.py <csv>` (expect about 50 rows per second, median dt 20 ms). Also check that `write_us` becomes non-zero once the dashboard is subscribed. If the dashboard still shows about 16 Hz, the central or browser is the limit: shrink the frame or try another host (open decision, DECISIONS).
+2. Re-run the motion tests with the new firmware and dashboard. Press Record before Calibrate so the 20 s hold is in the CSV, clap at the start, use one hand-axes setting for all tests. Run `python tools/analyze_motion_test.py <csv>` on each (default `--clip 2000`). Success: 50 Hz, 0 clipped, T1 and T2 return error under about 5 deg.
+3. Re-fit `ACC_OFFSET` after the re-run, using the T5 hand-rotate CSV, to check the pinky offset is stable.
+4. For ML: yaw relative to the hand still drifts by physics. Use gravity-referenced features plus the re-zero pose before each capture (DECISIONS 2026-07-14). Do not train on data recorded before these fixes.
+5. Later: track gyro bias in the background while a sensor is still, then the guided calibration routine (open decision). It comes after the re-test, otherwise it calibrates against bad data.
+
+---
 
 ### 2026-10-31 | Docs pass: public ledger, plan and decision log
 
