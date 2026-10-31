@@ -233,6 +233,7 @@ Verification so far:
 - Two comments in `09_firmware_hardening.ino` are stale: the header says the frame works with either dashboard (the gyro scale changed, so the v4 dashboard reads v5 gyro 4x too small, and this dashboard reads v4 gyro 4x too large), and the MTU comment says the firmware never requests an MTU exchange (it now does). Code is correct, comments are not.
 - The thumb's tip bend in the model follows the pitch of its one IMU, like the fingers. Thumb flexion across the palm is mostly a sideways rotation, so the bend may look off for the thumb. Display only. Revisit if it looks wrong on video.
 - Before and after per test, with an empty column for the re-run: `09-firmware-hardening/motion-tests/README.md`, "Before and after the fixes".
+- The motion-test folder is split into two sibling folders: `before-fix_2026-10-31/` (first run: 7 CSVs and videos, moved there from the folder root) and `after-fix_2026-10-31/` (second run, videos only). The `Data/csv/` mirror names are unchanged.
 
 ---
 

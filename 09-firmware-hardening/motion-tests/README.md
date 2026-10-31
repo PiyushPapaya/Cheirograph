@@ -59,9 +59,20 @@ T2_fast-fist_v5_2026-10-31_hand.mp4
 T2_fast-fist_v5_2026-10-31_screen.mp4
 ```
 
-Put CSVs in this folder. Videos stay local (gitignored, too big). Add a line per test to the log below: what you saw, anything odd.
+One folder per run, named `<run>_<date>`:
+
+```
+motion-tests/
+  README.md                  protocol and log (this file)
+  before-fix_2026-10-31/     first run, before the fixes: 7 CSVs + hand and screen videos (T0-T6)
+  after-fix_2026-10-31/      second run, after the fixes: hand and screen videos only (t0-t7)
+```
+
+CSVs are committed. Videos stay local (gitignored, too big). Add a line per test to the log below: what you saw, anything odd.
 
 ## Log
+
+### First run, before the fixes (`before-fix_2026-10-31/`)
 
 The first run (2026-10-31) was recorded as t1 to t7. They map to the protocol as t1 = T0, t2 = T1, and so on up to t7 = T6. Files are renamed to the protocol IDs.
 
@@ -104,7 +115,7 @@ Pass for the re-run: about 50 Hz, 0 clipped samples (at `--clip 2000`), gyro ret
 
 Other results from the same run: no all-zero frames (no bus dropouts) and no accel clipping in any test. The dashboard showed RATE 15 to 17 Hz with LOSS 0.0 % and 0 bad frames, which means the firmware sent a frame every 60 ms (median dt exactly 60 ms) and did not drop any. See DOCUMENTATION 2026-10-31.
 
-### Second run, after the fixes (2026-10-31, afternoon)
+### Second run, after the fixes (`after-fix_2026-10-31/`, 2026-10-31 afternoon)
 
 I re-ran the motion tests on the fixed system: v5 firmware with ±2000 °/s gyro and the BLE link requests, plus the self-healing dashboard. I recorded a real-hand video and a dashboard screen recording for each test. These are the "after" videos for the comparison with the first run. Videos are in `after-fix_2026-10-31/` (local only, gitignored like the first run, about 286 MB).
 
@@ -128,7 +139,7 @@ No dashboard CSVs were saved with this run, so the "Re-run" column in the table 
 ## Analysis commands
 
 ```
-python tools/analyze_motion_test.py <csv> --clip 500    # old v5 captures (±500 °/s)
+python tools/analyze_motion_test.py 09-firmware-hardening/motion-tests/before-fix_2026-10-31/T2_fast-fist_v5_2026-10-31.csv --clip 500   # first run (±500 °/s)
 python tools/analyze_motion_test.py <csv>               # new captures, default --clip 2000
 python tools/fit_accel_offsets.py <csv> [<csv> ...]     # per-sensor accel zero-g offset (sphere fit)
 ```
