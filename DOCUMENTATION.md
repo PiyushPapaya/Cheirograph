@@ -109,9 +109,9 @@ There was no single bug. There were four, and a missing safety net on top.
 7. **No firmware dropouts** (no all-zero frames) and no accel clipping in any test.
 8. **Tried in a replay, not changed:** switching the finger-vs-hand formula from `rel_h^-1 * rel_f` to `(qRef_h^-1 qRef_f)^-1 (q_h^-1 q_f)`, beta 0.3, and removing the deadband. None was a clear win on these captures. Left open (DECISIONS, open).
 
-**Changes (not committed, not yet tested on the glove):**
+**Changes (committed and pushed the same day, `e344839` firmware, `cf04ace` dashboard):**
 - Firmware `09_firmware_hardening.ino` (compiles: 133312 B flash, 14688 B RAM, `Seeeduino:nrf52:xiaonRF52840Sense`): gyro ±2000 °/s (`GYR_SCALE 16.384`, finger `GYRO_CONFIG 0x18` plus its readback check, hand LSM6DS3 `gyroRange 2000`). `connect_callback` now asks the central for 2M PHY, data length update, MTU 247 and a 15 ms connection interval (non-blocking SoftDevice requests, the central may refuse). The 2 s report line also prints `ci_ms`.
-- Dashboard `tools/handrig_dashboard.html` (copied byte-identical to `08-ble-wireless-dashboard/` and `Data/html/`, md5 `0c660afef0af30e9457dab7fa8eada33`): `GYR_SCALE 16.384` to match v5. **Breaking:** this dashboard now reads v4 (stage 08) gyro 4x too small. `ACC_OFFSET` per sensor (pinky [0.250, 0.190, -0.165], others 0) subtracted in the raw sensor frame before remap, fusion and calibration checks. The CSV export stays raw. Calibration settle is now a closed form: shortest rotation taking measured up onto +Z, `q = normalise(1+uz, uy, -ux, 0)`, upside-down case handled. Checked against the dashboard's own Madgwick run to convergence: within 0.2 deg including heading. A frame with dt == 0 (same-ms catch-up) now integrates 0 instead of 0.02 s. Not seen in these captures, preventive.
+- Dashboard `tools/handrig_dashboard.html` (copied byte-identical to `08-ble-wireless-dashboard/` and `Data/html/`, md5 `0c660afef0af30e9457dab7fa8eada33`): `GYR_SCALE 16.384` to match v5. **Breaking:** this dashboard now reads v4 (stage 08) gyro 4x too large (v4 sends 65.5 counts per deg/s, the dashboard divides by 16.4). Corrected later the same day, it first said "too small". `ACC_OFFSET` per sensor (pinky [0.250, 0.190, -0.165], others 0) subtracted in the raw sensor frame before remap, fusion and calibration checks. The CSV export stays raw. Calibration settle is now a closed form: shortest rotation taking measured up onto +Z, `q = normalise(1+uz, uy, -ux, 0)`, upside-down case handled. Checked against the dashboard's own Madgwick run to convergence: within 0.2 deg including heading. A frame with dt == 0 (same-ms catch-up) now integrates 0 instead of 0.02 s. Not seen in these captures, preventive.
 - Verification done: firmware compiles. All existing `verify_*.mjs` and `verify_check_dataset.py` tests pass with the new dashboard. The closed-form settle was compared with the iterative one offline. Not done: flash, link rate, anything on the glove.
 
 **Result of the updated v5 (serial log, 14:15 to 14:17):**
@@ -131,7 +131,7 @@ There was no single bug. There were four, and a missing safety net on top.
 4. **Auto re-zero on a flat hand.** When every non-bad sensor (hand required) has been still for 1 s or more, has tilt error under 2 deg, and its up is within 8 deg of the up it had at calibration, each sensor's zero is slerped toward its current orientation with a 0.4 s time constant (about 95 % in 1.2 s, no visible jump). This removes yaw drift, which a 6-DOF IMU cannot observe. Letter poses are not palm-down flat, so they do not trigger it.
 5. **Trust and HEALTH readout.** Each sensor records the time of its last clipped gyro sample (|g| at or above 1990 °/s) and its last dropped frame. A sensor is trusted if neither happened since its last zero (calibration, Zero Orient or auto re-zero). The header has a new HEALTH cell: "—" disconnected, "slow link" under 40 Hz, "re-zero" while auto re-zero runs, "zero? index,pinky" for untrusted sensors, else "OK". Batch Capture now rejects a rep (flashes red, stays armed) if the link is under 40 Hz or any sensor is untrusted. The batch CSV format is unchanged.
 6. **Display smoothing.** The drawn palm and finger rotations ease toward the true ones (slerp, 40 ms time constant, frame-rate independent). The fingertip curl uses the same easing. Display only: stored quaternions, cards and exports keep the unsmoothed values.
-7. The Connect panel text now says to flash `09-firmware-hardening` (v5) and that v4 gyro reads 4x too small in this dashboard.
+7. The Connect panel text now says to flash `09-firmware-hardening` (v5) and that v4 gyro reads 4x too large in this dashboard.
 
 Verification so far:
 - Replay of all seven motion-test CSVs in a Python port of the pipeline (with ACC_OFFSET and the closed-form settle). Displayed finger-vs-hand angle averaged over the last 1 s, in degrees, thumb/index/middle/ring/pinky, before then with healing:
@@ -175,7 +175,19 @@ Verification so far:
 2. Re-run the motion tests with the new firmware and dashboard. Press Record before Calibrate so the 20 s hold is in the CSV, clap at the start, use one hand-axes setting for all tests. Run `python tools/analyze_motion_test.py <csv>` on each (default `--clip 2000`). Success: 50 Hz, 0 clipped, T1 and T2 return error under about 5 deg.
 3. Re-fit `ACC_OFFSET` after the re-run, using the T5 hand-rotate CSV, to check the pinky offset is stable.
 4. For ML: yaw relative to the hand still drifts by physics. Use gravity-referenced features plus the re-zero pose before each capture (DECISIONS 2026-07-14). Do not train on data recorded before these fixes.
-5. Later: track gyro bias in the background while a sensor is still, then the guided calibration routine (open decision). It comes after the re-test, otherwise it calibrates against bad data.
+5. Later: the guided calibration routine (open decision). It comes after the re-test, otherwise it calibrates against bad data. Background gyro-bias tracking from this item is done (self-healing block above).
+
+**Ideas raised today, not built yet:**
+- Keep sideways spread on a flat hand. Auto re-zero erases it (T4). Option: only re-zero yaw for fingers that were straight at calibration, or skip re-zero while the spread gesture is active. Needs the re-run data first.
+- Revisit accel down-weighting during fast moves once there is clean 50 Hz, ±2000 °/s data (rejected for now, DECISIONS 2026-10-31).
+- If a browser refuses the link requests and the rate stays near 17 Hz: shrink the frame or send fewer sensors per frame (open decision, DECISIONS).
+- Hardware watchdog for a stuck SCL line (open decision).
+- Find out why the pinky has its offset at all. It is the only genuine MPU-6050 (`WHO_AM_I` 0x68). Unverified.
+- Re-tune the healing thresholds (1 s still, 2 deg tilt, 8 deg pose, 0.03 g creep) on the re-run data. They were tuned on 17 Hz, clipped captures.
+
+**Known loose ends:**
+- Two comments in `09_firmware_hardening.ino` are stale: the header says the frame works with either dashboard (the gyro scale changed, so the v4 dashboard reads v5 gyro 4x too small, and this dashboard reads v4 gyro 4x too large), and the MTU comment says the firmware never requests an MTU exchange (it now does). Code is correct, comments are not.
+- Before and after per test, with an empty column for the re-run: `09-firmware-hardening/motion-tests/README.md`, "Before and after the fixes".
 
 ---
 

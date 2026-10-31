@@ -163,7 +163,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 **Choice:** (c). Finger `GYRO_CONFIG 0x18` (16.384 LSB per °/s), hand LSM6DS3 `gyroRange 2000`, `GYR_SCALE 16.384` in firmware and dashboard together.
 **Why:** the fast-fist test (T2) had 84 to 120 clipped samples per finger, 11 to 15 % of all samples, at the ±500 limit. A clipped rate integrates too little rotation. ±1000 would probably still clip on a snap and I have no peak measurement, so I took the range that cannot clip on a hand.
 - Cost: 4x coarser resolution, 0.061 °/s per LSB instead of 0.015. That is still far below the sensor noise (unverified at ±2000, not measured).
-- Cost: firmware and dashboard now have to match. The new dashboard reads v4 (stage 08) gyro 4x too small.
+- Cost: firmware and dashboard now have to match. The new dashboard reads v4 (stage 08) gyro 4x too large.
 - The slow fist (T1) also failed to return, so clipping is not the only cause. See DOCUMENTATION 2026-10-31.
 
 ### 2026-10-31 | Pinky accel offset corrected by a dashboard constant

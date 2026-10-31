@@ -94,7 +94,7 @@ hand lies flat in the calibration pose. The header **HEALTH** cell shows `OK`,
 clipped or dropped frames since their last zero. Batch Capture rejects a rep in
 those states. The drawn hand is eased (40 ms) for smoothness. None of this
 changes the raw CSV or the batch CSV format. It expects v5 firmware (gyro
-±2000 °/s); v4 gyro reads 4x too small here.
+±2000 °/s); v4 gyro reads 4x too large here.
 Live accel-offset learning: the same sphere fit as `fit_accel_offsets.py`, run
 in the browser. While a sensor is quiet (steady gyro, accel not creeping) for
 0.5 s, one raw accel sample every 0.25 s feeds running least-squares sums (no
