@@ -14,6 +14,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-10-31 | [Hand axes fwd +X, left model, headings aligned at calibration](#2026-10-31--hand-axes-fwd-x-left-model-headings-aligned-at-calibration) | Calibration |
 | 2026-10-31 | [Accel offsets learned live, saved per browser](#2026-10-31--accel-offsets-learned-live-saved-per-browser) | Calibration |
 | 2026-10-31 | [Accel-magnitude gating rejected for now](#2026-10-31--accel-magnitude-gating-rejected-for-now) | Fusion |
 | 2026-10-31 | [Heading drift: automatic re-zero in the calibration pose](#2026-10-31--heading-drift-automatic-re-zero-in-the-calibration-pose) | Fusion |
@@ -114,6 +115,16 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-10-31 | Hand axes fwd +X, left model, headings aligned at calibration
+
+**Options:** (a) keep offering four hand-axes guesses with fwd +Y as default and a right-hand model. (b) Measure the hand axes from data and fix the default. (c) Also align every finger filter's heading to the hand's at calibration.
+
+**Choice:** (b) and (c). Default hand axes fwd +X, default model hand left, `alignHeadings()` after each calibration.
+
+**Why:** A gyro fit on motion test T5 (hand turned with fingers straight) puts every finger within 10 deg of the hand's forward with fwd +X and 80 to 180 deg off with the other three. Left is physically right for this glove (thumb at -X in the viewer frame). Heading alignment assumes the fingers point the hand's way in the calibration pose, which is the calibration pose by definition. It cut the T5 replay error a little (thumb p90 15 to 12 deg).
+
+**Cost:** if the hand IMU is remounted the default is wrong again and has to be re-measured. Heading alignment forces a straight-finger assumption: a finger that really sits splayed at calibration gets its splay removed from the zero. Display storage key bumped, so the curl sign setting resets once.
 
 ### 2026-10-31 | Accel offsets learned live, saved per browser
 

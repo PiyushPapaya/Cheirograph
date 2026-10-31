@@ -330,14 +330,14 @@
           <button id="cal" disabled>Calibrate · 20 s</button>
           <button id="zero" disabled>Zero orient.</button>
           <label class="ctrl" title="Lower = smoother but weaker gravity correction, so residual gyro bias drifts more over time, even sitting still. Higher = snappier and more drift-resistant, slightly noisier instant readings. The floor is 0.1 because lower values visibly drift within seconds even when perfectly still: that is the filter converging too slowly to trust the accelerometer, not noise.">smoothing <input type="range" id="beta" min="0.1" max="0.3" step="0.01" value="0.1"><span id="betav">0.10</span></label>
-          <label class="ctrl" title="Which sensor axis points at the fingers was never measured for the hand IMU. Tilt your hand forward: pick the option where the model tips forward too.">hand axes <select id="handmap"></select></label>
+          <label class="ctrl" title="Measured on the glove: fwd +X is correct (default). Only change it if the hand IMU is remounted, then recalibrate.">hand axes <select id="handmap"></select></label>
         </div>
       </div>
       <div class="grp">
         <div class="glabel">Display</div>
         <div class="gbody">
           <label class="ctrl" title="Which pitch sign means curling toward the palm is not measured yet. |pitch| counts either direction. Signed modes count one direction and read 0 for the other.">curl sign <select id="curlsign"></select></label>
-          <label class="ctrl" title="The glove is a LEFT hand. The original model is drawn as a right hand (thumb at +X), so thumb spread may swing the wrong way. Left mirrors the model's geometry to match the glove.">model hand <select id="handmodel"></select></label>
+          <label class="ctrl" title="The glove is a LEFT hand, so the model is drawn as a left hand by default. Right mirrors the geometry (thumb on the other side, spread swings the other way).">model hand <select id="handmodel"></select></label>
           <span class="ctrlnote">Curl one finger slowly: pick the curl sign where its % rises. Swing the thumb away from the index: pick the model hand where it moves away too. Display only, exports are unaffected.</span>
         </div>
       </div>
@@ -472,8 +472,11 @@ const REMAPS={
   hand_fwd_nX: {label:"hand: fwd -X, up -Z", m:[[1,1],[2,-1],[0,-1]]},
   identity:    {label:"raw sensor frame (no remap)", m:[[0,1],[1,1],[2,1]]},
 };
-// active remap per sensor id; fingers are settled, hand starts on a guess
-let REMAP_OF=[ "hand_fwd_pY", "finger","finger","finger","finger","finger" ];
+// active remap per sensor id. Hand default fwd +X: measured on 2026-10-31 by fitting the
+// rotation between each finger's gyro and the hand's gyro while the whole hand turned
+// with the fingers straight (motion test T5). With fwd +X every finger points within
+// 10 deg of the hand's forward; fwd +Y and -Y are ~90 deg off, -X ~175 deg.
+let REMAP_OF=[ "hand_fwd_pX", "finger","finger","finger","finger","finger" ];
 
 function applyRemap(key,v){
   const m=REMAPS[key].m;
@@ -541,10 +544,13 @@ const S=META.map(()=>({
 // None of those read DISPLAY, st.curlRad, st.localQ or the 3D scene graph. The curl
 // sign only changes curlDegFor() (the card readout); the model hand only changes the
 // static finger geometry in buildFingers(). Training data never depends on a toggle.
-const DISPLAY_STORAGE_KEY="gestura_display_v1";
+// v2: the default model hand changed to left, so a saved "right" from v1 is not reused.
+const DISPLAY_STORAGE_KEY="gestura_display_v2";
 const CURL_MODES={abs:"|pitch| (current)",pos:"+pitch = curl",neg:"-pitch = curl"};
-const HAND_MODELS={right:"right (current)",left:"left"};
-const DISPLAY={curlMode:"abs",handModel:"right"};
+const HAND_MODELS={right:"right",left:"left (glove)"};
+// Left by default: the glove is a left hand, so its thumb sits at -X in the viewer
+// frame (see "model handedness" below). A right-hand model mirrors thumb spread.
+const DISPLAY={curlMode:"abs",handModel:"left"};
 function loadDisplay(){
   try{
     const d=JSON.parse(localStorage.getItem(DISPLAY_STORAGE_KEY)||"null");
@@ -1390,11 +1396,37 @@ function finishCalibration(){
     // away from a reference that was captured before the filter actually settled.
     st.qRef.copy(st.fil.three());
   });
+  alignHeadings();
   calState="done";
   clearInterval(calTimer);
   document.getElementById("calbanner").classList.remove("show");
   const cb=calOnDone; calOnDone=null;
   if(cb)cb();
+}
+// Heading alignment. Gravity fixes each filter's tilt, but its heading (rotation about
+// world up) is whatever the shortest-arc settle above happened to give, and that
+// differs per sensor when a sensor sits rolled or tilted on the hand (the thumb most).
+// q_rel = conj(rel_hand) (x) rel_finger only cancels whole-hand motion if all filters
+// share one world heading. Otherwise tilting the hand moves the thumb on screen.
+// The calibration pose is flat with straight fingers, so each finger's tip should
+// point the same horizontal way as the hand's: turn each finger filter about world Z
+// until it does. Replaying motion test T5 (whole-hand rotation), this cut the 90th
+// percentile finger-vs-hand error from 15 to 12 deg (thumb) and 28 to 22 deg (pinky).
+// A tip pointing nearly straight up or down has no usable heading and is left alone.
+function tipHeading(q){
+  const [w,x,y,z]=q, fx=2*(x*z+w*y), fy=2*(y*z-w*x);   // body +Z (tip) in world
+  return Math.hypot(fx,fy)>0.3?Math.atan2(fy,fx):null;
+}
+function alignHeadings(){
+  const h=S[0]; if(h.bad)return;
+  const h0=tipHeading(h.fil.q); if(h0===null)return;
+  S.forEach((st,id)=>{
+    if(id===0||st.bad||!st.calibrated)return;
+    const hs=tipHeading(st.fil.q); if(hs===null)return;
+    const c=Math.cos((h0-hs)/2), s=Math.sin((h0-hs)/2), [w,x,y,z]=st.fil.q;
+    st.fil.q=[c*w-s*z, c*x-s*y, c*y+s*x, c*z+s*w];   // (c,0,0,s) (x) q: turn about world Z
+    st.qRef.copy(st.fil.three());
+  });
 }
 function zeroOrient(){const now=performance.now();S.forEach(st=>{st.qRef.copy(st.fil.three());st.zeroT=now;});}
 

@@ -177,6 +177,23 @@ Verification so far:
 4. For ML: yaw relative to the hand still drifts by physics. Use gravity-referenced features plus the re-zero pose before each capture (DECISIONS 2026-07-14). Do not train on data recorded before these fixes.
 5. Later: the guided calibration routine (open decision). It comes after the re-test, otherwise it calibrates against bad data. Background gyro-bias tracking from this item is done (self-healing block above).
 
+**Hand axes, left model and thumb (later the same day).** After the first live use I reported that there is still some drifting, the fingers keep going off, and the thumb movement looks bad. I asked to make "hand: fwd +X, up -Z" the default, since that is the option I had picked on the glove.
+- **Hand axes measured, not guessed.** In T5 (whole-hand rotation, fingers straight) every finger is rigid to the hand, so each finger's gyro is the hand's gyro rotated by a fixed mount rotation. I fitted that rotation (Kabsch on the gyro vectors, 1032 samples) for all four hand-axes options:
+
+| Hand axes | Finger tip direction vs hand forward (thumb / index / middle / ring / pinky) |
+|---|---|
+| fwd +Y (old default) | 84 / 81 / 88 / 80 / 86 deg |
+| fwd -Y | -97 / -99 / -92 / -100 / -94 deg |
+| **fwd +X** | **-7 / -9 / -2 / -10 / -4 deg** |
+| fwd -X | 174 / 171 / 178 / 170 / 176 deg |
+
+  So fwd +X is correct, and the old default was about 85 deg wrong. With the wrong hand frame, turning the hand shows up as fake finger motion. Also, switching the dropdown resets the hand's calibration (bias zeroed), so anyone who switched and did not recalibrate got an uncorrected hand gyro, which drifts. fwd +X is now the default. The fit residual is 0.20 to 0.30 (relative), so the angles are good to a few degrees. Measured on the 43 Hz T5 capture, before the firmware fixes.
+- **Model hand defaults to left.** The 3D model was drawn as a right hand, thumb on the wrong side for this glove, so thumb spread swung the wrong way. The left option already existed (mirrored geometry, see the comment in the dashboard). It is now the default. The display setting's storage key moved to `gestura_display_v2` so an old saved "right" is not reused. The curl sign resets to "|pitch|" once because of that.
+- **Heading alignment at calibration.** Gravity fixes each filter's tilt, but not its heading. The closed-form settle gives each sensor whatever heading the shortest rotation happens to give, which differs per sensor when a sensor sits rolled or tilted (thumb 13 to 21 deg off the hand's tilt at rest, pinky 25 to 27). `q_rel` only cancels whole-hand motion if all filters share one heading, otherwise tilting the hand moves the fingers on screen. After calibration, each finger filter is now turned about world up until its tip points the same horizontal direction as the hand's (`alignHeadings()` in `tools/handrig_dashboard.html`). Tilt is untouched (checked: 0.0000 deg change, heading difference 21.8 to 0 deg in a unit check).
+- Replay on T5 (fingers should stay at 0 while the hand turns), 90th percentile finger-vs-hand angle, thumb / index / middle / ring / pinky: before 15.1 / 17.6 / 19.4 / 20.7 / 27.7 deg, with alignment 12.2 / 16.3 / 17.0 / 19.0 / 21.7 deg. A modest gain. Most of the remaining error in that capture is gyro integration at 43 Hz with ±500 °/s, which the firmware fix addresses. The other formula from the open decision (`(qRef_h^-1 qRef_f)^-1 (q_h^-1 q_f)`) was worse on T5 (thumb p90 18.9), so it stays open with (a).
+- Checks: all `verify_*.mjs` tests pass, the page script parses, three copies byte-identical (md5 `a9db16398be6d8559ff1e49e60452ccf`). **Not verified on the glove.**
+- What this does not fix: sideways (yaw) drift between re-zeros is physics (no magnetometer). The thumb has one IMU on the proximal phalanx, so the model can only show that segment's rotation. The tip bend is cosmetic.
+
 **Ideas raised today, not built yet:**
 - Keep sideways spread on a flat hand. Auto re-zero erases it (T4). Option: only re-zero yaw for fingers that were straight at calibration, or skip re-zero while the spread gesture is active. Needs the re-run data first.
 - Revisit accel down-weighting during fast moves once there is clean 50 Hz, ±2000 °/s data (rejected for now, DECISIONS 2026-10-31).
@@ -187,6 +204,7 @@ Verification so far:
 
 **Known loose ends:**
 - Two comments in `09_firmware_hardening.ino` are stale: the header says the frame works with either dashboard (the gyro scale changed, so the v4 dashboard reads v5 gyro 4x too small, and this dashboard reads v4 gyro 4x too large), and the MTU comment says the firmware never requests an MTU exchange (it now does). Code is correct, comments are not.
+- The thumb's tip bend in the model follows the pitch of its one IMU, like the fingers. Thumb flexion across the palm is mostly a sideways rotation, so the bend may look off for the thumb. Display only. Revisit if it looks wrong on video.
 - Before and after per test, with an empty column for the re-run: `09-firmware-hardening/motion-tests/README.md`, "Before and after the fixes".
 
 ---

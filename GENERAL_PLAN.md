@@ -100,8 +100,8 @@ Each phase has its own folder at the repo root (`00-…` to `09-…`). Folder nu
 
 **Open, needs the glove:**
 - The pinky accel reads 25–28 % low (`|a|` ≈ 0.72–0.77 g), on and off. Check the solder at the knuckle.
-- Pick the hand-axes option on the glove and log the result in DECISIONS.md.
-- Measure the curl sign and the model hand (left vs. right).
+- Hand axes and model hand: done 2026-10-31 (fwd +X measured from T5, left model; DECISIONS 2026-10-31).
+- Measure the curl sign.
 - Tilted, palm-down hand drifts on its own. Retest flat vs. tilted at a known β.
 - Not yet tried live: the October dashboard redesign, the curl readout, the thumb rest pose and the thumb-index gesture rule.
 
@@ -143,7 +143,7 @@ Collect more data for letter pairs the model confuses, write the final devlog, r
 1. Compile `09-firmware-hardening` in the Arduino IDE and flash it. Capture a serial trace of the v4 boot first, as the "before".
 2. Run the v5 test plan in [`09-firmware-hardening/README.md`](09-firmware-hardening/README.md), including the SDA-to-GND short. Its result decides the watchdog question in DECISIONS.md.
 3. Fix or rule out the pinky accel (solder at the knuckle, then the boot diagnostic).
-4. On the dashboard: pick the hand axes, curl sign and model hand on the glove, then log all three in DECISIONS.md.
+4. On the dashboard: pick the curl sign on the glove and log it in DECISIONS.md. Hand axes (fwd +X) and model hand (left) are set, 2026-10-31.
 5. Record a 20–30 s clip of the glove driving the 3D hand. This is the demo for the README.
 6. Phase 5 closing test: a same-session bias on/off pair plus a 5-minute still run.
 7. First real Phase 8 session, then run `check_dataset.py` on the export before anything else.
