@@ -330,7 +330,6 @@
           <button id="cal" disabled>Calibrate · 20 s</button>
           <button id="zero" disabled>Zero orient.</button>
           <label class="ctrl" title="Lower = smoother but weaker gravity correction, so residual gyro bias drifts more over time, even sitting still. Higher = snappier and more drift-resistant, slightly noisier instant readings. The floor is 0.1 because lower values visibly drift within seconds even when perfectly still: that is the filter converging too slowly to trust the accelerometer, not noise.">smoothing <input type="range" id="beta" min="0.1" max="0.3" step="0.01" value="0.1"><span id="betav">0.10</span></label>
-          <label class="ctrl" title="Measured on the glove: fwd +X is correct (default). Only change it if the hand IMU is remounted, then recalibrate.">hand axes <select id="handmap"></select></label>
         </div>
       </div>
       <div class="grp">
@@ -452,9 +451,10 @@ const META=[
  *   fingers — sensor -Y points at the fingertip, sensor +Z points up
  *             => viewerZ = -sY,  viewerY = +sZ,  viewerX = +sX
  *   hand    — reads az ~ -0.98 g lying flat palm-down, so sensor +Z points
- *             DOWN => viewerY = -sZ. Which horizontal sensor axis points at
- *             the fingers was never measured, so the four candidates that all
- *             satisfy "up = -sZ" are offered below and picked from the UI.
+ *             DOWN => viewerY = -sZ, and fwd +X (measured 2026-10-31, motion
+ *             test T5). The XIAO is velcroed on and can go back on turned or
+ *             tilted, so that is only the starting point. The real mount is
+ *             measured live on top of it (mountT, learnMount).
  *
  * Each spec is [srcIndex, sign] per viewer axis. All of them are PROPER
  * rotations (determinant +1). That matters: the gyro is a pseudovector, and it
@@ -466,16 +466,14 @@ const REMAPS={
   // fingers (empirically confirmed)
   finger:      {label:"finger: -Y->tip, +Z->up", m:[[0,1],[2,1],[1,-1]]},
   // hand candidates: all have up = -sensorZ, differing only in "forward"
-  hand_fwd_pY: {label:"hand: fwd +Y, up -Z", m:[[0,1],[2,-1],[1,1]]},
-  hand_fwd_nY: {label:"hand: fwd -Y, up -Z", m:[[0,-1],[2,-1],[1,-1]]},
   hand_fwd_pX: {label:"hand: fwd +X, up -Z", m:[[1,-1],[2,-1],[0,1]]},
-  hand_fwd_nX: {label:"hand: fwd -X, up -Z", m:[[1,1],[2,-1],[0,-1]]},
-  identity:    {label:"raw sensor frame (no remap)", m:[[0,1],[1,1],[2,1]]},
 };
-// active remap per sensor id. Hand default fwd +X: measured on 2026-10-31 by fitting the
+// active remap per sensor id. The hand has ONE base remap, fwd +X, and no picker: the
+// velcro-mounted XIAO can sit any way, so how it actually sits is measured instead
+// (mountT from gravity at calibration, psi from the gyros; see learnMount). fwd +X: measured on 2026-10-31 by fitting the
 // rotation between each finger's gyro and the hand's gyro while the whole hand turned
 // with the fingers straight (motion test T5). With fwd +X every finger points within
-// 10 deg of the hand's forward; fwd +Y and -Y are ~90 deg off, -X ~175 deg.
+// 10 deg of the hand's forward; fwd +Y and -Y were ~90 deg off, -X ~175 deg.
 let REMAP_OF=[ "hand_fwd_pX", "finger","finger","finger","finger","finger" ];
 
 function applyRemap(key,v){
@@ -1246,32 +1244,60 @@ function healRezero(dt){
 // +-3 deg once learned. T0-T4 and T6 (still, fists, single fingers, spread) never
 // triggered it.
 //
-// psi is applied only at the output. Everything upstream (bias, calibration, filter,
-// self-healing) stays in the remapped sensor frame. The hand's relative rotation is
-// re-expressed in the hand frame: rel_h' = M rel_h M^-1, M = Ry(psi) (parseFrame). A
-// rotation R that acts on sensor-frame vectors acts as M R M^-1 on hand-frame vectors,
-// because v_hand = M v_sensor. The CSV stays raw; the batch export gets rel_h'.
-const MOUNT_KEY="gestura_hand_mount_v1";
+// Tilt part (mountT, 2026-10-31). psi only covers a XIAO that lies flat. If it goes
+// back on tipped, for example on its edge, its "up" axis is wrong: the hand frame is
+// rolled, a real pitch (fingertips up) shows as a turn and a real turn shows as a
+// pitch, while roll still looks right. That was seen on the glove. Gravity measures
+// "up" directly, so at every calibration the hand's measured up u_h (its own frame) is
+// compared with the mean measured up of index to pinky u_f (their frames, which are
+// the hand frame when flat with straight fingers): mountT is the shortest rotation
+// taking u_h onto u_f. Same closed form as the calibration settle: axis u_h x u_f,
+// q = normalise(1 + u_h.u_f, u_h x u_f). psi is then learned on top, in the tilted-back
+// frame. Together they cover any mount: flat, turned, tipped or upside down.
+//
+// The mount is applied only at the output. Everything upstream (bias, calibration,
+// filter, self-healing) stays in the remapped sensor frame. The hand's relative rotation
+// is re-expressed in the hand frame: rel_h' = M rel_h M^-1 with M = Ry(psi) mountT
+// (parseFrame). A rotation R that acts on sensor-frame vectors acts as M R M^-1 on
+// hand-frame vectors, because v_hand = M v_sensor. The CSV stays raw; the batch export
+// gets rel_h'.
+// v2: psi is now measured after the tilt correction, so v1 angles are not comparable
+const MOUNT_KEY="gestura_hand_mount_v2";
 const MOUNT_TAU_S=20, MOUNT_MIN_DPS=60, MOUNT_MIN_N=40, MOUNT_MIN_R=0.85, MOUNT_APPLY_DEG=3;
-const mountQ=new THREE.Quaternion(), mountQi=new THREE.Quaternion();
-let handMount=0, mountChecked=false;   // mountChecked: the fit agreed at least once since page load
+const mountQ=new THREE.Quaternion(), mountQi=new THREE.Quaternion(), mountT=new THREE.Quaternion();
+let handMount=0, mountChecked=false, mountTiltDeg=0;   // mountChecked: the fit agreed at least once since page load
 function setHandMount(psi){
   handMount=psi;
-  mountQ.set(0,Math.sin(psi/2),0,Math.cos(psi/2)); mountQi.copy(mountQ).invert();
+  mountQ.set(0,Math.sin(psi/2),0,Math.cos(psi/2)).multiply(mountT); mountQi.copy(mountQ).invert();
 }
+// called by finishCalibration once every sensor has its calUp
+function setMountTilt(){
+  const h=S[0]; if(h.bad||!h.calUp)return;
+  const fs=[2,3,4,5].map(i=>S[i]).filter(st=>!st.bad&&st.calUp);
+  const uf=[0,0,0];
+  if(fs.length>=2)fs.forEach(st=>{for(let k=0;k<3;k++)uf[k]+=st.calUp[k];});
+  else uf[1]=1;   // too few fingers: trust the model's up (+Y)
+  const n=Math.hypot(uf[0],uf[1],uf[2]), fx=uf[0]/n, fy=uf[1]/n, fz=uf[2]/n;
+  const [hx,hy,hz]=h.calUp, d=hx*fx+hy*fy+hz*fz;
+  if(d<-0.9999)mountT.set(1,0,0,0);   // exactly opposite: any 180 deg turn about a horizontal axis
+  else mountT.set(hy*fz-hz*fy, hz*fx-hx*fz, hx*fy-hy*fx, 1+d).normalize();
+  mountTiltDeg=Math.acos(Math.max(-1,Math.min(1,d)))/DEG;
+  setHandMount(handMount);
+}
+const _mv=new THREE.Vector3();
 try{   // last session's angle as the starting guess, only if it was learned for the same hand axes
   const v=JSON.parse(localStorage.getItem(MOUNT_KEY)||"null");
   if(v&&v.remap===REMAP_OF[0]&&Number.isFinite(v.psi))setHandMount(v.psi);
 }catch(e){}
 const mountFit={sxy:0,sdot:0,w:0,n:0};
-function resetMount(){mountFit.sxy=mountFit.sdot=mountFit.w=mountFit.n=0;mountChecked=false;setHandMount(0);}
 function learnMount(dt){
   const f=mountFit, lam=Math.exp(-dt/MOUNT_TAU_S);
   f.sxy*=lam;f.sdot*=lam;f.w*=lam;f.n*=lam;
   const h=S[0]; if(!h.calibrated||h.bad||!h.alive)return;
   const fs=[2,3,4,5].map(i=>S[i]).filter(st=>st.calibrated&&!st.bad&&st.alive);
   if(fs.length<2)return;
-  const hg=h.gc, hm=Math.hypot(hg[0],hg[1],hg[2]);
+  _mv.set(h.gc[0],h.gc[1],h.gc[2]).applyQuaternion(mountT);   // tilted back into the hand plane
+  const hg=[_mv.x,_mv.y,_mv.z], hm=Math.hypot(hg[0],hg[1],hg[2]);
   if(hm<MOUNT_MIN_DPS)return;
   const clip=v=>Math.max(Math.abs(v[0]),Math.abs(v[1]),Math.abs(v[2]))>=GYR_CLIP_DPS;
   if(clip(h.g)||fs.some(st=>clip(st.g)))return;
@@ -1291,7 +1317,7 @@ function learnMount(dt){
     return;
   }
   setHandMount(psi);
-  try{localStorage.setItem(MOUNT_KEY,JSON.stringify({remap:REMAP_OF[0],psi}));}catch(e){}
+  try{localStorage.setItem(MOUNT_KEY,JSON.stringify({remap:REMAP_OF[0],psi}));}catch(e){}   // tilt is re-measured every calibration
   alignHeadings();
   setStatus(`hand IMU mount updated: ${(psi/DEG).toFixed(0)}° (was ${((psi-d)/DEG).toFixed(0)}°)`);
 }
@@ -1474,8 +1500,9 @@ function finishCalibration(){
     // away from a reference that was captured before the filter actually settled.
     st.qRef.copy(st.fil.three());
   });
+  setMountTilt();
   alignHeadings();
-  if(!mountChecked)setStatus("calibrated · now tilt and roll the whole hand, fingers straight, ~2 s: checks how the XIAO sits");
+  if(!mountChecked)setStatus(`calibrated${mountTiltDeg>15?` · XIAO sits tipped ${mountTiltDeg.toFixed(0)}°, corrected`:""} · now tilt and roll the whole hand, fingers straight, ~2 s: checks how the XIAO sits`);
   calState="done";
   clearInterval(calTimer);
   document.getElementById("calbanner").classList.remove("show");
@@ -2198,32 +2225,6 @@ document.getElementById("beta").addEventListener("input",e=>{
   document.getElementById("betav").textContent=b.toFixed(2);
   betaUser=b;   // healBeta() sets fil.beta every frame from this
 });
-// hand-axis picker: the finger remap is measured and fixed, but which sensor
-// axis points forward on the back of the hand was never checked. Rather than
-// hard-code a guess, offer the four candidates that all satisfy the one thing
-// we DID measure (+Z points down) and resolve it empirically in 10 seconds.
-(function(){
-  const sel=document.getElementById("handmap");
-  Object.keys(REMAPS).filter(k=>k.startsWith("hand_")||k==="identity").forEach(k=>{
-    const o=document.createElement("option");
-    o.value=k;o.textContent=REMAPS[k].label;
-    if(k===REMAP_OF[0])o.selected=true;
-    sel.appendChild(o);
-  });
-  sel.addEventListener("change",e=>{
-    REMAP_OF[0]=e.target.value;
-    const h=S[0];
-    h.fil.q=[1,0,0,0];          // frame changed: restart fusion, drop the ref
-    h.qRef=new THREE.Quaternion();
-    // The gyro bias and accel offset were measured in the OLD remapped frame. Subtracting
-    // them in the new frame would apply the right numbers to the wrong axes, so drop them
-    // and make the hand re-earn its calibration (the card falls back to "raw").
-    h.bias=[0,0,0];h.noise=[0,0,0];h.accBias=[0,0,0];h.calibrated=false;
-    h.flag="";h.bad=false;h.dropBad=false;h.aSmooth=null;h.aSlow=null;h.calUp=null;
-    resetMount();   // psi was learned on top of the old axes
-    setStatus("hand axes changed: recalibrate (hold flat and still)");
-  });
-})();
 // Display-only pickers (see DISPLAY above). Unlike hand axes, neither touches the
 // fusion state, so no recalibration is needed: curl sign takes effect on the next
 // readout refresh, and the model hand rebuilds the finger meshes in place.

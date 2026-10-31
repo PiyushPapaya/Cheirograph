@@ -100,7 +100,7 @@ Each phase has its own folder at the repo root (`00-…` to `09-…`). Folder nu
 
 **Open, needs the glove:**
 - The pinky accel reads 25–28 % low (`|a|` ≈ 0.72–0.77 g), on and off. Check the solder at the knuckle.
-- Hand axes and model hand: done 2026-10-31 (fwd +X measured from T5, left model; DECISIONS 2026-10-31).
+- Hand axes and model hand: done 2026-10-31. The hand IMU mount is now measured live (tilt and in-plane angle), and the model is a left hand (DECISIONS 2026-10-31).
 - Measure the curl sign.
 - Tilted, palm-down hand drifts on its own. Retest flat vs. tilted at a known β.
 - Not yet tried live: the October dashboard redesign, the curl readout, the thumb rest pose and the thumb-index gesture rule.

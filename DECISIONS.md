@@ -14,6 +14,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-10-31 | [Hand IMU tilt measured at calibration, hand-axes picker removed](#2026-10-31--hand-imu-tilt-measured-at-calibration-hand-axes-picker-removed) | Calibration |
 | 2026-10-31 | [Hand IMU mount angle learned live from the gyros](#2026-10-31--hand-imu-mount-angle-learned-live-from-the-gyros) | Calibration |
 | 2026-10-31 | [Hand axes fwd +X, left model, headings aligned at calibration](#2026-10-31--hand-axes-fwd-x-left-model-headings-aligned-at-calibration) | Calibration |
 | 2026-10-31 | [Accel offsets learned live, saved per browser](#2026-10-31--accel-offsets-learned-live-saved-per-browser) | Calibration |
@@ -116,6 +117,16 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-10-31 | Hand IMU tilt measured at calibration, hand-axes picker removed
+
+**Options:** (a) add a hard-coded remap for the mapping seen on the glove (up shows as -X, a left turn shows as Y, Z unchanged) and make it the only option. (b) Measure the XIAO's tilt from gravity at every calibration, keep one base remap, and drop the picker.
+
+**Choice:** (b).
+
+**Why:** the symptom (pitch and turn swapped, roll fine) is a hand frame rolled 90 deg, which a tipped XIAO produces. A fixed remap would match only today's mount and break at the next remount. Gravity gives the tilt for free at calibration, and the gyro learner already gives the in-plane angle, so (b) handles every mount with no picker. The user's requested mapping is what (b) produces for a XIAO tipped 90 deg (tested in the browser: the palm matched the real hand within 1.2 deg right after calibration).
+
+**Cost:** the calibration pose must really be flat with straight fingers, because the fingers' up defines the hand's up. With fewer than two good fingers, it falls back to the model's +Y. No manual override is left in the UI.
 
 ### 2026-10-31 | Hand IMU mount angle learned live from the gyros
 

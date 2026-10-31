@@ -117,5 +117,5 @@ python tools/fit_accel_offsets.py <csv> [<csv> ...]     # per-sensor accel zero-
 ## Lessons
 
 - Press **● Record before Calibrate**. In the first run calibration happened before Record, so the 20 s hold is missing from every CSV and the bias and zero cannot be recomputed.
-- Clap at the start, use one hand-axes setting for all tests.
+- Clap at the start. (The hand-axes setting no longer exists. The dashboard measures the XIAO's mount itself, so turn the whole hand for about 2 s after calibrating.)
 - Check the frame rate first. A 17 Hz capture is not usable for fusion checks or for ML data.

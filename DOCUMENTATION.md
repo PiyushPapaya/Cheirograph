@@ -202,6 +202,23 @@ Verification so far:
 - **Evidence:** offline on T5 with the hand data turned by 0/35/90/180 deg, the learner recovered 4/39/94/-176 deg (the extra ~4 deg is how the XIAO sat that day), stable within ±3 deg once learned. On T0 to T4 and T6 (still, fists, single fingers, spread) it never triggered. In the browser with synthetic frames (XIAO turned by 0, 70, 180 deg, hand tilting and rolling at 120 °/s, fingers rigid): it learned exactly 0, 70, 180 deg. Finger-vs-hand error before learning was up to 0 / 74 / 134 deg, after learning 0 / 0.4 / 0.3 deg. No console errors, all `verify_*.mjs` tests pass. Copies byte-identical, md5 `a0c86fffc01531207d7425f8e1db8b0b`.
 - **Not covered:** a XIAO stuck on upside down or tilted out of the hand plane. A small tilt is absorbed by the calibration zero. **Not verified on the glove.**
 
+**Hand IMU tilt measured at calibration, hand-axes picker removed (later the same day).** On the glove the whole 3D hand moved wrong. I tested three moves from a flat, calibrated hand: tipping the fingertips up made the 3D hand swing sideways, turning the hand 90 deg left made it tip up or down, and roll looked correct. I asked for that mapping to be fixed and to be the only option.
+- **Cause:** up/down and left/right swapped with roll intact is exactly what a hand frame rolled 90 deg about the forward axis does: the dashboard has the XIAO's "up" axis wrong. That happens when the XIAO goes back on tipped (for example on its edge) instead of flat. The fixed remap assumes sensor -Z is up. The in-plane learner from earlier today only covers a XIAO that lies flat. Nothing compared the XIAO's measured up with the fingers' measured up, so calibration accepted it silently. **The real mount was not checked by eye or in a capture.** The diagnosis comes from the symptom pattern.
+- **Fix:** instead of hard-coding a 90 deg swap, which breaks again at the next remount, every calibration now measures the tilt. The XIAO's measured up `u_h` (its own frame) is compared with the mean measured up of index to pinky `u_f`. `mountT` is the shortest rotation taking `u_h` onto `u_f` (`setMountTilt()`, closed form `normalise(1 + u_h.u_f, u_h x u_f)`). The in-plane angle psi is then learned from the gyros as before, on the tilted-back data. The full mount is `M = Ry(psi) mountT`, applied to the hand's relative rotation (`rel_h' = M rel_h M^-1`). Together this covers any mount: flat, turned, tipped or upside down. If the tilt is over 15 deg, the status line says so ("XIAO sits tipped 90°, corrected").
+- **Only one option:** the hand-axes dropdown is gone. The hand has one base remap (fwd +X, up -Z), and the actual mount is measured on top of it. The other remaps (fwd +Y, -Y, -X, raw) are deleted. The saved angle moved to `gestura_hand_mount_v2`, since psi is now measured after the tilt correction.
+- **Evidence (browser, synthetic frames, fingers rigid, hand tilting and rolling at 120 °/s):**
+
+| XIAO mount (turn / tip) | Tip measured | Palm vs real hand after a 30 deg pitch up, before any turning | Fingers vs hand after learning | psi learned |
+|---|---|---|---|---|
+| 0 / 0 deg | 0 deg | 1.2 deg | 0 deg | 0 deg |
+| 0 / 90 deg (your case) | 90 deg | 1.2 deg | 0.3 deg | 0 deg |
+| 0 / -90 deg | 90 deg | 1.2 deg | 0.3 deg | 0 deg |
+| 40 / 90 deg | 90 deg | 20 deg (turn not learned yet) | 0.4 deg | 40 deg |
+| 25 / 0 deg | 0 deg | 12.7 deg (turn not learned yet) | 0.3 deg | 25 deg |
+
+  The palm matched the real hand within 2.4 deg in every case after learning. A tipped XIAO is fixed immediately at calibration. A turned one needs about 2 s of turning the hand. All `verify_*.mjs` tests pass, no console errors, copies byte-identical (md5 `a8c4ec4ad9277e1e109ccacf749f4fa5`). **Not verified on the glove.**
+- **Limit:** the tilt fix assumes the hand is flat with straight fingers during calibration. That is the calibration pose, so it holds as long as calibration is done properly.
+
 **Ideas raised today, not built yet:**
 - Keep sideways spread on a flat hand. Auto re-zero erases it (T4). Option: only re-zero yaw for fingers that were straight at calibration, or skip re-zero while the spread gesture is active. Needs the re-run data first.
 - Revisit accel down-weighting during fast moves once there is clean 50 Hz, ±2000 °/s data (rejected for now, DECISIONS 2026-10-31).

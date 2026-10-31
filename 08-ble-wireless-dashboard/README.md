@@ -95,7 +95,7 @@ The first time v4 ran on the glove, the dashboard connected and sat at 0 Hz with
 ## Still open
 
 - **Pinky accel reads 25–28 % low** (`|a|` ≈ 0.72–0.77 g instead of ~1.00 g), on and off. The dashboard flags it and freezes that finger instead of drawing garbage. Next step: check the solder joint at the knuckle.
-- **Hand axes, curl sign and model hand** (left vs. right) are options in the dashboard. Nobody has picked them on the glove yet.
+- **Curl sign and model hand** (left vs. right) are options in the dashboard. The model hand defaults to left. The hand axes are no longer an option: since 2026-10-31 the dashboard measures how the XIAO sits (tilt from gravity at calibration, in-plane angle from the gyros).
 - **Tilted, palm-down hand drifts on its own.** Needs a controlled flat-vs-tilted retest at a known β.
 - The October dashboard redesign and several August features (curl readout, thumb pose, gesture rule) haven't been tried live.
 - No classifier yet. That depends on clean data from this stage, collected with [stage 09](../09-firmware-hardening/)'s firmware.
