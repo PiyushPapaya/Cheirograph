@@ -20,7 +20,7 @@ Keep it in sync with the firmware. If you change a wire, update this file in the
 
 ## PCA9548A channel assignments
 
-> **Complete this table once you wire the glove. This is the one authoritative mapping.**
+> **Confirmed against the glove wiring on 2026-07-19 (thumb = ch0, pinky = ch4). This is the one authoritative mapping.** `sensor_id` in firmware and CSVs: 0 = hand, 1–5 = channels 0–4.
 
 | Mux Channel | I²C Address | Finger | Sensor placement |
 |---|---|---|---|
@@ -37,8 +37,9 @@ Keep it in sync with the firmware. If you change a wire, update this file in the
 
 ## Wiring diagram
 
-Full-glove schematic / photo to be added once the first physical layout is confirmed.
-Placeholder: `docs/media/wiring_v1.jpg` — coming soon.
+No full-glove schematic yet. Photos of the glove wiring are in [`07-full-glove-assembly/`](../07-full-glove-assembly/).
+
+**Two buses on the XIAO.** The mux and fingers sit on `Wire` (D4/D5). The onboard LSM6DS3 sits on the internal `Wire1` (pins 16/17). The Seeed library quietly does `#define Wire Wire1` for it. A jammed finger bus can't take down the hand sensor, and mux commands do nothing to it.
 
 **Phase 2 — single sensor, direct (no mux), verified 2026-07-14:**
 
@@ -61,7 +62,7 @@ inserts between this sensor and the XIAO without changing the XIAO-side pins.
 
 **Phase 3/4 — PCA9548A mux + all 5 finger IMUs, bench breadboard, verified 2026-07-16:**
 
-Photos: `docs/media/phase3-4_breadboard_top.jpg`, `docs/media/phase3-4_breadboard_angle.jpg`.
+Photos: `04-all-six-imus-raw/breadboard_top.jpg`, `04-all-six-imus-raw/breadboard_angle.jpg`.
 
 ```
         PCA9548A                          XIAO nRF52840 Sense
@@ -168,6 +169,7 @@ With all 5 finger sensors taped to the glove and the hand IMU seated flat:
 
 | Date | Change | Changed by |
 |---|---|---|
+| 2026-10-31 | Channel table marked confirmed; noted the hand IMU's separate `Wire1` bus (found 2026-10-19). Docs only, no wiring change. | Piyush |
 | 2026-07-19 | All 6 IMUs mounted and wired on the glove; mux channel map confirmed against physical build (thumb=ch0 `SD0/SC0`, pinky=ch4 `SD4/SC4`, matching the table above). Confirmed finger sensor axis convention (`-Y`=fingertip, `+Z`=up) and that the hand IMU uses a different Z sense (`az≈-0.98g` flat, palm down). Axis remap to the visualization's model frame flagged as an open item, not yet applied. | Piyush |
 | 2026-07-16 | Added Phase 3/4 mux + 5-finger-IMU bench wiring (breadboard, no finger identity assigned yet). Mux channel switching verified via `scanChannels()` — 0x68 on channels 0-4, no cross-talk. | Piyush |
 | 2026-07-14 | Added Phase 2 single-sensor direct-connect diagram (MPU-6050 → D4/D5, AD0→GND = 0x68). Verified on the bench. | Piyush |

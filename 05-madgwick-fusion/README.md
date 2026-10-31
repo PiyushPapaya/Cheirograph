@@ -14,7 +14,7 @@ Roll, pitch, and yaw are derived from the quaternion purely for human-readable l
 
 ## Why Madgwick, and not Mahony or a simple complementary filter
 
-Short version: Madgwick's gradient-descent correction converges faster from a bad initial guess and doesn't need a manually tuned integral gain the way Mahony does. It costs more per sample, but six filters running at 100 Hz still leaves the nRF52840 with headroom, so that cost doesn't actually bite here. Full reasoning is in the project's private decision log.
+Short version: Madgwick's gradient-descent correction converges faster from a bad initial guess and has one gain to tune instead of Mahony's two. It costs more per sample, but six filters at 100 Hz still leave the nRF52840 plenty of headroom. Full reasoning is in [DECISIONS.md](../DECISIONS.md#2026-07-17--madgwick-over-mahony-and-complementary).
 
 ## What changed between the first and second pass
 
@@ -39,7 +39,7 @@ Two captures: a roughly 30-second deliberate-movement run, and a roughly 30-seco
 
 - **Calibration is finally trustworthy.** Gyro bias standard deviation came in at 0.05 to 0.35 deg/s across all six sensors, two orders of magnitude better than Phase 4's numbers. The difference wasn't code, it was discipline: actually holding the rig still during the calibration window instead of letting it settle mid-capture.
 - **No dropouts in either capture.** All six sensors held a full, matched sample count through both runs. The finger-2 dropout from Phase 4 didn't reproduce here, worth calling "not currently reproducing," not "fixed," since its earlier failures were intermittent and a marginal contact doesn't announce itself on a schedule.
-- **Drift, held still:** roll and pitch stayed essentially flat, under about 1.7 deg/min and usually well below that. That's expected. Madgwick's accelerometer correction anchors both of those against gravity on every tick, so they can't wander far. Yaw crept at 0.2 to 2.1 deg/min depending on the sensor. That's small, and it's exactly the behavior you'd predict for a 6-DOF IMU with no magnetometer: nothing anchors yaw against an absolute reference, so it drifts slowly no matter how good your calibration is. Not a bug, a known physical limit of this sensor setup, planned around rather than fought.
+- **Drift, held still:** roll and pitch stayed flat, at most about 0.35 deg/min. That's expected: Madgwick's accelerometer correction anchors both against gravity on every tick, so they can't wander far. Yaw crept at 0.03 to 2.2 deg/min depending on the sensor. These are line-fit slopes from `tools/analyze_drift.py` (re-run 2026-10-19). My first numbers compared only the first and last sample, which overstated roll drift up to 1.7 deg/min because of noise at the endpoints. Both tables are in [`data-notes.md`](data-notes.md). That's small, and it's exactly the behavior you'd predict for a 6-DOF IMU with no magnetometer: nothing anchors yaw against an absolute reference, so it drifts slowly no matter how good your calibration is. Not a bug, a known physical limit of this sensor setup, planned around rather than fought.
 - **Rate dropped to about 84 to 86 Hz**, down from Phase 4's ~93.6 Hz. The added filter math, Euler-angle conversion, and extra printed columns all cost real time inside the 10 ms tick budget.
 
 ## The target
@@ -47,6 +47,11 @@ Two captures: a roughly 30-second deliberate-movement run, and a roughly 30-seco
 - Six quaternion streams, no NaNs. Confirmed, in both captures.
 - A slow 360° rotation returning close to its starting heading. Not yet tested with a controlled rotation, only a general movement capture so far.
 - Startup calibration runs automatically while the sensor sits still. Confirmed working, see the bias numbers above.
+
+## What's still needed to close this phase
+
+- A same-session pair of still captures, one with `SUBTRACT_GYRO_BIAS 0` and one with `1`, compared with `python tools/analyze_drift.py off.csv --compare on.csv`.
+- One still run of 5+ minutes. The current drift capture is only 31.5 s.
 
 ## The one thing worth remembering from this stage
 

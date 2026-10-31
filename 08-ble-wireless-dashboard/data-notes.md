@@ -1,8 +1,8 @@
-# data/phase7_5_ble_diagnostics/
+# 08-ble-wireless-dashboard/
 
 Two raw captures taken from `handrig_dashboard.html`'s "Export CSV" during the
 first BLE bring-up session on the glove (2026-07-19), **before** the clone-init
-fix (firmware v3, `firmware/08_ble_dashboard/`) was written. Kept as evidence
+fix (firmware v3, `08-ble-wireless-dashboard/`) was written. Kept as evidence
 for the debugging story, not as usable training data.
 
 Format: `t_ms,<name>_ax,<name>_ay,<name>_az,<name>_gx,<name>_gy,<name>_gz` for
@@ -23,7 +23,7 @@ The exact-repeat values (`246.0938`, `1.9688`, etc.) and the perfectly linear
 `±0x2000` ramps are the tell: real sensor noise never repeats a float to 4
 decimal places or increments by a perfectly constant integer step. That ruled
 out calibration, filtering, and wiring flakiness as the cause and pointed
-straight at initialization — see `firmware/08_ble_dashboard/README.md` and
+straight at initialization — see `08-ble-wireless-dashboard/README.md` and
 `DECISIONS.md` (2026-07-19) for the root cause (MPU-6050 clones at
 `WHO_AM_I=0x72`) and the fix.
 

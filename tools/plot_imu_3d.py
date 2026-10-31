@@ -4,7 +4,7 @@
 Reads a 3-column CSV (one axis triple per row) and draws the samples as a path
 through 3D space, coloured by time so you can read the *order* of motion, not
 just the cloud of points. Built for the Phase 2 bench captures in
-data/phase2_single_mpu6050/, but it will plot any 3-column x,y,z log.
+02-single-mpu6050/, but it will plot any 3-column x,y,z log.
 
 Why 3D and not three flat line charts: the three axes of an IMU are not
 independent - a real hand motion is a single trajectory that sweeps through
@@ -17,9 +17,9 @@ Usage:
     python plot_imu_3d.py <capture.csv> [--kind accel|gyro] [--save out.png]
 
     # examples
-    python plot_imu_3d.py ../data/phase2_single_mpu6050/accel_raw.csv --kind accel
-    python plot_imu_3d.py ../data/phase2_single_mpu6050/gyro_raw.csv  --kind gyro \
-        --save ../docs/media/phase2_gyro_3d.png
+    python plot_imu_3d.py ../02-single-mpu6050/accel_raw.csv --kind accel
+    python plot_imu_3d.py ../02-single-mpu6050/gyro_raw.csv  --kind gyro \
+        --save ../02-single-mpu6050/gyro_3d.png
 
 Dependencies: numpy, matplotlib (see requirements.txt).
 """

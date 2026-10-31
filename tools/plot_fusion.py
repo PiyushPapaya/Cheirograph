@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """plot_fusion.py - roll/pitch/yaw time-series visualization for the Phase 5
-Madgwick fusion captures (data/phase5_madgwick_fusion/), fused contract
+Madgwick fusion captures (05-madgwick-fusion/), fused contract
 (millis,sensor_id,qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg[,...]).
 
 Three stacked subplots (roll, pitch, yaw), one line per sensor, x-axis in
@@ -27,8 +27,8 @@ up under this correction as well as fingers 1-4 do, which is itself a
 finding: it's mounted at a distinctly different angle, not just noisier.
 
 Usage:
-    python plot_fusion.py ../data/phase5_madgwick_fusion/capture_02_drift.csv \
-        --save ../docs/media/phase5_drift_rpy.png --title "Drift test (held still)"
+    python plot_fusion.py ../05-madgwick-fusion/capture_02_drift.csv \
+        --save ../05-madgwick-fusion/drift_rpy.png --title "Drift test (held still)"
 """
 
 import argparse

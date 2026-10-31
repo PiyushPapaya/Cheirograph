@@ -4,7 +4,9 @@
 
 Once the glove was wired and mounted, I wanted a way to actually see it working, untethered, in real time, in a browser, before committing to the effort of collecting a labeled training set. This stage streams all six IMUs over Bluetooth LE to a live dashboard that renders a 3D hand model plus per-sensor accel/gyro traces. It's also where the hardest debugging session of the whole project happened.
 
-**Firmware:** [`08_ble_dashboard.ino`](08_ble_dashboard.ino), flash it with the Arduino IDE onto the XIAO, using the Adafruit nRF52 board package.
+**Status: v4 firmware live on the glove since 2026-08-07, streaming at ~47 Hz.** Open issues are listed at the bottom.
+
+**Firmware:** [`08_ble_dashboard.ino`](08_ble_dashboard.ino). Flash it with the Arduino IDE using the Seeed nRF52 Boards package (the Adafruit-based core, see Toolchain below).
 **Dashboard:** `handrig_dashboard.html`, open it directly in Chrome or Edge, desktop or Android, no build step, no server. The canonical copy is `tools/handrig_dashboard.html` (the `tools/verify_*.mjs` scripts read it). Byte-identical copies sit [here](handrig_dashboard.html) (this stage's deliverable) and in `Data/html/`; copy the canonical file over both after every edit and compare with `md5sum`.
 
 ## Why this is v4, not v1
@@ -86,9 +88,17 @@ These two captures are the actual raw data that made the clone-chip diagnosis po
 - [`capture_02_pre_fix_garbage_calibrated.csv`](capture_02_pre_fix_garbage_calibrated.csv)
 - [`data-notes.md`](data-notes.md), original notes on what these captures show.
 
-## Not there yet
+## First live session (2026-08-07)
 
-Not the classifier. This stage proves the whole sensing and communication chain works live and wirelessly. The actual gesture recognition model hasn't been trained yet, that's the next real milestone, and it depends on this stage's data quality being trustworthy first.
+The first time v4 ran on the glove, the dashboard connected and sat at 0 Hz with bad frames climbing. The serial report line showed why. Reading all six sensors took a flat ~5.9 ms the whole time, but `bleuart.write()` blocked for over 100 ms and the loop rate fell from 50 to 8.3 Hz. The sensors were fine. The BLE link was configured far below what the chip can do. `Bluefruit.configPrphBandwidth(BANDWIDTH_MAX)` before `begin()` plus a relaxed connection interval fixed it: **~47 Hz, 3.7 KB/s, confirmed live.** Reasoning in [DECISIONS.md](../DECISIONS.md#2026-08-07--widen-the-ble-link-instead-of-shrinking-the-data).
+
+## Still open
+
+- **Pinky accel reads 25–28 % low** (`|a|` ≈ 0.72–0.77 g instead of ~1.00 g), on and off. The dashboard flags it and freezes that finger instead of drawing garbage. Next step: check the solder joint at the knuckle.
+- **Hand axes, curl sign and model hand** (left vs. right) are options in the dashboard. Nobody has picked them on the glove yet.
+- **Tilted, palm-down hand drifts on its own.** Needs a controlled flat-vs-tilted retest at a known β.
+- The October dashboard redesign and several August features (curl readout, thumb pose, gesture rule) haven't been tried live.
+- No classifier yet. That depends on clean data from this stage, collected with [stage 09](../09-firmware-hardening/)'s firmware.
 
 ## Toolchain
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """analyze_calibration.py - per-sensor at-rest bias/noise check for the Phase 4
-six-IMU capture (data/phase4_six_imu_capture/), full contract format
+six-IMU capture (04-all-six-imus-raw/), full contract format
 (millis,sensor_id,ax,ay,az,gx,gy,gz).
 
 Unlike analyze_multi_imu.py (Phase 3/4 gyro-only bring-up), this reads the
@@ -9,7 +9,7 @@ full 8-column contract and reports, per sensor_id:
   - mean + std of gyro (should be ~0 deg/s at rest - std is the noise floor)
 
 Usage:
-    python analyze_calibration.py ../data/phase4_six_imu_capture/capture_01_raw.csv
+    python analyze_calibration.py ../04-all-six-imus-raw/capture_01_raw.csv
 """
 
 import argparse

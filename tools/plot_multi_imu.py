@@ -10,8 +10,8 @@ the "how well do the five agree right now" signal. Stacking them with a shared
 x-axis lets you correlate "big motion" with "big spread" directly by eye.
 
 Usage:
-    python plot_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv \
-        --save ../docs/media/phase3-4_five_imu_movement.png
+    python plot_multi_imu.py ../04-all-six-imus-raw/movement_test.csv \
+        --save ../04-all-six-imus-raw/five_imu_movement.png
 """
 
 import argparse

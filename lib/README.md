@@ -1,11 +1,11 @@
-# firmware/lib — Shared Library Code
+# lib/
 
-This directory stays **empty until shared code stabilises**.
+Shared firmware code. Empty on purpose for now.
 
-The rule: copy-paste code between milestone folders early; factor it here only when it is:
-1. Stable and unlikely to change per-milestone, and
-2. Genuinely reused by two or more milestone sketches.
+Code only moves here once it's:
+1. stable, and
+2. actually used by two or more milestone sketches.
 
-Premature factoring makes it impossible to look at an old milestone folder and see a self-contained, runnable snapshot of that point in the build. Keep each milestone self-contained longer than feels comfortable; extract here later.
+Until then each stage folder keeps its own copy. That costs some duplication, but every old stage stays a self-contained snapshot you can open and flash as it was. Moving code out too early breaks that.
 
-Candidates that will eventually land here: Madgwick implementation, mux-channel helper, serial format writer.
+Likely candidates later: the Madgwick filter, the mux helper, the raw-register clone IMU driver, and the I²C bus recovery.

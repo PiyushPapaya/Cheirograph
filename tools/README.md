@@ -1,8 +1,8 @@
-# tools/ — Python Utility Scripts
+# tools/
 
-Python 3 scripts for plotting and analysing captures from the glove, plus the
-live BLE dashboard. The first section is what exists today. "Planned scripts"
-further down is not built yet.
+Python scripts that plot and check captures from the glove, the live BLE
+dashboard, and small test scripts that check the dashboard's logic. Everything
+listed here exists and runs.
 
 ---
 
@@ -13,7 +13,7 @@ further down is not built yet.
 (skips `#` comments and a header row), draws the samples as a time-coloured path
 through 3D space, and either opens a window or saves a PNG.
 - Dependency: `numpy`, `matplotlib`.
-- Used to plot the Phase 2 accel/gyro bench captures .
+- Used to plot the Phase 2 accel/gyro bench captures.
 ```bash
 python plot_imu_3d.py <capture.csv> --kind gyro
 ```
@@ -147,26 +147,12 @@ test: one still run with `SUBTRACT_GYRO_BIAS 0`, one with `1`, same session.
 python analyze_drift.py bias_off.csv --compare bias_on.csv
 ```
 
-## Planned scripts
+## Dropped from the original plan
 
-### `plot_raw.py`
-Live serial plotter for raw IMU data.
-- Reads `millis,sensor_id,ax,ay,az,gx,gy,gz` lines.
-- Plots the six channels (ax/ay/az/gx/gy/gz) per selected sensor_id.
-- Dependency: `pyserial`, `matplotlib`.
-- Added in Phase 4.
-
-### `skeleton_viz.py`
-3D hand-skeleton visualiser using relative quaternions.
-- Reads `millis,sensor_id,qw,qx,qy,qz` lines (relative quaternions, Phases 6+).
-- Renders a simplified 5-finger hand skeleton rotating in real time.
-- Dependency: `pyserial`, `matplotlib` (3D).
-- Added in Phase 6.
-
-### `capture_data.py`
-Labelled training-data capture tool.
-- Prompts for a label (A–Z or custom), records N samples, saves to a per-label folder.
-- Used in Phase 8 for Edge Impulse dataset collection.
+The first plan had three more Python scripts. The dashboard covers all of them, so they were never built:
+- `plot_raw.py` (live serial plotter): replaced by the dashboard's live traces.
+- `skeleton_viz.py` (3D hand from relative quaternions): replaced by the dashboard's 3D hand.
+- `capture_data.py` (labelled capture): replaced by Batch Capture plus `check_dataset.py`.
 
 ---
 
@@ -179,10 +165,14 @@ Stable formats — do not change without updating the relevant parser in the sam
 millis,sensor_id,ax,ay,az,gx,gy,gz
 ```
 
-**Fused / relative (Phases 5–):**
+**Fused (Phase 5):**
 ```
-millis,sensor_id,qw,qx,qy,qz
+millis,sensor_id,qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg[,ax,ay,az,gx,gy,gz]
 ```
+
+**BLE (Phase 7.5+):** 80-byte binary frames, documented in
+`08-ble-wireless-dashboard/README.md`. The dashboard's CSV export records the
+raw sensor frame; Batch Capture exports hand-relative quaternions.
 
 `sensor_id`: 0 = hand (onboard XIAO), 1–5 = fingers (mux channels 0–4 = thumb–pinky).
 
@@ -197,5 +187,9 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` is committed and pinned (Phase 2). Update it in the same commit
-as any script that adds a dependency.
+`requirements.txt` is pinned. Update it in the same commit as any script that
+adds a dependency. Note: it pins numpy 2.2.6, but the October scripts were
+tested on 2.5.3 (open decision in `DECISIONS.md`).
+
+Tests: `python verify_check_dataset.py`, and `node verify_*.mjs` for the
+dashboard logic.

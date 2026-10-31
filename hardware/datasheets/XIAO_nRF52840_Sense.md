@@ -116,6 +116,6 @@ force UF2 bootloader mode, then re-select the port.
 
 ## Related firmware
 
-- [`firmware/00_led_sanity_test/`](../../firmware/00_led_sanity_test/) — first-light LED blink.
-- [`firmware/01_xiao_imu_test/`](../../firmware/01_xiao_imu_test/) — read the onboard IMU
+- [`00-led-sanity-test/`](../../00-led-sanity-test/) — first-light LED blink.
+- [`01-xiao-onboard-imu/`](../../01-xiao-onboard-imu/) — read the onboard IMU
   (LSM6DS3, I²C addr `0x6A`) via [Seeed_Arduino_LSM6DS3](https://github.com/Seeed-Studio/Seeed_Arduino_LSM6DS3).

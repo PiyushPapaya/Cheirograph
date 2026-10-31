@@ -1,4 +1,4 @@
-# data/phase2_single_mpu6050/ — bench captures
+# 02-single-mpu6050/ — bench captures
 
 Raw serial dumps from the Phase 2 single-MPU-6050 bench test (one sensor, direct
 I²C, **no mux**). Kept as evidence and as sample input for `tools/plot_imu_3d.py`.
@@ -9,8 +9,8 @@ named subfolder and are committed to the repo, unlike the bulk per-letter datase
 
 | File | Sketch | Columns | Units |
 |---|---|---|---|
-| `gyro_raw.csv` | `firmware/02_single_mpu6050_test/diagnostics/gyro_raw/` | `gx,gy,gz` | deg/s |
-| `accel_raw.csv` | `firmware/02_single_mpu6050_test/diagnostics/accel_raw/` | `ax,ay,az` | g |
+| `gyro_raw.csv` | `02-single-mpu6050/diagnostics/gyro_raw/` | `gx,gy,gz` | deg/s |
+| `accel_raw.csv` | `02-single-mpu6050/diagnostics/accel_raw/` | `ax,ay,az` | g |
 
 Both were captured at ~100 Hz (10 ms loop delay) while the sensor was rotated and
 shaken freely by hand, then set down still at the end. The leading `#` lines are
@@ -20,8 +20,8 @@ capture notes; the first data row is the header.
 
 ```bash
 cd tools
-python plot_imu_3d.py ../data/phase2_single_mpu6050/accel_raw.csv --kind accel
-python plot_imu_3d.py ../data/phase2_single_mpu6050/gyro_raw.csv  --kind gyro
+python plot_imu_3d.py ../02-single-mpu6050/accel_raw.csv --kind accel
+python plot_imu_3d.py ../02-single-mpu6050/gyro_raw.csv  --kind gyro
 ```
 
-Add `--save ../docs/media/phase2_gyro_3d.png` to write a PNG instead of opening a window.
+Add `--save ../02-single-mpu6050/gyro_3d.png` to write a PNG instead of opening a window.

@@ -1,6 +1,6 @@
-# data/phase5_madgwick_fusion/ — bench captures
+# 05-madgwick-fusion/ — bench captures
 
-Serial captures from `firmware/05_madgwick_fusion/05_madgwick_fusion.ino`:
+Serial captures from `05-madgwick-fusion/05_madgwick_fusion.ino`:
 per-sensor Madgwick fusion (accel-seeded orientation, two-stage beta),
 fused contract `millis,sensor_id,qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg`.
 
@@ -12,8 +12,8 @@ fused contract `millis,sensor_id,qw,qx,qy,qz,roll_deg,pitch_deg,yaw_deg`.
 Re-run the analysis:
 ```bash
 cd tools
-python analyze_drift.py ../data/phase5_madgwick_fusion/capture_01_movement.csv
-python analyze_drift.py ../data/phase5_madgwick_fusion/capture_02_drift.csv
+python analyze_drift.py ../05-madgwick-fusion/capture_01_movement.csv
+python analyze_drift.py ../05-madgwick-fusion/capture_02_drift.csv
 ```
 Note: both captures were taken with `INCLUDE_RAW=0`, so they carry only the
 fused columns (`qw,qx,qy,qz,roll,pitch,yaw`), not raw accel/gyro —
@@ -132,10 +132,10 @@ number, until a multi-minute capture confirms them.
 
 ```bash
 cd tools
-python plot_fusion.py ../data/phase5_madgwick_fusion/capture_02_drift.csv \
-    --save ../docs/media/phase5_drift_rpy.png
-python plot_fusion.py ../data/phase5_madgwick_fusion/capture_01_movement.csv \
-    --save ../docs/media/phase5_movement_rpy.png
+python plot_fusion.py ../05-madgwick-fusion/capture_02_drift.csv \
+    --save ../05-madgwick-fusion/drift_rpy.png
+python plot_fusion.py ../05-madgwick-fusion/capture_01_movement.csv \
+    --save ../05-madgwick-fusion/movement_rpy.png
 # pass --no-mount-correction to see the raw, uncorrected per-sensor angles instead
 ```
 
@@ -145,7 +145,7 @@ purely to make the fingers visually comparable to the hand sensor — see
 "Why hand and finger angles differ so much" below and DECISIONS.md
 (2026-07-17) for what this correction is and isn't.
 
-`docs/media/phase5_drift_rpy.png` — roll/pitch/yaw vs. time, one line per
+`05-madgwick-fusion/drift_rpy.png` — roll/pitch/yaw vs. time, one line per
 sensor, unwrapped so ±180° crossings don't show as vertical jumps. With the
 mount correction applied, roll and yaw for fingers 1-4 sit close to the
 hand's baseline (within a few degrees), pitch settles to a small residual
@@ -154,7 +154,7 @@ finger 5 visibly does **not** line up the way 1-4 do, sitting apart on all
 three axes. Confirms the table above: everything stays flat for the full
 31.5 s (no drift), and finger 5 is mounted differently, not just noisier.
 
-`docs/media/phase5_movement_rpy.png` — same correction, movement capture.
+`05-madgwick-fusion/movement_rpy.png` — same correction, movement capture.
 Useful as a qualitative sanity check ahead of Phase 6: with the mount
 correction applied, the five finger traces move together as one cluster
 through every swing (finger 5 tracking the same shape but visibly offset),

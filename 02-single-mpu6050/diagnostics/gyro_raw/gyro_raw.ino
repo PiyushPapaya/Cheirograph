@@ -4,7 +4,7 @@
 // three gyro axes, no timestamp, no id, no header - the smallest thing that
 // isolates the gyroscope so it can be plotted on its own. This is one of the
 // two sketches actually flashed during the Phase 2 bench test; the capture it
-// produced lives in data/phase2_single_mpu6050/gyro_raw.csv.
+// produced lives in 02-single-mpu6050/gyro_raw.csv.
 //
 // Output:  gX,gY,gZ   (degrees/second)
 // Library: MPU6050_light by rfetick

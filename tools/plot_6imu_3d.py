@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """plot_6imu_3d.py - 3D accelerometer trajectory + animation for the Phase 4
-six-IMU full-session capture (data/phase4_six_imu_capture/capture_02_full_session.csv).
+six-IMU full-session capture (04-all-six-imus-raw/capture_02_full_session.csv).
 
 Two outputs from the same data:
 
@@ -20,9 +20,9 @@ Both are read-only visualisations of the raw accel channel; no filtering or
 fusion applied.
 
 Usage:
-    python plot_6imu_3d.py ../data/phase4_six_imu_capture/capture_02_full_session.csv \
-        --save-static ../docs/media/phase4_6imu_accel_3d.png \
-        --save-gif ../docs/media/phase4_6imu_accel_3d.gif --stride 4
+    python plot_6imu_3d.py ../04-all-six-imus-raw/capture_02_full_session.csv \
+        --save-static ../04-all-six-imus-raw/6imu_accel_3d.png \
+        --save-gif ../04-all-six-imus-raw/6imu_accel_3d.gif --stride 4
 """
 
 import argparse

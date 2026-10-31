@@ -1,6 +1,6 @@
 # 06 - Relative Orientation
 
-**Phase 6.**
+**Phase 6. Status: the math runs in the live dashboard, not in firmware yet.** [`main.cpp`](main.cpp) here is still a placeholder. The working version is in [`tools/handrig_dashboard.html`](../tools/handrig_dashboard.html), which computes `q_rel` for every finger, draws it, and exports it for training. It isn't verified yet that `q_rel` holds through 5+ minutes of wear with wrist rotation. That test is still open.
 
 This is the step that makes the whole idea actually work as a wearable device instead of a bench experiment. Up to this point, every quaternion I've computed is a sensor's orientation in space, which means it changes whether you curl a finger or just wave your whole arm around. That's useless for gesture recognition. I don't care where your hand is pointing. I care what shape your fingers are making.
 
@@ -38,4 +38,9 @@ If this math is wrong, every labeled training sample built on top of it is wrong
 
 ## What's here
 
-- [`main.cpp`](main.cpp), the relative-orientation implementation.
+- [`main.cpp`](main.cpp), placeholder for the firmware version.
+
+## Two details the dashboard version gets right
+
+- **Sign pinning.** `q` and `−q` are the same rotation. Without forcing `w ≥ 0`, one hand pose can show up with two different encodings, and a classifier would treat them as different. The export pins the sign.
+- **Yaw can't be trusted.** Without a magnetometer, nothing anchors yaw, so the yaw part of `q_rel` slowly drifts. Curl is pitch relative to the hand, which gravity anchors. See [DECISIONS.md](../DECISIONS.md#2026-07-14--live-with-6-dof-yaw-drift).

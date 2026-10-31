@@ -10,9 +10,9 @@ All five MPU-6050s taped onto the glove, middle phalanx for index through pinky,
 
 ## What passing actually meant
 
-- All five finger sensors readable through a full 30-minute wear session, no disconnects.
-- Wire runs anchored so no solder pad ever takes a bend directly. That's the difference between a glove that survives regular use and one that fails at the first knuckle flex.
-- The relative-orientation math from the previous stage still tracks correctly while actually wearing the glove, not just sitting flat on a bench.
+- All five finger sensors readable through a full 30-minute wear session, no disconnects. **Passed.**
+- Wire runs anchored so no solder pad ever takes a bend directly. **Partly done**, see the weak point below.
+- The relative-orientation math still tracks correctly while wearing the glove. **Not tested in this stage.** It moved to the live dashboard in [stage 08](../08-ble-wireless-dashboard/).
 
 ## How the actual test went
 

@@ -39,7 +39,7 @@ flowchart TD
 
 A genuine MPU-6050 reports `0x68` there. `0x72` belongs to the MPU-6500/9250 family. What I had was a clone, a very common situation with cheap "MPU-6050" breakout boards, and Adafruit's library checks that register strictly and refuses anything that doesn't match exactly.
 
-Switched to `MPU6050_light`, which doesn't gate on that check, and it worked immediately. Full reasoning behind the library swap is in the (private) decision log. Short version: `MPU6050_light` is lenient about chip identity and still does proper bias calibration in one call. Since all five finger modules came from the same order, I assumed going in that they were likely all the same clone, worth scanning each one individually once they went on the glove, which I did later.
+Switched to `MPU6050_light`, which doesn't gate on that check, and it worked immediately. It's lenient about chip identity and still does bias calibration in one call. Full reasoning is in [DECISIONS.md](../DECISIONS.md#2026-07-14--mpu6050_light-over-adafruit_mpu6050). All five finger modules came from the same order, so I assumed they were all the same clone. That assumption mattered a lot later: in [stage 08](../08-ble-wireless-dashboard/) the same clone issue broke four of five fingers.
 
 ## What's in this folder
 

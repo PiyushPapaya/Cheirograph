@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """analyze_multi_imu.py - cross-sensor coherence + noise check for the 5-IMU
-mux bench capture (Phase 3/4, data/phase3-4_five_imu_gyro/movement_test.csv).
+mux bench capture (Phase 3/4, 04-all-six-imus-raw/movement_test.csv).
 
 The rig is 5 MPU-6050s glued flat to the same rigid breadboard, all read
 through one PCA9548A mux channel-by-channel. If the mux/wiring is sound, all
@@ -25,7 +25,7 @@ because they share one rigid body. This script quantifies "approximately":
 Reads gyro-only data (gx,gy,gz in deg/s); no accel was logged in this capture.
 
 Usage:
-    python analyze_multi_imu.py ../data/phase3-4_five_imu_gyro/movement_test.csv
+    python analyze_multi_imu.py ../04-all-six-imus-raw/movement_test.csv
 """
 
 import argparse

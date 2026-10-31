@@ -1,7 +1,7 @@
-# data/phase4_six_imu_capture/ — bench captures
+# 04-all-six-imus-raw/ — bench captures
 
 Raw serial capture from the Phase 4 six-sensor sketch
-(`firmware/04_all_imus_raw/04_all_imus_raw.ino`): onboard LSM6DS3 (hand,
+(`04-all-six-imus-raw/04_all_imus_raw.ino`): onboard LSM6DS3 (hand,
 sensor_id 0) + five finger MPU-6050 clones via the PCA9548A mux (sensor_id
 1-5), full project contract (`millis,sensor_id,ax,ay,az,gx,gy,gz`).
 
@@ -26,9 +26,9 @@ a still capture — see findings below.
   ~1 g of gravity somewhere, so exact zeros mean the chip ACKed at init but
   its data registers went dead mid-run — almost certainly a loose physical
   contact on that channel (breadboard jumper), not a code fault. Visible in
-  `docs/media/phase4_6imu_accel_3d.png` as a trajectory that stops dead at
+  `04-all-six-imus-raw/6imu_accel_3d.png` as a trajectory that stops dead at
   the origin partway through, and in the animated
-  `docs/media/phase4_6imu_accel_3d.gif` as one arrow that stops moving while
+  `04-all-six-imus-raw/6imu_accel_3d.gif` as one arrow that stops moving while
   the other five keep swinging.
 - **The whole run was declared "calibration" but contains a large hand
   rotation** — every live sensor's gyro std across the full run is 25-102
@@ -41,10 +41,10 @@ a still capture — see findings below.
 
 ```bash
 cd tools
-python analyze_calibration.py ../data/phase4_six_imu_capture/capture_02_full_session.csv
-python plot_6imu_3d.py ../data/phase4_six_imu_capture/capture_02_full_session.csv \
-    --save-static ../docs/media/phase4_6imu_accel_3d.png \
-    --save-gif ../docs/media/phase4_6imu_accel_3d.gif --stride 4
+python analyze_calibration.py ../04-all-six-imus-raw/capture_02_full_session.csv
+python plot_6imu_3d.py ../04-all-six-imus-raw/capture_02_full_session.csv \
+    --save-static ../04-all-six-imus-raw/6imu_accel_3d.png \
+    --save-gif ../04-all-six-imus-raw/6imu_accel_3d.gif --stride 4
 ```
 
 ## capture_03 findings (re-verification, 2026-07-17)
@@ -76,7 +76,7 @@ gyro bias/std table at the end of the 10 s calibration window, and periodic
   loose physical contact on that mux channel or its finger sensor's
   breadboard jumper, not a firmware bug — confirms the capture_02
   hypothesis rather than replacing it. Visible in
-  `docs/media/phase4_6imu_accel_3d_capture03.png` / `.gif` as five sensors
+  `04-all-six-imus-raw/6imu_accel_3d_capture03.png` / `.gif` as five sensors
   tracking one shared motion cluster, with no full-session flatline this
   time (the dropout is too short at this timescale to show as a stationary
   point).
@@ -95,10 +95,10 @@ issue — the still-window code itself is working as designed.
 
 ```bash
 cd tools
-python analyze_calibration.py ../data/phase4_six_imu_capture/capture_03_full_session.csv
-python plot_6imu_3d.py ../data/phase4_six_imu_capture/capture_03_full_session.csv \
-    --save-static ../docs/media/phase4_6imu_accel_3d_capture03.png \
-    --save-gif ../docs/media/phase4_6imu_accel_3d_capture03.gif --stride 4
+python analyze_calibration.py ../04-all-six-imus-raw/capture_03_full_session.csv
+python plot_6imu_3d.py ../04-all-six-imus-raw/capture_03_full_session.csv \
+    --save-static ../04-all-six-imus-raw/6imu_accel_3d_capture03.png \
+    --save-gif ../04-all-six-imus-raw/6imu_accel_3d_capture03.gif --stride 4
 ```
 
 ## What the saved excerpt shows
@@ -133,5 +133,5 @@ finger 5           16    1.232  0.163  0.085  1.246    -15.97    -7.80    -9.28 
 
 ```bash
 cd tools
-python analyze_calibration.py ../data/phase4_six_imu_capture/capture_01_raw.csv
+python analyze_calibration.py ../04-all-six-imus-raw/capture_01_raw.csv
 ```
