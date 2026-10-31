@@ -14,6 +14,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-10-31 | [Hand IMU mount angle learned live from the gyros](#2026-10-31--hand-imu-mount-angle-learned-live-from-the-gyros) | Calibration |
 | 2026-10-31 | [Hand axes fwd +X, left model, headings aligned at calibration](#2026-10-31--hand-axes-fwd-x-left-model-headings-aligned-at-calibration) | Calibration |
 | 2026-10-31 | [Accel offsets learned live, saved per browser](#2026-10-31--accel-offsets-learned-live-saved-per-browser) | Calibration |
 | 2026-10-31 | [Accel-magnitude gating rejected for now](#2026-10-31--accel-magnitude-gating-rejected-for-now) | Fusion |
@@ -115,6 +116,16 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-10-31 | Hand IMU mount angle learned live from the gyros
+
+**Options:** (a) re-pick the hand-axes dropdown after every remount (only 90° steps, by eye). (b) Mount the XIAO rigidly (glue or a 3D-printed clip). (c) Learn the in-plane mount angle live by matching the hand gyro to the finger gyros during whole-hand turns.
+
+**Choice:** (c), and (b) stays worth doing later.
+
+**Why:** the velcro mount changes between sessions, and any angle is possible, not just 90° steps. The gyro match is closed form, needs about 1 s of turning, and ignores finger-only motion. Tested offline (T5, recovered 0/35/90/180 deg within 4 deg) and in the browser (fingers 74 to 134 deg off before, under 0.5 deg after).
+
+**Cost:** assumes the four long fingers point along the hand's forward. Their mean splay becomes the hand's forward (about 4 deg on this glove). Assumes the XIAO lies flat in the hand plane. Each session needs one short hand turn before Batch Capture accepts reps.
 
 ### 2026-10-31 | Hand axes fwd +X, left model, headings aligned at calibration
 

@@ -1115,6 +1115,7 @@ function parseFrame(f){
     healBeta(st);
     st.fil.update(gc[0],gc[1],gc[2],st.aSmooth[0],st.aSmooth[1],st.aSmooth[2],dt);
     st.rel.copy(st.qRef).invert().multiply(st.fil.three());
+    if(sid===0)st.rel.premultiply(mountQ).multiply(mountQi);   // sensor frame -> hand frame (mount angle, see learnMount)
 
     pushHist(st.hist,gc[0],gc[1],gc[2],rax,ray,raz);
     // TRUE raw (unremapped, uncalibrated) window for Batch Capture — kept separate from
@@ -1131,6 +1132,7 @@ function parseFrame(f){
     if(recFrames.length>=REC_CAP)toggleRec();
   }
   healRezero(dt);
+  learnMount(dt);
 }
 
 // ===== self-healing (2026-10-31) =====
@@ -1216,6 +1218,82 @@ function healRezero(dt){
   const now=performance.now();
   const k=1-Math.exp(-dt/HEAL_REZERO_TAU);
   used.forEach(st=>{st.qRef.slerp(_rz.copy(st.fil.three()),k);st.zeroT=now;});
+  alignHeadings();   // yaw drift also pulls the filters' headings apart; the flat pose is the moment to fix it
+}
+
+// ===== self-improving: hand IMU mount angle (2026-10-31) =====
+// The XIAO is held on by velcro and double-sided tape and goes back on a little
+// differently every time: always flat on the back of the hand, but turned by some
+// angle psi about the hand's up axis. The fixed remap (hand axes, default fwd +X)
+// can't know psi. With the hand frame turned, a hand pitch reads as part pitch, part
+// roll, so q_rel stops cancelling whole-hand motion and the fingers move on screen
+// when only the hand moved. The palm in the 3D view also tips the wrong way.
+//
+// psi is learned from the gyros. When the whole hand turns with the fingers straight,
+// every finger turns with it, so the mean finger gyro f is the hand gyro h turned by
+// psi about up (Y): f = Ry(psi) h, with Ry: x' = c x + s z, z' = -s x + c z. Only the
+// in-plane parts (x, z) see psi. The least-squares psi over many samples has a closed
+// form (2D Procrustes): psi = atan2( sum(hz fx - hx fz), sum(hx fx + hz fz) ).
+// A sample counts only when the hand turns fast (> 60 deg/s), the four long fingers
+// agree with each other (each within 30 % of their mean) and with the hand in size
+// (ratio 0.7-1.3), and nothing clips. A fist or a single finger fails those tests, so
+// finger motion can't teach it a wrong angle. The thumb is left out, it moves on its own.
+// The sums fade with a 20 s time constant, so a re-stuck XIAO is picked up. The fit is
+// trusted after ~40 samples (about 1 s of turning) when they agree: R > 0.85, where
+// R = |(sum cross, sum dot)| / sum(|h||f|) is 1 when every sample gives the same angle.
+// Replayed on motion test T5 with the hand data turned by 0/35/90/180 deg it recovered
+// 4/39/94/-176 deg (the extra 4 deg is how the XIAO sat that day) and stayed within
+// +-3 deg once learned. T0-T4 and T6 (still, fists, single fingers, spread) never
+// triggered it.
+//
+// psi is applied only at the output. Everything upstream (bias, calibration, filter,
+// self-healing) stays in the remapped sensor frame. The hand's relative rotation is
+// re-expressed in the hand frame: rel_h' = M rel_h M^-1, M = Ry(psi) (parseFrame). A
+// rotation R that acts on sensor-frame vectors acts as M R M^-1 on hand-frame vectors,
+// because v_hand = M v_sensor. The CSV stays raw; the batch export gets rel_h'.
+const MOUNT_KEY="gestura_hand_mount_v1";
+const MOUNT_TAU_S=20, MOUNT_MIN_DPS=60, MOUNT_MIN_N=40, MOUNT_MIN_R=0.85, MOUNT_APPLY_DEG=3;
+const mountQ=new THREE.Quaternion(), mountQi=new THREE.Quaternion();
+let handMount=0, mountChecked=false;   // mountChecked: the fit agreed at least once since page load
+function setHandMount(psi){
+  handMount=psi;
+  mountQ.set(0,Math.sin(psi/2),0,Math.cos(psi/2)); mountQi.copy(mountQ).invert();
+}
+try{   // last session's angle as the starting guess, only if it was learned for the same hand axes
+  const v=JSON.parse(localStorage.getItem(MOUNT_KEY)||"null");
+  if(v&&v.remap===REMAP_OF[0]&&Number.isFinite(v.psi))setHandMount(v.psi);
+}catch(e){}
+const mountFit={sxy:0,sdot:0,w:0,n:0};
+function resetMount(){mountFit.sxy=mountFit.sdot=mountFit.w=mountFit.n=0;mountChecked=false;setHandMount(0);}
+function learnMount(dt){
+  const f=mountFit, lam=Math.exp(-dt/MOUNT_TAU_S);
+  f.sxy*=lam;f.sdot*=lam;f.w*=lam;f.n*=lam;
+  const h=S[0]; if(!h.calibrated||h.bad||!h.alive)return;
+  const fs=[2,3,4,5].map(i=>S[i]).filter(st=>st.calibrated&&!st.bad&&st.alive);
+  if(fs.length<2)return;
+  const hg=h.gc, hm=Math.hypot(hg[0],hg[1],hg[2]);
+  if(hm<MOUNT_MIN_DPS)return;
+  const clip=v=>Math.max(Math.abs(v[0]),Math.abs(v[1]),Math.abs(v[2]))>=GYR_CLIP_DPS;
+  if(clip(h.g)||fs.some(st=>clip(st.g)))return;
+  const m=[0,0,0]; fs.forEach(st=>{for(let k=0;k<3;k++)m[k]+=st.gc[k]/fs.length;});
+  const mm=Math.hypot(m[0],m[1],m[2]);
+  if(mm<0.7*hm||mm>1.3*hm)return;
+  if(fs.some(st=>Math.hypot(st.gc[0]-m[0],st.gc[1]-m[1],st.gc[2]-m[2])>0.3*mm))return;
+  const hx=hg[0],hz=hg[2],fx=m[0],fz=m[2];
+  if(Math.hypot(hx,hz)<30)return;   // a pure turn about up says nothing about psi
+  f.sxy+=hz*fx-hx*fz; f.sdot+=hx*fx+hz*fz; f.w+=Math.hypot(hx,hz)*Math.hypot(fx,fz); f.n++;
+  if(f.n<MOUNT_MIN_N||Math.hypot(f.sxy,f.sdot)<MOUNT_MIN_R*f.w)return;
+  const psi=Math.atan2(f.sxy,f.sdot);
+  const first=!mountChecked; mountChecked=true;
+  let d=psi-handMount; d=Math.atan2(Math.sin(d),Math.cos(d));
+  if(Math.abs(d)<MOUNT_APPLY_DEG*DEG){
+    if(first)setStatus(`hand IMU mount checked: ${(handMount/DEG).toFixed(0)}°`);
+    return;
+  }
+  setHandMount(psi);
+  try{localStorage.setItem(MOUNT_KEY,JSON.stringify({remap:REMAP_OF[0],psi}));}catch(e){}
+  alignHeadings();
+  setStatus(`hand IMU mount updated: ${(psi/DEG).toFixed(0)}° (was ${((psi-d)/DEG).toFixed(0)}°)`);
 }
 
 // ===== self-improving: accel offset learning (2026-10-31) =====
@@ -1397,6 +1475,7 @@ function finishCalibration(){
     st.qRef.copy(st.fil.three());
   });
   alignHeadings();
+  if(!mountChecked)setStatus("calibrated · now tilt and roll the whole hand, fingers straight, ~2 s: checks how the XIAO sits");
   calState="done";
   clearInterval(calTimer);
   document.getElementById("calbanner").classList.remove("show");
@@ -1408,24 +1487,28 @@ function finishCalibration(){
 // differs per sensor when a sensor sits rolled or tilted on the hand (the thumb most).
 // q_rel = conj(rel_hand) (x) rel_finger only cancels whole-hand motion if all filters
 // share one world heading. Otherwise tilting the hand moves the thumb on screen.
-// The calibration pose is flat with straight fingers, so each finger's tip should
-// point the same horizontal way as the hand's: turn each finger filter about world Z
-// until it does. Replaying motion test T5 (whole-hand rotation), this cut the 90th
-// percentile finger-vs-hand error from 15 to 12 deg (thumb) and 28 to 22 deg (pinky).
+// The zero pose (qRef) is flat with straight fingers, so each finger's tip should
+// point the same horizontal way as the hand's forward: turn each finger's filter AND
+// its qRef about world Z until it does. Turning both by the same world rotation leaves
+// rel = qRef^-1 q unchanged, so this can run any time without moving the picture.
+// The hand's forward in its sensor frame is M^-1 (0,0,1) (mount angle, learnMount).
+// Replaying motion test T5 (whole-hand rotation), this cut the 90th percentile
+// finger-vs-hand error from 15 to 12 deg (thumb) and 28 to 22 deg (pinky).
 // A tip pointing nearly straight up or down has no usable heading and is left alone.
-function tipHeading(q){
-  const [w,x,y,z]=q, fx=2*(x*z+w*y), fy=2*(y*z-w*x);   // body +Z (tip) in world
-  return Math.hypot(fx,fy)>0.3?Math.atan2(fy,fx):null;
+const _hv=new THREE.Vector3(), _fwd=new THREE.Vector3(), _zUp=new THREE.Vector3(0,0,1), _yawQ=new THREE.Quaternion();
+function refHeading(q,v){   // world heading (about +Z up) of body vector v under q
+  _hv.copy(v).applyQuaternion(q);
+  return Math.hypot(_hv.x,_hv.y)>0.3?Math.atan2(_hv.y,_hv.x):null;
 }
 function alignHeadings(){
-  const h=S[0]; if(h.bad)return;
-  const h0=tipHeading(h.fil.q); if(h0===null)return;
+  const h=S[0]; if(h.bad||!h.calibrated)return;
+  const h0=refHeading(h.qRef,_fwd.set(0,0,1).applyQuaternion(mountQi)); if(h0===null)return;
   S.forEach((st,id)=>{
     if(id===0||st.bad||!st.calibrated)return;
-    const hs=tipHeading(st.fil.q); if(hs===null)return;
-    const c=Math.cos((h0-hs)/2), s=Math.sin((h0-hs)/2), [w,x,y,z]=st.fil.q;
-    st.fil.q=[c*w-s*z, c*x-s*y, c*y+s*x, c*z+s*w];   // (c,0,0,s) (x) q: turn about world Z
-    st.qRef.copy(st.fil.three());
+    const hs=refHeading(st.qRef,_fwd.set(0,0,1)); if(hs===null)return;
+    _yawQ.setFromAxisAngle(_zUp,h0-hs);
+    st.qRef.premultiply(_yawQ);
+    const f=_rz.copy(st.fil.three()).premultiply(_yawQ); st.fil.q=[f.w,f.x,f.y,f.z];
   });
 }
 function zeroOrient(){const now=performance.now();S.forEach(st=>{st.qRef.copy(st.fil.three());st.zeroT=now;});}
@@ -1763,6 +1846,9 @@ function captureBatchSample(){
   // a frame since its last zero. The recal between reps re-zeros, so this only rejects
   // reps where the move INTO the pose already lost rotation. Reject, stay armed, retry.
   if(linkHz<HEAL_MIN_HZ||!active.every(m=>sensorTrusted(S[m.id]))){flashBatch(false);return;}
+  // and the hand IMU's mount angle has been checked against the fingers this session
+  // (velcro: it can sit differently every time, see learnMount). HEALTH says "turn hand".
+  if(!mountChecked){flashBatch(false);return;}
   // and every filter has settled on the pose: right after a move the tilt is still
   // converging (snap-back), so a rep grabbed then would store a half-way orientation
   if(!active.every(m=>S[m.id].tiltErr<HEAL_TILT_OK_DEG)){flashBatch(false);return;}
@@ -2075,7 +2161,7 @@ function refreshOnce(){
     document.getElementById("thz").textContent=Math.round(linkHz);
     const connected=!!(device&&device.gatt&&device.gatt.connected);
     const untrusted=META.filter(m=>S[m.id].calibrated&&!S[m.id].bad&&!sensorTrusted(S[m.id])).map(m=>m.name.toLowerCase());
-    const health=!connected?"—":linkHz<HEAL_MIN_HZ?"slow link":rezeroActive?"re-zero":untrusted.length?"zero? "+untrusted.join(","):"OK";
+    const health=!connected?"—":linkHz<HEAL_MIN_HZ?"slow link":rezeroActive?"re-zero":untrusted.length?"zero? "+untrusted.join(","):!mountChecked&&S[0].calibrated?"turn hand":"OK";
     setText(document.getElementById("thealth"),health);
     document.getElementById("thealth").classList.toggle("warnv",connected&&health!=="OK"&&health!=="re-zero");
     document.getElementById("tkb").textContent=(bytesWin/dt).toFixed(1);
@@ -2134,6 +2220,7 @@ document.getElementById("beta").addEventListener("input",e=>{
     // and make the hand re-earn its calibration (the card falls back to "raw").
     h.bias=[0,0,0];h.noise=[0,0,0];h.accBias=[0,0,0];h.calibrated=false;
     h.flag="";h.bad=false;h.dropBad=false;h.aSmooth=null;h.aSlow=null;h.calUp=null;
+    resetMount();   // psi was learned on top of the old axes
     setStatus("hand axes changed: recalibrate (hold flat and still)");
   });
 })();
