@@ -21,10 +21,11 @@ I'm building this alone, from soldering to firmware to the browser dashboard. Th
 | Six IMUs on one I²C bus via a mux | ✅ Works, ~94 Hz measured | [04](04-all-six-imus-raw/) |
 | Sensor fusion (Madgwick) per IMU | ✅ Works on the bench | [05](05-madgwick-fusion/) |
 | Mounted on a glove | ✅ Passed a 30 min wear test | [07](07-full-glove-assembly/) |
-| Bluetooth stream + live 3D dashboard | ✅ Running on the glove, ~47 Hz | [08](08-ble-wireless-dashboard/) |
+| Bluetooth stream + live 3D dashboard | ✅ Running on the glove. v5 firmware: 50 Hz on the serial report (v4 was ~47 Hz) | [08](08-ble-wireless-dashboard/), [09](09-firmware-hardening/) |
 | Finger pose relative to the hand | 🟡 In the dashboard, not yet in firmware | [06](06-relative-orientation/), [tools](tools/) |
-| Runtime fault recovery (v5 firmware) | 🟡 Flashed 2026-10-31, recovery paths untested | [09](09-firmware-hardening/) |
-| Self-healing dashboard (snap-back, auto re-zero, live offset learning) | 🟡 Works on the glove by eye. Motion tests not re-run yet | [tools](tools/) |
+| v5 firmware (±2000 °/s gyro, faster BLE link, runtime fault recovery) | 🟡 Running on the glove since 2026-10-31. Fault-recovery paths untested | [09](09-firmware-hardening/) |
+| Self-healing dashboard (snap-back, auto re-zero, live offset learning) | 🟡 Works on the glove by eye. Motion tests re-run on video, no CSV numbers yet | [tools](tools/), [motion tests](09-firmware-hardening/motion-tests/) |
+| Self-calibrating hand IMU mount (tilt from gravity, turn from the gyros) | 🟡 Tested on recorded and synthetic data, not yet on the glove | [tools](tools/) |
 | Dataset tooling (quality gate, baseline model) | 🟡 Built, tested on synthetic data | [tools](tools/) |
 | Labelled dataset | ⬜ Next | [ml](ml/) |
 | On-device classifier + Bluetooth keyboard | ⬜ After that | [ml](ml/) |
@@ -37,24 +38,27 @@ Right now it's a working sensing and visualisation system. Recognition is the pa
 |---|---|
 | Loop rate, 6 IMUs raw | ~93.6 Hz (target 100) |
 | Loop rate with fusion on all 6 | ~85 Hz |
-| Bluetooth stream after the bandwidth fix | ~47 Hz, 3.7 KB/s (target 50) |
+| Bluetooth stream after the bandwidth fix (v4) | ~47 Hz, 3.7 KB/s (target 50) |
+| Bluetooth stream, v5 with link requests | 50 Hz, MTU 527, 15 ms interval, 0 failed sends (firmware serial report) |
 | Gyro bias std after calibration | 0.05–0.35 °/s |
 | Roll/pitch drift, held still | ≤ 0.35 °/min (line fit, 31.5 s) |
 | Yaw drift, held still | 0.03–2.2 °/min. Expected: no magnetometer |
 | Wear test | 30 min, glove taken off and on, no dropped connection |
 | Dataset checker | 13/13 planted faults caught |
 
-Fixes from the 2026-10-31 motion tests (serial and replay evidence, not yet re-measured on the glove):
+Fixes from the 2026-10-31 motion tests (serial, replay and synthetic evidence; the glove re-run was recorded on video only, so not yet re-measured in numbers):
 
 | What | Before | After |
 |---|---|---|
 | Frame rate over Bluetooth | 16.7 Hz | 50 Hz (serial report, MTU 527, 15 ms interval) |
 | Gyro range | ±500 °/s, 11–15 % of fast-fist samples clipped | ±2000 °/s |
 | Calibration zero error | 17–27 ° on every sensor | within 0.2 ° of a converged filter |
-| Pinky accel | read "25–28 % low" | fixed zero-point offset found (0.25, 0.19, -0.17 g) and corrected |
+| Pinky accel | read "25–28 % low" | fixed zero-point offset found (0.25, 0.19, -0.17 g) and corrected, now also learned live |
 | Worst finger error at end of test (replay) | up to 94 ° | under 5 ° in most tests (T2 unchanged) |
+| Hand IMU axes | default picked by guess: fingers 80–88 ° off the hand's forward | measured from a gyro fit: 2–10 ° |
+| Hand IMU stuck on turned or tipped (velcro) | fingers swing 74–134 ° when only the hand moves; pitch and turn swapped | measured live: fingers within 0.4 °, palm within 2.4 ° (synthetic test) |
 
-Not measured yet: Bluetooth latency, drift over several minutes, and any classifier accuracy on real data.
+Per-test numbers and the protocol: [motion tests](09-firmware-hardening/motion-tests/). Not measured yet: Bluetooth latency, drift over several minutes, and any classifier accuracy on real data.
 
 ## How it works
 
@@ -65,11 +69,12 @@ flowchart LR
     H[Onboard IMU, back of hand] --> MCU
     MCU -->|80-byte BLE frames, 50 Hz| DASH[Browser dashboard]
     DASH --> FUS[Madgwick per sensor]
-    FUS --> REL[Finger relative to hand]
+    FUS --> HEAL[Self-healing: bias tracking, snap-back, auto re-zero, mount + offset learning]
+    HEAL --> REL[Finger relative to hand]
     REL --> VIS[Live 3D hand + labelled capture]
 ```
 
-All five finger sensors share the same I²C address, so a multiplexer switches between them. The board's own IMU sits flat on the back of the hand as the reference.
+All five finger sensors share the same I²C address, so a multiplexer switches between them. The board's own IMU sits on the back of the hand as the reference. It's held on with velcro, so it goes back on a little differently every time. The dashboard measures how it sits instead of assuming it.
 
 The one idea the project rests on: a finger's pose is its orientation **relative to the hand**, not relative to the room.
 
@@ -93,6 +98,10 @@ Wave your arm and both quaternions rotate together, so `q_rel` stays put. Curl a
 
 **5. A calibration that could only turn 92 degrees.** After calibration the fingers kept moving and never sat at zero. The dashboard "settled" each filter with 40 small steps, and 40 steps can turn about 92 deg at most. Every sensor started about 100 deg away, so each zero was off by 17 to 27 deg. I found it by replaying the recorded CSVs. The fix computes the settled orientation directly, and it matches a converged filter within 0.2 deg. → [decision](DECISIONS.md#2026-10-31--calibration-settle-in-closed-form)
 
+**6. Two bugs that only showed up once the data was fast enough.** The motion tests said fingers drifted and didn't come back after big moves. The raw CSVs showed two separate causes. Gyros sat flat at ±500 °/s during fast moves (11–15 % of samples). And the glove only sent 16.7 frames a second, because the firmware waited on every Bluetooth write over a small default packet size. Clipping alone didn't explain it: the hand IMU never clipped and still lost 24–35 °. The fix was ±2000 °/s on all six sensors plus asking the browser for a bigger link on connect, which gets 50 Hz. → [decision](DECISIONS.md#2026-10-31--gyro-full-scale-2000-s)
+
+**7. Up and left swapped on screen.** Tipping my real fingertips up made the 3D hand turn sideways, and turning it made it tip, while roll was fine. That pattern means the dashboard had the hand IMU's "up" axis wrong by 90°. The XIAO is velcroed on and had gone back on tipped. A fixed axis setting can't follow a mount that changes, so the dashboard now measures it: the tilt from gravity at every calibration (the XIAO's up vs. the fingers' up), and the in-plane turn from the gyros while the whole hand moves. In a synthetic test with the XIAO tipped 90°, the palm matched the real hand within 1.2° right after calibration. → [decision](DECISIONS.md#2026-10-31--hand-imu-tilt-measured-at-calibration-hand-axes-picker-removed)
+
 ## The build, stage by stage
 
 Each folder is one milestone with its code, raw data, plots and a write-up. Old stages are never deleted, so you can follow the whole path.
@@ -108,13 +117,14 @@ Each folder is one milestone with its code, raw data, plots and a write-up. Old 
 | [06 Relative orientation](06-relative-orientation/) | The math behind finger-vs-hand pose |
 | [07 Full glove assembly](07-full-glove-assembly/) | It survives being worn |
 | [08 BLE wireless dashboard](08-ble-wireless-dashboard/) | Live wireless 3D hand, and the hardest bug |
-| [09 Firmware hardening](09-firmware-hardening/) | Recovers from bus faults without a reboot (not flashed yet) |
+| [09 Firmware hardening](09-firmware-hardening/) | 50 Hz over BLE, ±2000 °/s gyro, recovers from bus faults without a reboot (recovery untested). Motion tests before and after the fixes |
 
 ## What this project shows
 
 - **Embedded C++ on a timing budget.** Six sensors, a mux and Bluetooth inside a 20 ms frame.
 - **I²C at register level.** Clone-chip init, read-back verification, bus recovery by bit-banging SCL.
 - **Sensor fusion.** Quaternions, Madgwick, gyro bias calibration, coordinate-frame remaps that stay proper rotations.
+- **Self-calibration.** Accel offsets from a live sphere fit, the hand IMU's mount from gravity plus a closed-form gyro fit, drift fixed by re-zeroing in a known pose. Each one checked against recorded data first.
 - **Protocol design.** A compact binary BLE frame with a validity mask and checksum, each added because of a real bug.
 - **Debugging with evidence.** Raw CSVs, timing counters and plots before changing code.
 - **Frontend.** A Web Bluetooth dashboard with Three.js, in-browser fusion and data-quality gates.
@@ -137,13 +147,14 @@ Parts list and wiring: [`hardware/`](hardware/).
 1. Install the Arduino IDE and add the Seeed board URL (see [Stage 00](00-led-sanity-test/)). Install **Seeed nRF52 Boards 1.1.13** and select **Seeed XIAO nRF52840 Sense**.
 2. No port showing up? Double-tap RESET.
 3. Open the `.ino` in a stage folder and upload. Serial Monitor at 115200 baud.
-4. For the live view, flash [Stage 08](08-ble-wireless-dashboard/) and open [`tools/handrig_dashboard.html`](tools/handrig_dashboard.html) in Chrome or Edge. No server or build step.
+4. For the live view, flash [Stage 09](09-firmware-hardening/) (v5) and open [`tools/handrig_dashboard.html`](tools/handrig_dashboard.html) in Chrome or Edge. No server or build step. The dashboard expects v5's ±2000 °/s gyro; v4 (Stage 08) reads 4× too large in it.
+5. Connect, press **Calibrate** with the hand flat and fingers straight, then tilt and roll the whole hand for about 2 s. HEALTH shows OK when the hand IMU's mount is checked.
 
 Python tools: `cd tools && pip install -r requirements.txt`. Each script is documented in [`tools/README.md`](tools/README.md).
 
 ## What's next
 
-Flash and test the v5 firmware on the glove, fix the pinky sensor, record a demo clip, then collect the first real labelled dataset and train the classifier. Full order in the [roadmap](GENERAL_PLAN.md#next-steps-in-order).
+Re-run the motion tests with the dashboard CSV, so the before/after table gets real numbers. Confirm the hand-mount fix and the pinky offset on the glove. Then record a demo clip, collect the first real labelled dataset and train the classifier. Full order in the [roadmap](GENERAL_PLAN.md#next-steps-in-order).
 
 ## Contributing and license
 
