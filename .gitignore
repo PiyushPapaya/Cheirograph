@@ -82,3 +82,7 @@ social/
 
 # Gestura social-pipeline agent definitions — local-only, part of social/ kit
 /.claude/agents/gestura-*.md
+
+# Motion-test videos: local only, too big for git
+09-firmware-hardening/motion-tests/**/*.mp4
+09-firmware-hardening/motion-tests/**/*.mov
