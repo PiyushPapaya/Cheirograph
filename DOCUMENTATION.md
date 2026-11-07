@@ -22,8 +22,8 @@ Roadmap: [GENERAL_PLAN.md](GENERAL_PLAN.md). Design choices: [DECISIONS.md](DECI
 | BLE stream + live 3D dashboard | Live on the glove since 2026-08-07, ~47 Hz | [08](08-ble-wireless-dashboard/) |
 | Hand-relative quaternion | In the dashboard (JS), not in firmware | [tools/](tools/) |
 | v5 firmware (runtime fault recovery) | **v5 plus the self-healing dashboard works on the glove (user-observed, 2026-10-31). Motion tests not re-run, no new numbers.** Dashboard also learns accel offsets live (synthetic test only). Flashed 2026-10-31. Motion tests found gyro clipping, a 17 Hz frame rate and a dashboard calibration bug. Fixes written and compiled (gyro ±2000 °/s, BLE link requests, closed-form calibration settle). Updated v5 flashed: serial shows 50 Hz connected, MTU 527, 15 ms interval. Dashboard RATE and CSV rate not yet confirmed, motion tests not re-run. Dashboard now has self-healing (stillness-based bias tracking, adaptive snap-back, auto re-zero on a flat hand, HEALTH readout): replay on the old captures cut end-of-test finger error to under 5 deg in most tests, not yet tried on the glove. Recovery paths still untested | [09](09-firmware-hardening/) |
-| Thumb rig and flex axis (dashboard) | Fixed in the dashboard 2026-11-07, checked offline with `tools/verify_thumb_rig.mjs`. **Not yet tried on the glove (unverified).** `THUMB_FLEX_AXIS` comes from 17 Hz captures and must be re-measured | [tools/](tools/) |
-| Thumb tracking | **Dashboard changes made 2026-11-07 (anchor under the palm, bend about a measured axis). Not tried on the glove, no clean 50 Hz thumb CSV yet.** Verified only with injected rotations and `tools/verify_thumb_rig.mjs`. | [tools/](tools/), [motion tests](09-firmware-hardening/motion-tests/README.md) |
+| Thumb rig (dashboard) | Reworked twice on 2026-11-07 (see the correction in that entry). Now: anchor under the palm, tip sensor's rotation split over base and tip joint (`THUMB_BASE_FRAC` 0.5, a guess). Checked offline with `tools/verify_thumb_rig.mjs`. **Not yet tried on the glove (unverified).** The single measured flex axis was dropped | [tools/](tools/) |
+| Thumb tracking | **Dashboard changes made 2026-11-07 (anchor under the palm, rotation split over two joints, readout is total rotation). Not tried on the glove, no clean 50 Hz thumb CSV yet.** Verified only with injected rotations and `tools/verify_thumb_rig.mjs`. The thumb sensor is on the tip segment per the user (not visible in the July photo). | [tools/](tools/), [motion tests](09-firmware-hardening/motion-tests/README.md) |
 | Dataset tooling (checker, kNN baseline) | Built, tested on synthetic data only | [tools/](tools/) |
 | Real labelled data, classifier, BLE HID | Not started | |
 
@@ -60,16 +60,44 @@ Pinky accel "25–28 % low" (2026-08-07): explained on 2026-10-31. It is a zero-
 - README "See it" shows the GIF inline and links the mp4 and the cover. It says the 163° is read off the dashboard by eye, and that the after run is video only, not re-measured.
 - The raw before/after screen and hand recordings (45 MB and 50 MB) are too big for git and stay local.
 - Resolved the open README-video item in [DECISIONS.md](DECISIONS.md): committed GIF for inline playback plus committed mp4 for quality.
+- New photos and a fresh dashboard screenshot (third request today). I got a current-dashboard screenshot and eight phone photos, had them rotated where needed, and saved them in `docs/media/` with plain names. The photos are compressed JPEGs (max 1600 px, about 220 to 340 KB each).
+  - `dashboard-current.png`: the live dashboard at 50 Hz, with the health readout, calibration and batch capture.
+  - `glove-live-in-front-of-dashboard.jpg`: the glove worn in front of the dashboard.
+  - `hand-worn-flat-fingers-up.jpg`, `hand-worn-thumb-out-fingers-up.jpg`, `hand-worn-cupped-side-view.jpg`: these three were sideways, so I rotated them 90 degrees clockwise to put the fingers up. Checked by eye.
+  - `glove-back-flat-wired.jpg`, `glove-back-curled-on-table.jpg`, `glove-side-view-xiao-and-breadboard.jpg`, `finger-imu-closeup-status-leds.jpg`: bench views.
+- The README "See it" section is rebuilt in four parts: the dashboard now vs before, the glove worn in front of the dashboard, a 3x2 grid of the glove (worn poses and bench views), and earlier-stage media. The hero photo is now `hand-worn-flat-fingers-up.jpg`.
+- The originals stay untouched in the Downloads folder. The new media adds about 2.6 MB to git history. No data was measured.
 
 **Problems:**
-- The thumb fix is not tried on the glove (unverified). `THUMB_FLEX_AXIS` was derived from the 17 Hz captures, so it may be off and must be re-measured on a clean 50 Hz capture.
+- The thumb fix is not tried on the glove (unverified). `THUMB_FLEX_AXIS` was derived from the 17 Hz captures. Superseded later the same day: that axis was removed, see "Correction" in the "thumb tracking" entry below.
 - The motion-test mp4s (`before-fix_2026-10-31` and `after-fix_2026-10-31`, T0 to T6) are gitignored, so the README cannot embed them. Only the T2 fast-fist clip is shown, as the small copies in `docs/media/`. The other tests link to the motion-tests folder for protocol and findings.
 - How the GIF renders on GitHub is unverified until pushed. GitHub does not play repo mp4 files inline in a README, which is why the GIF is the inline version. The GIF is 270 px and 10 fps, so it is soft and the fast snap looks choppy.
+- `glove-back-curled-on-table.jpg` is saved but not used in the README yet. How the new image grid renders on GitHub is unverified until pushed.
 - The edited clip folder `edited_2026-10-31/` from the 2026-10-31 entry was not found on disk under `09-firmware-hardening/motion-tests/`. Where it went is unverified.
 
+**Rock-and-roll pose not detected (user report, later 2026-11-07):**
+
+Report: on the glove I made a rock-and-roll style pose, ring finger touching the thumb with the other fingers straight, and the system cannot detect it. I asked why and how to fix it. I also proposed many more tests (ring to thumb, middle to thumb, ring and pinky, and so on) to fully configure the hand to the glove, so every action is picked up and ML gets easier.
+
+Findings:
+- No recording of this pose exists: no CSV newer than 2026-11-01 in the repo or Downloads. "Cannot detect" is my visual report, so the exact symptom is unverified.
+- The glove measures the orientation of six segments. It has no contact sensing, so touch is never measured, only inferred.
+- The dashboard has one rule, thumb-to-index (`detectGesture`, thresholds are guesses). Nothing exists for ring, middle or pinky, and no classifier exists yet.
+- The 3D hand uses generic proportions, not mine. Model geometry check (curl 0 to 130 deg, thumb reach 1.8 units from its base), closest fingertip distance to the thumb base: index 0.68, middle 1.13, ring 1.66 (only at about 130 deg curl), pinky 2.19 (0.39 units short, cannot reach). This is a calculation on model geometry, not glove data.
+- One sensor per digit, so joint angles are estimated and position errors stack up.
+- The thumb's sideways motion is gyro-only when the hand is flat, so it can drift.
+
+Conclusions:
+- The test idea is good, but its purpose changes. The classifier does not need the 3D fingertips to touch. It needs each pose to give repeatable, distinct readings.
+- "Every action perfectly" is not reachable with 6 IMUs. Touching and nearly touching may look identical (unverified until tested).
+- Scope stays static hand shapes.
+
+Plan: a "Touch-pose test set" section in [ml/future-data-collection-plan.md](ml/future-data-collection-plan.md). Planned, nothing recorded. 13 poses (references, thumb to each fingertip, rock pose and two other combinations, two 1 cm near misses), 10 reps each, 2 sessions, 130 reps per session. Prerequisite: confirm the thumb curl fix on the glove. Unverified: whether Batch Capture and `check_dataset.py` accept non-letter labels. After recording: leave-one-session-out with `train_baseline.py`, then optionally fit the 3D model using the touch poses as constraints, and only if the data cannot separate touch from near miss, add fingertip contact pads. Both are in [DECISIONS.md](DECISIONS.md) as open items (guided functional calibration, real contact sensing vs inferred touch).
+
 **Next:**
+- Try the thumb fix on the glove (the current version, see the correction below). This comes first.
+- Then record the touch-pose set (check the label question first).
 - After the first push, check how the GIF and the mp4 link render on GitHub. If the GIF is too soft, swap it for a better one.
-- Try the thumb fix on the glove, then re-measure `THUMB_FLEX_AXIS` from a 50 Hz capture.
 - Re-run the motion tests on the current dashboard and firmware, then start Phase 8 data collection.
 
 ---
@@ -107,7 +135,7 @@ Browser check with injected rotations, no glove: page loads, no console errors, 
 **Problems:**
 - **Not tried on the glove.** There are no thumb numbers from a clean 50 Hz capture.
 - `THUMB_FLEX_AXIS` comes from low-rate captures and mostly from outward motion. It is stored in the thumb sensor frame, so it can shift if the sensor is remounted.
-- One IMU sits on the proximal phalanx. The tip joint is cosmetic, and the sensor sees only the proximal segment.
+- One IMU sits on the proximal phalanx. The tip joint is cosmetic, and the sensor sees only the proximal segment. **Wrong, see the correction below: the sensor is on the tip segment per the user.**
 - Physics: the thumb's main axis is near vertical when the hand is flat, so gravity cannot correct it. It is gyro-only there and will drift. The T4 replay ended 53.7 deg off before healing and 13.9 deg after (17 Hz capture).
 - **Auto re-zero may erase small thumb poses.** `HEAL_POSE_DEG` 8 cannot tell a held thumb pose from drift. With the axis 19 to 27 deg off vertical, about 18 to 25 deg of thumb motion still looks like "home" and slides to zero after about 1 s still, on a flat hand only. A gate was considered and not added, because it would also stop re-zero from healing real drift like T4. Calculated, not measured on the glove. See the open decision.
 - **ML blind spot.** The `curl` feature set in `train_baseline.py` uses d_y only, so it is nearly blind to the thumb's main motion. Letters that differ by thumb position need `dir` or `quat`, which carry yaw drift. Open.
@@ -115,11 +143,37 @@ Browser check with injected rotations, no glove: page loads, no console errors, 
 - **Correction to the 2026-10-31 note on `alignHeadings()`.** That entry says it cut T5 p90 from 15 to 12 deg. Algebra and a numeric check (difference 5.6e-17) show that premultiplying the same yaw onto `qRef` and `q` cancels in `rel = qRef^-1 q`, which is also what its own code comment says. So under formula (a) it cannot change the displayed angles. The cause of the earlier 15 to 12 deg change is unknown (unverified). The code was not changed.
 - The folder `09-firmware-hardening/motion-tests/edited_2026-10-31/` described in the uncommitted notes was not found on disk during this session.
 
-**Next:**
-1. Glove test of the thumb on the current dashboard.
-2. The thumb re-test (TH1 to TH5) in the [motion tests README](09-firmware-hardening/motion-tests/README.md). Record before Calibrate.
-3. From that CSV: re-measure `THUMB_FLEX_AXIS`, check thumb return error, decide the re-zero gate and the ML feature items (DECISIONS.md, open items).
-4. Then the first Phase 8 session.
+**Next:** (updated after the correction below)
+1. Reload the dashboard (Ctrl+F5, local file), reconnect, recalibrate. No firmware re-upload: today's changes are dashboard only.
+2. Glove test of the thumb on the current dashboard.
+3. The thumb re-test in the [motion tests README](09-firmware-hardening/motion-tests/README.md). Record before Calibrate.
+4. From that CSV: check the tip direction against the video and the joint split, check thumb return error, decide the re-zero gate and the ML feature items (DECISIONS.md, open items).
+5. Then the first Phase 8 session.
+
+#### Correction (later the same day)
+
+Parts of the text above are wrong. They stay visible on purpose.
+
+**What I got wrong.** On the glove the user reported that the thumb does not curl while the fingers do. I explained it by saying the sensor sits on the proximal phalanx and cannot see the tip joint, and recommended moving it to the tip. That was wrong. The claim came from the docs (the pre-build decision, `hardware/WIRING.md`, the 2026-10-31 note "one IMU on the proximal phalanx") and I did not check it against the glove. The user corrected it: the thumb sensor is already at the tip, which is why the thumb "points straight down" when bent. The July photo does not show the thumb clearly, so the position rests on the user's report (unverified by photo). When the sensor moved there is unknown (unverified). So the lines above that say "one IMU on the proximal phalanx, the tip joint is cosmetic" no longer hold.
+
+**Root cause of "points straight down".** The model applied the tip sensor's full rotation to the whole digit from its base, then added an extra cosmetic tip bend. The whole thumb went where the tip points.
+
+**The single-axis idea was incomplete.** Thumb axis per capture (relative to the hand, thumb sensor frame), X / Y / Z energy share: T1 0.16 / 0.74 / 0.10, T2 0.12 / 0.65 / 0.23, T3 0.07 / 0.90 / 0.03, T4 0.05 / 0.78 / 0.17, T6 0.62 / 0.28 / 0.09. T1 to T4 are mostly sideways swing, T6 is mostly about X (downward bend). The thumb moves on two axes, so one measured flex axis cannot describe it. These are still low-rate captures. Fist rotation vs hand, T1, p95: thumb 32, index 93, middle 120, ring 118, pinky 122 deg (rough). The numbers stay valid, the earlier explanation of them does not.
+
+**Dashboard changes** (`tools/handrig_dashboard.html`, all three copies identical):
+- Removed `THUMB_FLEX_AXIS` and `thumbFlexRad`. This supersedes the decision "thumb bend as twist about a measured axis".
+- New: the rotation is split over the two joints. The base gets `q^f`, the tip gets the rest, with `THUMB_BASE_FRAC = 0.5`, because `q^f q^(1-f) = q`. The tip segment ends exactly where the sensor points, about any axis. `f = 0.5` is a guess at how the joints share the bend. Only the tip direction is measured.
+- The thumb bend readout is now the total rotation from rest, `2 acos|w|`. It has no direction, so an outward swing also reads as bend. The curl sign control does not apply to the thumb.
+- The anchor below the palm and the camera change stay as they were.
+- `tools/verify_thumb_rig.mjs` was rewritten. It failed first and passes now: 0.0 % inside the palm for swing up to 90 deg and tip bend up to 90 deg. The other verify scripts pass.
+- Browser check with an injected 90 deg bend, no glove: tip direction (0, -1, 0), base (-0.08, -0.71, 0.70), bend reads 90.0, only a favicon 404 from the test server.
+- **Not tried on the glove after this change.**
+
+**Re-upload question.** The user asked if code must be re-uploaded. No: the changes are dashboard only. Reload with Ctrl+F5 using the local file, reconnect, recalibrate.
+
+**Lesson.** I trusted a documented sensor position without checking the glove, and recommended a physical move because of it. When the docs and the hardware could disagree, ask the user or look at the glove first. Any statement about where a sensor sits needs a source from the glove, not from the docs.
+
+**New problems.** The joint split of 0.5 is a guess. The readout has no direction. If the thumb tip is on the tip segment, the earlier ML note (curl feature blind to the thumb) still holds, but the cause is the axes, not the flex axis.
 
 ---
 

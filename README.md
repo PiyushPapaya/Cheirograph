@@ -9,7 +9,7 @@ The end goal: a tiny model on the glove's own chip that recognises fingerspellin
 
 *cheir* (χείρ) = hand &nbsp;·&nbsp; *graph* (γράφω) = writing
 
-<img src="07-full-glove-assembly/glove_mount_sensors_live.jpg" alt="The left-hand glove with all six IMUs wired and powered" width="380">
+<img src="docs/media/hand-worn-flat-fingers-up.jpg" alt="The left-hand glove with all six IMUs wired and powered" width="380">
 
 ![Hardware](https://img.shields.io/badge/hardware-XIAO%20nRF52840%20Sense-1f6feb)
 ![Sensors](https://img.shields.io/badge/IMUs-6%20(5%20fingers%20%2B%20hand)-1f6feb)
@@ -58,14 +58,41 @@ The part still ahead is recognition. I'd rather say that up front than have you 
 
 The 163° is read off the dashboard by eye. The after run is video only, so it isn't re-measured in numbers yet.
 
+### The dashboard
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/dashboard-current.png" alt="The current dashboard: 3D hand, six sensor panels, capture controls"><br><sub><b>Now.</b> Live 3D hand, six sensor panels, 50 Hz, health readout, calibration and labelled batch capture.</sub></td>
+<td width="50%"><img src="docs/media/dashboard-before.png" alt="The first version of the dashboard"><br><sub><b>Before.</b> The first version, before the rebuild around self-calibration.</sub></td>
+</tr>
+</table>
+
+<p align="center">
+  <img src="docs/media/glove-live-in-front-of-dashboard.jpg" alt="The glove worn in front of the live dashboard" width="380"><br>
+  <sub>The glove on my hand, the dashboard behind it. The 3D hand follows the real one.</sub>
+</p>
+
+### The glove
+
+<table>
+<tr>
+<td width="33%"><img src="docs/media/hand-worn-flat-fingers-up.jpg" alt="Glove worn, hand flat"><br><sub><b>Flat.</b> The rest pose every test calibrates in.</sub></td>
+<td width="33%"><img src="docs/media/hand-worn-thumb-out-fingers-up.jpg" alt="Glove worn, thumb swung out"><br><sub><b>Thumb out.</b> The thumb moves about a different axis than the fingers, which is why it got its own fix.</sub></td>
+<td width="33%"><img src="docs/media/hand-worn-cupped-side-view.jpg" alt="Glove worn, hand cupped"><br><sub><b>Cupped.</b> Wires have to survive this. They are stranded and anchored at both ends.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/media/glove-back-flat-wired.jpg" alt="Glove laid flat, back of hand"><br><sub><b>Back of the glove.</b> XIAO and mux on the hand, breadboard at the wrist.</sub></td>
+<td><img src="docs/media/glove-side-view-xiao-and-breadboard.jpg" alt="Side view of the XIAO and breadboard"><br><sub><b>Side view.</b> XIAO velcroed to the glove, the reference IMU for everything else.</sub></td>
+<td><img src="docs/media/finger-imu-closeup-status-leds.jpg" alt="Close-up of finger IMUs with red power LEDs"><br><sub><b>Finger sensors.</b> One IMU per finger, taped on the middle phalanx. The red LEDs show power.</sub></td>
+</tr>
+</table>
+
+### Earlier stages
+
 <table>
 <tr>
 <td width="50%"><img src="04-all-six-imus-raw/6imu_accel_3d.gif" alt="All six IMUs, raw accelerometer vectors in 3D"><br><sub><b>First time all six talked at once.</b> Raw accel vectors from the stage 04 capture, before any fusion.</sub></td>
-<td width="50%"><img src="docs/media/dashboard-before.png" alt="The first version of the dashboard"><br><sub><b>The first dashboard.</b> It has since been rebuilt around self-calibration. Kept here as the "before".</sub></td>
-</tr>
-<tr>
-<td><img src="07-full-glove-assembly/glove_mount_fingers_wired.jpg" alt="Finger sensors wired on the glove"><br><sub><b>Fingers wired.</b> One sensor on each middle phalanx, thumb on the proximal one. Stranded wire, anchored both sides.</sub></td>
-<td><img src="07-full-glove-assembly/glove_mount_hand_top.jpg" alt="Back of the hand with the XIAO and mux"><br><sub><b>Back of the hand.</b> The XIAO is the reference sensor. It's held on with velcro, which turned into a real problem (bug 7).</sub></td>
+<td width="50%"><img src="07-full-glove-assembly/glove_mount_fingers_wired.jpg" alt="Finger sensors wired on the glove"><br><sub><b>Stage 07.</b> The first full wiring on the glove.</sub></td>
 </tr>
 </table>
 
