@@ -56,14 +56,19 @@ Pinky accel "25–28 % low" (2026-08-07): explained on 2026-10-31. It is a zero-
 - Every number was carried over from the old README. Nothing new was measured today.
 - New status row for the thumb rig and flex-axis fix. Findings: the thumb sensor data is healthy (best T5 error of all five digits, mount tilt only 16 deg). The problem was interpretation. The model thumb was buried inside the palm box, and thumb bend was read as pitch, while the real thumb moves about an axis close to the palm normal. This is fixed in the dashboard.
 - `tools/verify_thumb_rig.mjs` (new) checks the thumb rig and flex-axis maths offline.
+- Video is now on the front page (second request today). Source: a finished 9:16 before/after clip of the T2 fast fist (13.1 s, glove video on top, dashboard 3D model below, cut from before to after at 7.47 s, hook text "My hand was flat. My glove said my ring finger was bent 163°."). From it I made three small files in `docs/media/`: `t2-fast-fist-before-after.mp4` (540 px wide, CRF 28, silent, 1.4 MB), `t2-fast-fist-before-after.gif` (270 px, 10 fps, 64 colours, 3.8 MB) and `t2-fast-fist-cover.jpg` (4:5 cover frame).
+- README "See it" shows the GIF inline and links the mp4 and the cover. It says the 163° is read off the dashboard by eye, and that the after run is video only, not re-measured.
+- The raw before/after screen and hand recordings (45 MB and 50 MB) are too big for git and stay local.
+- Resolved the open README-video item in [DECISIONS.md](DECISIONS.md): committed GIF for inline playback plus committed mp4 for quality.
 
 **Problems:**
 - The thumb fix is not tried on the glove (unverified). `THUMB_FLEX_AXIS` was derived from the 17 Hz captures, so it may be off and must be re-measured on a clean 50 Hz capture.
-- The motion-test mp4s (`before-fix_2026-10-31` and `after-fix_2026-10-31`, T0 to T6) are gitignored, so the README cannot embed them. It links to the motion-tests folder for protocol and findings instead.
+- The motion-test mp4s (`before-fix_2026-10-31` and `after-fix_2026-10-31`, T0 to T6) are gitignored, so the README cannot embed them. Only the T2 fast-fist clip is shown, as the small copies in `docs/media/`. The other tests link to the motion-tests folder for protocol and findings.
+- How the GIF renders on GitHub is unverified until pushed. GitHub does not play repo mp4 files inline in a README, which is why the GIF is the inline version. The GIF is 270 px and 10 fps, so it is soft and the fast snap looks choppy.
 - The edited clip folder `edited_2026-10-31/` from the 2026-10-31 entry was not found on disk under `09-firmware-hardening/motion-tests/`. Where it went is unverified.
 
 **Next:**
-- Decide how to show video on the front page (see the open item in [DECISIONS.md](DECISIONS.md)).
+- After the first push, check how the GIF and the mp4 link render on GitHub. If the GIF is too soft, swap it for a better one.
 - Try the thumb fix on the glove, then re-measure `THUMB_FLEX_AXIS` from a 50 Hz capture.
 - Re-run the motion tests on the current dashboard and firmware, then start Phase 8 data collection.
 

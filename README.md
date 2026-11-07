@@ -50,6 +50,14 @@ The part still ahead is recognition. I'd rather say that up front than have you 
 
 ## See it
 
+**The fast-fist test, before and after the v5 fixes.** Same test, same hand. Real glove on top, the dashboard's 3D model below. Before: my hand is flat and the model says the ring finger is bent 163°. After: both end flat. ([Full-quality clip](docs/media/t2-fast-fist-before-after.mp4), [4:5 cover frame](docs/media/t2-fast-fist-cover.jpg).)
+
+<p align="center">
+  <img src="docs/media/t2-fast-fist-before-after.gif" alt="Fast-fist motion test, before and after the fixes: glove on top, 3D model below" width="270">
+</p>
+
+The 163° is read off the dashboard by eye. The after run is video only, so it isn't re-measured in numbers yet.
+
 <table>
 <tr>
 <td width="50%"><img src="04-all-six-imus-raw/6imu_accel_3d.gif" alt="All six IMUs, raw accelerometer vectors in 3D"><br><sub><b>First time all six talked at once.</b> Raw accel vectors from the stage 04 capture, before any fusion.</sub></td>
@@ -61,7 +69,7 @@ The part still ahead is recognition. I'd rather say that up front than have you 
 </tr>
 </table>
 
-> **Motion-test recordings** (glove video next to the dashboard, before vs after the v5 fixes) exist for all seven tests, T0 to T6. They are too big for git, so they're not in the repo. The protocol, the numbers and the written findings are: [`09-firmware-hardening/motion-tests/`](09-firmware-hardening/motion-tests/).
+> **Other motion-test recordings** (T0 to T6, before and after) exist as full glove and screen videos. They are too big for git, so they're not in the repo. The protocol, the numbers and the written findings are: [`09-firmware-hardening/motion-tests/`](09-firmware-hardening/motion-tests/).
 
 ---
 

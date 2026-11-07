@@ -17,7 +17,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
-| open | [How to show video in the README](#open-how-to-show-video-in-the-readme) | Docs |
+| 2026-11-07 | [Small committed GIF and mp4 for README video](#2026-11-07--small-committed-gif-and-mp4-for-readme-video) | Docs |
 | 2026-11-07 | [Thumb bend measured as twist about a measured axis](#2026-11-07--thumb-bend-measured-as-twist-about-a-measured-axis) | Fusion |
 | 2026-11-07 | [Thumb anchored below the palm plane](#2026-11-07--thumb-anchored-below-the-palm-plane) | UI |
 | 2026-10-31 | [Hand IMU tilt measured at calibration, hand-axes picker removed](#2026-10-31--hand-imu-tilt-measured-at-calibration-hand-axes-picker-removed) | Calibration |
@@ -144,17 +144,20 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Leaning:** 30 first, then check leave-one-session-out accuracy. Go to 90 only for letters that need it. The plan already uses this. Confirm after the first real session shows how long a session takes.
 
-### Open: how to show video in the README
-
-**Options:** (a) drag an mp4 into the README in GitHub's web editor. GitHub hosts it, and the free limit is 10 MB per file. (b) Commit short GIFs to `docs/media/` and embed them. (c) No video. Images only, and the motion-tests folder holds the protocol and findings.
-
-**Leaning:** not decided. The README currently uses option (c).
-
-**Why it's open:** the motion-test mp4s are gitignored (about 1.1 GB for the edited set), so they cannot be embedded from the repo. (a) gives the best quality for no repo weight, but the link lives in the README text only and is lost if the file is re-uploaded. (b) keeps everything in git and versioned, but GIFs are large and low quality, so each clip has to be short and small. (c) is the cheapest, but a moving glove is the best proof on the page. Pick after choosing which clips (for example T2 fast fist before vs after) are worth showing.
-
 ---
 
 ## Decisions
+
+### 2026-11-07 | Small committed GIF and mp4 for README video
+
+**Options:** (a) drag an mp4 into the README in GitHub's web editor. GitHub hosts it, free limit 10 MB per file. (b) Commit a short GIF to `docs/media/` and embed it. (c) Commit a small mp4 and link it. (d) No video, images only. (e) A combination of (b) and (c).
+
+**Choice:** (e). The T2 fast-fist before/after clip is committed twice in `docs/media/`: a GIF (`t2-fast-fist-before-after.gif`, 270 px, 10 fps, 64 colours, 3.8 MB) that plays inline in the README, and an mp4 (`t2-fast-fist-before-after.mp4`, 540 px wide, CRF 28, silent, 1.4 MB) that the README links for the better-quality version. A cover frame (`t2-fast-fist-cover.jpg`) is committed too.
+
+**Why:** GitHub does not play an mp4 from the repo inline in a README, so only the GIF gives playback on the page. A web-uploaded mp4 (a) plays inline, but it is hosted outside the repo history, so the link can break and the video is not versioned with the docs. The GIF alone is too soft to show the fast snap properly, so the mp4 is there for anyone who wants to look closely. A moving glove is the best proof on the page, so (d) was not worth it. The big raw recordings (45 MB and 50 MB) and the other motion-test mp4s stay local and gitignored.
+
+**Cost:** about 5.5 MB (GIF, mp4 and cover together) goes into git history for good, and deleting the files later does not shrink the history. The GIF is low resolution and only 10 fps, so it looks choppy. Only one test is shown. How it renders on GitHub is unverified until pushed. The 163° in the hook is read off the dashboard by eye, and the after run is video only, not re-measured.
+
 
 ### 2026-11-07 | Thumb bend measured as twist about a measured axis
 
