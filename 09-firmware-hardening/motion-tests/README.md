@@ -66,6 +66,7 @@ motion-tests/
   README.md                  protocol and log (this file)
   before-fix_2026-10-31/     first run, before the fixes: 7 CSVs + hand and screen videos (T0-T6)
   after-fix_2026-10-31/      second run, after the fixes: hand and screen videos only (t0-t7)
+  edited_2026-10-31/         trimmed, synced clips of both runs (local only), own README
 ```
 
 CSVs are committed. Videos stay local (gitignored, too big). Add a line per test to the log below: what you saw, anything odd.
@@ -130,11 +131,36 @@ I re-ran the motion tests on the fixed system: v5 firmware with ±2000 °/s gyro
 | t6 | `t6_v5-fixed_2026-10-31_hand.mp4` | `t6_v5-fixed_2026-10-31_screen.mp4` |
 | t7 | none | `t7_v5-fixed_2026-10-31_screen.mp4` |
 
-Original names were `tN_realfixed.mp4` (hand) and `tN_fixed.mp4` (screen). They are kept as tN, not renamed to protocol IDs. There are eight screen recordings (t0 to t7) and six hand videos (t1 to t6), so how they map onto T0 to T6 is not recorded (unverified). In the first run, t1 to t7 meant T0 to T6.
+Original names were `tN_realfixed.mp4` (hand) and `tN_fixed.mp4` (screen). They are kept as tN, not renamed to protocol IDs. There are eight screen recordings (t0 to t7) and six hand videos (t1 to t6). Mapping: screen recording tN = test TN (t0 still, t1 slow fist, t2 fast fist, t3 each finger, t4 spread, t5 hand rotate, t6 mixed fast), and hand video tN = TN (t1 to t6). In the first run, t1 to t7 meant T0 to T6, so do not mix the two.
+
+One exception, found by matching poses on video (not with data): the hand video t6 matches screen recording t7 (offset -0.6 s), not t6. With t6 the model ends curled while the real hand is flat. With t7 both end flat. So t7 is the dashboard recording of the T6 hand video, and screen t6 is another T6 attempt without a hand video.
 
 Recorded between about 17:23 and 17:30 (screen recordings). That is before the last two dashboard changes the same day: the live mount-angle learner and the tilt correction with the hand-axes picker removed. So these videos show the fixed firmware plus the earlier dashboard fixes (calibration settle, pinky offset, self-healing, fwd +X and left model defaults), not the final dashboard. (Order inferred from file times, unverified.)
 
 No dashboard CSVs were saved with this run, so the "Re-run" column in the table above stays without numbers. The comparison is visual only. For numbers, record the CSV (● Record before Calibrate) and run `analyze_motion_test.py`.
+
+#### Edited videos
+
+`edited_2026-10-31/` (local only, mp4 is gitignored, about 1.1 GB) holds trimmed, frame-synced versions of both runs. Its own `README.md` lists every file with trims, sync offsets, rotations and crops.
+
+- `clips/`: per test and run, a 1080x1080 real-glove clip and a 1080x1080 dashboard 3D-model clip. Calibration countdowns, black and blurry frames, a browser context menu (T5 before) and long idle ends are cut. A short still hold stays at the end of each test, to show whether the model returns to the rest pose. Hand videos are rotated so the fingers point up.
+- `sync/`: side-by-side glove | dashboard per test (T0 to T6 before, T1 to T6 after).
+- `picks/`: before-vs-after comparisons for T2 fast fist, T4 spread and T6 mixed fast (9:16 and 4:5 videos plus an end-frame PNG).
+- Sync came from cross-correlating motion energy in the glove video and the dashboard 3D view, then checking distinct poses by eye.
+
+What the videos show (visual only, nothing re-measured): T2 before, the real hand ends open and flat while the model ends with fingers splayed in different directions. T2 after, the model ends flat. T6 before ends with the model's fingers crossed while the hand is flat. T6 after ends flat. T4 before droops, after is flat. T1 before is a weak comparison, because the hand ends clenched. The after-run hand videos t3 to t6 are blurry and the glove fills the frame. The after-run recordings predate the mount-angle learner and the tilt fix, so they do not show the final dashboard.
+
+## Thumb re-test (2026-11-07, not run yet)
+
+On the current dashboard (thumb anchored under the palm, flex about a measured axis). Press Record before Calibrate. Save the CSV, a hand video and a screen recording per test.
+
+- TH1: thumb in and out alone, slow, 5x, hand flat.
+- TH2: same, fast, 5x.
+- TH3: thumb tucked across the palm and held 5 s, then back, 3x.
+- TH4: fist with the thumb outside, 3x.
+- TH5: fingers straight, thumb still, rotate the whole hand.
+
+Analyse the CSV first: re-measure `THUMB_FLEX_AXIS`, check the thumb return error, and decide the re-zero gate (DECISIONS.md, open items). Check the rate first; it needs to be about 50 Hz.
 
 ## Analysis commands
 

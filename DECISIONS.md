@@ -8,12 +8,18 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 | Date | Decision | Area |
 |---|---|---|
+| open | [Auto re-zero erasing small thumb poses](#open-auto-re-zero-erasing-small-thumb-poses) | Fusion |
+| open | [Per-finger mount correction](#open-per-finger-mount-correction) | Calibration |
+| open | [Thumb-aware ML features](#open-thumb-aware-ml-features) | Data |
 | open | [Finger-vs-hand relative formula](#open-finger-vs-hand-relative-formula) | Fusion |
 | open | [BLE throughput if the central refuses the link requests](#open-ble-throughput-if-the-central-refuses-the-link-requests) | BLE |
 | open | [Guided functional calibration](#open-guided-functional-calibration) | Calibration |
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| open | [How to show video in the README](#open-how-to-show-video-in-the-readme) | Docs |
+| 2026-11-07 | [Thumb bend measured as twist about a measured axis](#2026-11-07--thumb-bend-measured-as-twist-about-a-measured-axis) | Fusion |
+| 2026-11-07 | [Thumb anchored below the palm plane](#2026-11-07--thumb-anchored-below-the-palm-plane) | UI |
 | 2026-10-31 | [Hand IMU tilt measured at calibration, hand-axes picker removed](#2026-10-31--hand-imu-tilt-measured-at-calibration-hand-axes-picker-removed) | Calibration |
 | 2026-10-31 | [Hand IMU mount angle learned live from the gyros](#2026-10-31--hand-imu-mount-angle-learned-live-from-the-gyros) | Calibration |
 | 2026-10-31 | [Hand axes fwd +X, left model, headings aligned at calibration](#2026-10-31--hand-axes-fwd-x-left-model-headings-aligned-at-calibration) | Calibration |
@@ -65,6 +71,30 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 ## Open decisions
 
+### Open: auto re-zero erasing small thumb poses
+
+**Options:** (a) leave `HEAL_POSE_DEG` 8 as is. (b) Gate the thumb: no auto re-zero while the thumb's flex is beyond some angle. (c) Gate on the thumb's own motion history.
+
+**Leaning:** (a) until there is a clean 50 Hz CSV.
+
+**Why it's open:** the thumb's main axis is 19 to 27 deg off vertical, so about 18 to 25 deg of thumb motion still looks like "home" to the heading check. A held thumb pose could slide to zero after about 1 s still, on a flat hand only. This is calculated, not measured on the glove. A gate (b) would also stop re-zero from healing real thumb drift like T4 (53.7 deg off before healing, 13.9 after). Decide after the TH3 capture.
+
+### Open: per-finger mount correction
+
+**Options:** (a) none, as now. (b) Gravity mount: measure each finger sensor's tilt at calibration. (c) Full gyro mount: learn each sensor's frame from the gyros.
+
+**Leaning:** (a).
+
+**Why it's open:** on the 2026-10-31 T5 replay, gravity / gyro mounts gave thumb p90 12.2 / 12.7 (vs 14.3 without), index 17.4 / 15.3 (vs 20.3), middle 16.9 / 16.9 (vs 20.3), ring 17.8 / 17.6 (vs 21.7), pinky 29.2 / 27.9 (vs 32.0). The gain is a few degrees on a low-rate, clipped capture, so not a clear win. Re-test on a clean capture.
+
+### Open: thumb-aware ML features
+
+**Options:** (a) keep the `curl` feature set (d_y only). (b) Use `dir` or `quat` for the thumb. (c) Add a thumb flex feature along the measured axis.
+
+**Leaning:** (c), unverified.
+
+**Why it's open:** `curl` is nearly blind to the thumb's main motion, which is about the measured axis. `dir` and `quat` carry the thumb's yaw drift, because gravity cannot correct that axis when the hand is flat. Letters that differ mainly by thumb position depend on this. Needs real Phase 8 data from several sessions to compare.
+
 ### Open: finger-vs-hand relative formula
 
 **Options:** (a) keep `rel_h^-1 * rel_f` (each sensor relative to its own calibration zero, then finger relative to hand). (b) Use `(qRef_h^-1 qRef_f)^-1 (q_h^-1 q_f)`, which compares the raw hand and finger quaternions and removes the zero offset between them.
@@ -114,9 +144,37 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Leaning:** 30 first, then check leave-one-session-out accuracy. Go to 90 only for letters that need it. The plan already uses this. Confirm after the first real session shows how long a session takes.
 
+### Open: how to show video in the README
+
+**Options:** (a) drag an mp4 into the README in GitHub's web editor. GitHub hosts it, and the free limit is 10 MB per file. (b) Commit short GIFs to `docs/media/` and embed them. (c) No video. Images only, and the motion-tests folder holds the protocol and findings.
+
+**Leaning:** not decided. The README currently uses option (c).
+
+**Why it's open:** the motion-test mp4s are gitignored (about 1.1 GB for the edited set), so they cannot be embedded from the repo. (a) gives the best quality for no repo weight, but the link lives in the README text only and is lost if the file is re-uploaded. (b) keeps everything in git and versioned, but GIFs are large and low quality, so each clip has to be short and small. (c) is the cheapest, but a moving glove is the best proof on the page. Pick after choosing which clips (for example T2 fast fist before vs after) are worth showing.
+
 ---
 
 ## Decisions
+
+### 2026-11-07 | Thumb bend measured as twist about a measured axis
+
+**Options:** (a) keep pitch about X for the thumb, like the fingers. (b) Measure the thumb's bend axis from its gyro and take the twist of `q_rel` about it. (c) Learn the axis live.
+
+**Choice:** (b). `THUMB_FLEX_AXIS` is the normalised mean of the T3 and T4 gyro PCA axes, and `thumbFlexRad(q) = 2 atan2(v.n, w)`, wrapped. It drives the curl readout and the tip bend.
+
+**Why:** PCA of the thumb gyro on thumb-dominant samples gave axes 19 and 27 deg off Y (93 % and 91 % of the variance), not X. Flex range grew in most captures, for example T1 -9.0..21.7 (pitch) vs -25.3..44.8 (flex). Fists read positive, outward spreads negative.
+
+**Cost:** the axis comes from low-rate captures (17 to 43 Hz) and mostly outward motion. It is stored in the thumb sensor frame, so a remount shifts it. Near vertical (flat hand) it is gyro-only and drifts. The curl sign control no longer applies to the thumb. Not tried on the glove (unverified). Option (c) needs a guided motion at calibration and is not built.
+
+### 2026-11-07 | Thumb anchored below the palm plane
+
+**Options:** (a) keep the anchor level with the palm (x 1.45, y 0.1). (b) Move it under the palm: x 1.3, y -0.6, z -0.9, yaw 0.11. (c) Make the palm box smaller or hollow.
+
+**Choice:** (b). Supersedes the thumb placement part of "Straight thumb segment in the 3D model" (2026-08-08). The straight segment itself stays.
+
+**Why:** the 2026-08-08 check only covered the rest pose (7.5 % buried). Walking the axis in 200 steps, an inward swing about Y buried 65.0 % of the thumb at 15 deg, 77.5 % at 30, 82.5 % at 45 and 86 % at 90. Under the palm it is 0.0 % buried at 0, 15, 30 and 45 deg. The default camera also moved to the thumb's side (camYaw -0.7), because it looked from +X while the left thumb is at -X. `tools/verify_thumb_rig.mjs` checks this.
+
+**Cost:** the anchor is a guess from the rest direction (6.5 deg outward), and the thumb now looks tucked under the palm, not beside it. One IMU on the proximal phalanx means the tip joint is cosmetic. The thumb-index gesture rule thresholds were guesses and the anchor moved, so they are unverified.
 
 ### 2026-10-31 | Hand IMU tilt measured at calibration, hand-axes picker removed
 
