@@ -198,6 +198,18 @@ and radius. Used to get the pinky `ACC_OFFSET` in the dashboard.
 python fit_accel_offsets.py path/to/test.csv
 ```
 
+### `selftest_replay_lib.mjs` and `verify_selftest_replay.mjs`  *(Phase 8, touch detection)*
+`selftest_replay_lib.mjs` replays the raw frames of a dashboard export (version 3)
+through the page's real code, so the offline numbers are the numbers the page shows.
+`verify_selftest_replay.mjs` uses it on the 2026-11-07 v3 session
+(`10-touch-detection/calibration_2026-11-07_v3.json`). It checks the guided holds and the
+drawn thumb gaps during the self-test touches. Optional first argument: path to the
+dashboard page (default `tools/handrig_dashboard.html`).
+- Dependency: Node.
+```bash
+node verify_selftest_replay.mjs [path/to/handrig_dashboard.html]
+```
+
 ## Dropped from the original plan
 
 The first plan had three more Python scripts. The dashboard covers all of them, so they were never built:

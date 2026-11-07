@@ -38,6 +38,13 @@ python tools/verify_check_dataset.py
 
 `verify_hand_fit.mjs` covers kinematics, finger roll, thumb warp and contact. `verify_real_calibration.mjs` replays `calibration_2026-11-07.json` (the first real export). All exit 0 as of 2026-11-07. The three dashboard copies must match (`md5sum`).
 
+## Evidence
+
+- `calibration_2026-11-07.json`: first real export (old 15-step capture).
+- `calibration_2026-11-07_v3.json` (3.8 MB, mirrored in `Data/csv/`): first real version 3 session, guided calibration then Self-test. 16 of 16 holds kept, Self-test 0 % on all four touches.
+- `report_2026-11-07_v3.txt`: the offline analysis of that file.
+- `node tools/verify_selftest_replay.mjs` replays the v3 session through the page code and checks the drawn thumb gaps.
+
 ## Known limits
 
 - It detects "this pose matches your touch pose", not contact. Touching and a 1 cm near miss may look alike (unverified).
@@ -47,5 +54,5 @@ python tools/verify_check_dataset.py
 - Guided holds are in the JSON export, not in the Batch Capture dataset. Batch Capture is the dataset path.
 - The joint shares (q^0.5, q, q^1.35) are guesses. The learned thumb movement is interpolation between the holds of one session. Its small tip gaps (0.11 learned, 0.009 drawn, against 1.84 default) are partly by construction, because the offsets came from the same holds.
 - The first real export: 13 of 15 holds kept (NEARTM, NEARTP missed), ring and straight nearly one pose (distance 0.25 to 0.33), SPREAD read about 25 deg bent (cause unknown, unverified), Self-test not run.
-- Self-test has never run on the glove.
+- Self-test ran once on the glove (2026-11-07): all four touches 0 %, flat hand 100 %. Repeat touches land about as far from their holds as the near-miss holds do. See the v3 report.
 - Model file loading through the file picker and the saved-model restore were not exercised.

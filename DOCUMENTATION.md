@@ -25,9 +25,9 @@ Roadmap: [GENERAL_PLAN.md](GENERAL_PLAN.md). Design choices: [DECISIONS.md](DECI
 | Thumb rig (dashboard) | Reworked twice on 2026-11-07 (see the correction in that entry). Now: anchor under the palm, tip sensor's rotation split over base and tip joint (`THUMB_BASE_FRAC` 0.5, a guess). Checked offline with `tools/verify_thumb_rig.mjs`. **Not yet tried on the glove (unverified).** The single measured flex axis was dropped | [tools/](tools/) |
 | Thumb tracking | **Dashboard changes made 2026-11-07 (anchor under the palm, rotation split over two joints, readout is total rotation). Not tried on the glove, no clean 50 Hz thumb CSV yet.** Verified only with injected rotations and `tools/verify_thumb_rig.mjs`. The thumb sensor is on the tip segment per the user (not visible in the July photo). | [tools/](tools/), [motion tests](09-firmware-hardening/motion-tests/README.md) |
 | Thumb curl | Works on the glove (user-observed, 2026-11-07, no CSV). The split rotation fix is confirmed visually only | [tools/](tools/) |
-| Touch detection | Built 2026-11-07: pose-to-touch label table, trainer, dashboard readout, guided calibration (now 17 steps, about 4.6 min, no stillness gate) that records per-session touch templates, plus Self-test, coach, live "04 Touch" section and Export calibration (now v3, the black box). **First real export 2026-11-07:** 13 of 15 holds kept, replay detection right on all of them. That run was the old capture. The new capture, flat check and Self-test have not run on the glove (unverified). The trainer's gate failed on first synthetic data, see the 2026-11-07 entry | [10-touch-detection](10-touch-detection/). Dashboard audited the same day, five bugs fixed (see the audit entry). Nothing from the audit has run on the glove (unverified) |
-| Dashboard black box | Export calibration saves raw frames of all six sensors, events, stage marks, holds and self-test as version 3 JSON, even after a stopped or disconnected run. `tools/analyze_touch_calibration.py` reports frozen sensors and pinned gyros. Tested on simulated runs only (`tools/verify_blackbox.mjs`). **Not yet run on the glove (unverified)** | [10-touch-detection](10-touch-detection/) |
-| 3D hand and contact display | `fitHand` was removed after the real hand rejected it (gap 0.83). Now: learned thumb base movement (pose-space interpolation of offsets learned from the touch holds), finger roll from the fist hold, 3-segment fingers, display-only contact correction. Replay of one real session: mean tip gap 1.84 default, 0.11 learned, 0.009 drawn (small partly by construction). **New capture and live drawing not tried on the glove (unverified).** Joint shares are guesses | [10-touch-detection](10-touch-detection/) |
+| Touch detection | Built 2026-11-07: pose-to-touch label table, trainer, dashboard readout, guided calibration (now 17 steps, about 4.6 min, no stillness gate) that records per-session touch templates, plus Self-test, coach, live "04 Touch" section and Export calibration (now v3, the black box). **First real export 2026-11-07:** 13 of 15 holds kept, replay detection right on all of them (old capture). **First v3 session 2026-11-07:** guided calibration 16 of 16 holds kept, but Self-test 0 % on all four touches (flat hand 100 %). Repeat touches land 2.1x to 3.5x the template radius from their hold, about as far as the near miss, so no radius separates them. Open, see DECISIONS.md. The trainer's gate failed on first synthetic data, see the 2026-11-07 entry | [10-touch-detection](10-touch-detection/). Dashboard audited the same day, five bugs fixed (see the audit entry). Nothing from the audit has run on the glove (unverified) |
+| Dashboard black box | Export calibration saves raw frames of all six sensors, events, stage marks, holds and self-test as version 3 JSON, even after a stopped or disconnected run. `tools/analyze_touch_calibration.py` reports frozen sensors and pinned gyros. Tested on simulated runs (`tools/verify_blackbox.mjs`). **Ran on the glove 2026-11-07:** 15609 frames, 0 lost, 0 bad, 50.0 Hz, no clipping. The export was enough to find the cause of the Self-test failure offline | [10-touch-detection](10-touch-detection/) |
+| 3D hand and contact display | `fitHand` was removed after the real hand rejected it (gap 0.83). Now: learned thumb base movement (pose-space interpolation of offsets learned from the touch holds), finger roll from the fist hold, 3-segment fingers, display-only contact correction. Replay of one real session: mean tip gap 1.84 default, 0.11 learned, 0.009 drawn (small partly by construction). **2026-11-07 live test:** the 3D thumb lay along the palm during a thumb-to-middle ring. Fixed in the dashboard with nearest-anchor weights and a near-pair contact (detection unchanged). On the recorded file the drawn thumb gap during self-test touches is 0.03 to 0.46, down from 0.20 to 0.47 (guided holds stay at or under 0.045). **Fix not tried on the glove (unverified).** Joint shares, `NEAR_GAP` and `THUMB_BASE_FRAC` are guesses | [10-touch-detection](10-touch-detection/) |
 | Dataset tooling (checker, kNN baseline) | Built, tested on synthetic data only | [tools/](tools/) |
 | Real labelled data, classifier, BLE HID | Not started | |
 
@@ -49,6 +49,36 @@ Pinky accel "25–28 % low" (2026-08-07): explained on 2026-10-31. It is a zero-
 ---
 
 ## Entries
+
+### 2026-11-07 | Phase 8: first real black box session, thumb display
+
+**Plan:** run the new guided calibration and Self-test on the glove, export the v3 black box, and see whether the detector holds up.
+
+**Achieved:** the black box worked. File: `10-touch-detection/calibration_2026-11-07_v3.json` (3.8 MB, mirrored in `Data/csv/`), report: `10-touch-detection/report_2026-11-07_v3.txt`.
+- Link: 15609 frames, 0 lost, 0 bad, firmware at 50.0 Hz. No clipping, no errors.
+- Guided calibration: 16 of 16 holds kept, replay 100 % on every hold, 0 retries.
+- Flat check read 10.7 deg bent. The first export's SPREAD read about 25.
+- Hand IMU mount tilt 16.6 deg. Finger rolls: index 0, middle 4, ring 2, pinky -7 deg.
+- Pinky learned offset (0.257, 0.186, -0.161) g, matching the (0.25, 0.19, -0.17) g from 2026-10-31.
+- Template radii 0.072 to 0.193, all limited by the near-miss holds.
+- Thumb display fixed (below), checked by replaying the file (`tools/verify_selftest_replay.mjs`). All `tools/verify_*.mjs` and `verify_*.py` exit 0, the three dashboard copies match by md5, the page loads with no script errors.
+
+**Problems:**
+- Self-test: all four touches 0 %. The flat hand was 100 % (150 of 150 frames read nothing).
+- I also saw the 3D thumb lying along the palm face during a live thumb-to-middle ring.
+- Cause of the 0 %: I replayed the raw frames through the dashboard's real pipeline. It reproduces all 16 holds within 0.058 per digit, so it is not a code bug. A repeat touch lands about as far from its guided hold as the near-miss hold does. Distance vs radius: TI 0.33/0.156, TM 0.47/0.179, TR 0.36/0.102, TP 0.25/0.072, so 2.1x to 3.5x. A near miss sits at 2x by construction, so no radius accepts these touches without accepting the near misses.
+- Ruled out: timing (distance is flat before scoring) and a global shift (on the flat step the fingers sit 0.06 to 0.10 from FLATCHECK). The error is in the touching digits: thumb heading 6 to 31 deg off its hold, in a different direction per pair, and the target finger 8 to 23 deg less curled. Each self-test touch sits closest to its NEAR hold. The right pair was still the nearest relative to its radius in 4 of 4 touches.
+- Cause of the thumb on the palm: the thumb warp weights had a 1e-3 floor. Once the pose was more than about 0.6 from every anchor, all weights fell under it and the thumb went back home.
+- Unverified: 16 s between the end of the guided run and Self-test were not recorded. The live meters were 0.1 to 0.27 worse than the replay. A zero of all sensors in that gap fits better (rms 0.17 to 0.11) but that is a guess. At FLATCHECK the hand and thumb were 13 and 11 deg off the calibration "up", outside the 8 deg auto re-zero gate.
+
+**Display fix (dashboard only, detection unchanged):**
+1. `thumbWarp` weights are relative to the nearest anchor: `w_i = exp(-(d_i^2 - d_min^2) / 2 sigma^2)`, normalised. The weight floor is gone. Rest poses still stay home because FLAT, FIST, SPREAD and FLATCHECK are anchors with zero offset.
+2. New `nearPair`, `NEAR_GAP` 0.75 (about two finger widths, a guess). With no detected touch, the fingertip nearest the drawn thumb tip gets the existing contact correction if it is within 0.75. A detected touch still wins. The 40 deg cap stays.
+3. Result on this file: drawn thumb-tip gap during self-test touches TI 0.33 to 0.12, TM 0.46 to 0.07, TR 0.37 to 0.03, TP 0.20 to 0.12. Guided holds stay at or under 0.045. Flat hand: no contact drawn.
+4. Detection stays at 0 % on these touches. The data cannot separate them, so I did not fake it. See "Open: separating a touch from a near miss" in DECISIONS.md.
+5. Known risks, unverified on the glove: thumb to middle may draw closing onto the ring finger (seen in one replay variant, gap 0.55), a fist may draw the thumb snapped onto a finger, and `NEAR_GAP` and `THUMB_BASE_FRAC` 0.5 are guesses. A near miss is now drawn closed too.
+
+**Next:** on the glove, reload, run guided calibration, go straight into Self-test with nothing in between, and use the same firm curled pose as in the guided hold. Watch whether the 3D thumb lands on the right fingertip, especially thumb to middle, and whether a fist snaps the thumb onto a finger. Record that session. Then decide the open detection question (several holds per touch, drop the radius cap, or fingertip pads).
 
 ### 2026-11-07 | Phase 8: dashboard audit and black box
 

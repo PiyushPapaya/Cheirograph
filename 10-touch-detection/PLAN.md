@@ -202,6 +202,18 @@ Steps (nothing here has run on the glove yet, unverified):
 
 Test without a glove: `node tools/verify_blackbox.mjs`.
 
+## First real v3 session (2026-11-07)
+
+Result: guided calibration worked, live detection did not. 16 of 16 holds kept, replay 100 % on every hold, 0 retries, 15609 frames with 0 lost and 0 bad. Self-test: all four touches 0 %, flat hand 100 %.
+
+Cause (from replaying the raw frames through the page code, which reproduces all 16 holds within 0.058 per digit): not a code bug. A repeat touch lands about as far from its guided hold as the near-miss hold does. Distance vs radius: TI 0.33/0.156, TM 0.47/0.179, TR 0.36/0.102, TP 0.25/0.072, so 2.1x to 3.5x the radius. A near miss sits at 2x by construction, so no radius accepts these touches without accepting the near misses. Detection is left as it is. The display was fixed instead (nearest-anchor thumb weights, near-pair contact), see DECISIONS.md.
+
+Next on the glove:
+1. Reload, run guided calibration, go straight into Self-test with nothing in between.
+2. Use the same firm curled pose as in the guided hold.
+3. Watch whether the 3D thumb lands on the right fingertip, especially thumb to middle, and whether a fist snaps the thumb onto a finger.
+4. Then decide the open detection question (DECISIONS.md, "Open: separating a touch from a near miss").
+
 ## After the code: on the glove
 
 1. Record 2 sessions: Noise Check GO, Batch Capture, 10 reps per pose, taking the glove off and on between sessions. Pick labels from the list. About 25 minutes per session (estimate).

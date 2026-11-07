@@ -8,6 +8,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 | Date | Decision | Area |
 |---|---|---|
+| open | [Separating a touch from a near miss in live detection](#open-separating-a-touch-from-a-near-miss-in-live-detection) | Touch detection |
 | open | [Auto re-zero erasing small thumb poses](#open-auto-re-zero-erasing-small-thumb-poses) | Fusion |
 | open | [Per-finger mount correction](#open-per-finger-mount-correction) | Calibration |
 | open | [Thumb-aware ML features](#open-thumb-aware-ml-features) | Data |
@@ -19,6 +20,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-11-07 | [Thumb display: nearest-anchor weights plus near-pair contact](#2026-11-07--thumb-display-nearest-anchor-weights-plus-near-pair-contact) | Display |
 | 2026-11-07 | [Learned thumb base movement](#2026-11-07--learned-thumb-base-movement) | Calibration |
 | 2026-11-07 | [Finger roll from the fist hold](#2026-11-07--finger-roll-from-the-fist-hold) | Calibration |
 | 2026-11-07 | [Stillness gate removed from guided holds](#2026-11-07--stillness-gate-removed-from-guided-holds) | Calibration |
@@ -165,6 +167,14 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Why it's open:** the glove never measures contact. Touching and nearly touching (about 1 cm apart) may look identical in the IMU data, but this is unverified until the touch-pose set is recorded and `train_baseline.py` shows how touch and near-miss poses get confused. The classifier mostly needs repeatable, distinct poses, not true contact. Cost of (b): more wires on a glove that already has wire-fatigue risk, new firmware, and a BLE frame change that has to go through the dashboard parser and `check_dataset.py` together. Hardware option, not started.
 
+### Open: separating a touch from a near miss in live detection
+
+**Options:** (A) several guided holds per touch, light and firm, so the template covers repeat variance. (B) drop the cap that limits the radius to half the distance to the near-miss hold, at the cost of accepting near misses. (C) fingertip contact pads (already a fallback in `10-touch-detection/PLAN.md`).
+
+**Leaning:** none. Not decided.
+
+**Why it's open:** in the first real v3 session a repeat touch landed 2.1x to 3.5x the template radius away from its guided hold, about as far as the near-miss hold. Replay of the raw frames shows the error sits in the touching digits (thumb heading 6 to 31 deg off its hold, target finger 8 to 23 deg less curled), not in a global shift or in timing. So a radius cannot separate the two. Needs a second session recorded straight into Self-test. Unverified: 16 s between the guided run and Self-test were not recorded, and a zero of all sensors in that gap fits the data better but is a guess.
+
 ### Open: SPREAD reads 25 deg bent
 
 **Options:** (a) drift in the hand-relative pose by that point in the run. (b) The finger roll or sensor mount makes sideways spread look like bend. (c) The spread was not really flat or open in that hold.
@@ -172,6 +182,8 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 **Leaning:** none. Cause unknown (unverified).
 
 **Why it's open:** in the first real export (`10-touch-detection/calibration_2026-11-07.json`) SPREAD read about 25 deg bent on all fingers. The new FLATCHECK stage at the end of the guided run repeats a flat hand. If it also reads off, that points at drift (a). If it reads flat, look at (b) and (c). Needs the rerun.
+
+**Update 2026-11-07 (v3 session):** the flat check read 10.7 deg bent, against about 25 for SPREAD in the first export. So some of the 25 is not drift. Cause still unverified.
 
 ### Open: hardware watchdog for a stuck SCL line
 
@@ -196,6 +208,16 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-11-07 | Thumb display: nearest-anchor weights plus near-pair contact
+
+**Options:** (a) keep the fixed weight floor (1e-3) in the thumb warp. (b) Loosen detection so it drives the drawing. (c) Weight the anchors relative to the nearest one, and draw the contact correction for the fingertip nearest the thumb tip when nothing is detected.
+
+**Choice:** (c). Weights are `w_i = exp(-(d_i^2 - d_min^2) / 2 sigma^2)`, normalised. New `nearPair` with `NEAR_GAP` 0.75 (about two finger widths, a guess): with no detected touch, the nearest fingertip within 0.75 of the drawn thumb tip gets the existing contact correction. A detected touch still wins. The 40 deg cap stays. Detection is unchanged.
+
+**Why:** in the first v3 session the 3D thumb lay along the palm during a live thumb-to-middle ring. With the floor, once the pose was more than about 0.6 from every anchor, all weights fell below it and the thumb went back home onto the palm. Rest poses still stay home, because FLAT, FIST, SPREAD and FLATCHECK are anchors with zero offset. (b) would make the drawing look right by faking detection, and detection has to stay honest. On the recorded file the drawn thumb-tip gap during self-test touches is TI 0.33 to 0.12, TM 0.46 to 0.07, TR 0.37 to 0.03, TP 0.20 to 0.12. Guided holds stay at 0.045 or less. A flat hand draws no contact.
+
+**Cost:** a near miss is drawn closed too. Unverified on the glove: thumb to middle may draw closing onto the ring finger (gap 0.55 in one replay variant), a fist may draw the thumb snapped onto a finger, and `NEAR_GAP` and `THUMB_BASE_FRAC` 0.5 are guesses.
 
 ### 2026-11-07 | Learned thumb base movement
 

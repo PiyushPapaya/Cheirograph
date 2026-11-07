@@ -927,7 +927,8 @@ function applyContact(k){
   const dirs=warpAnchors.length?touchDirs(performance.now()):null;
   const hand=dirs?warpHand(HAND,thumbWarp(warpAnchors,dirs),mx):HAND;
   const qs=[1,2,3,4,5].map(id=>{const l=S[id].dispQ||_idQ;return [l.w,l.x,l.y,l.z];});
-  const C=contactFix(qs,activeTouches(),hand,mx);
+  const on=activeTouches();
+  const C=contactFix(qs,on.length?on:nearPair(qs,hand,mx),hand,mx);
   C.forEach((c,i)=>{
     const g=fingerGroups[i+1]; if(g)g.userData.restBend.quaternion.slerp(_cq.set(c[1],c[2],c[3],c[0]),k);
   });
@@ -1037,16 +1038,20 @@ function unrollQs(qs,rolls){
 // mean gap 0.5). But every touch hold says exactly where the thumb tip was: on the fingertip.
 // So each hold stores the base offset that puts it there, and live poses blend those offsets
 // with a Gaussian weight on how similar the whole hand is (pose-space interpolation).
-// Poses that aren't touches anchor the offset at zero. The small term keeps a pose far from
-// everything at home instead of snapping to whichever anchor happens to be nearest.
+// Poses that aren't touches (flat, fist, spread) anchor the offset at zero, so a pose nearest
+// to those stays home. Weights are taken relative to the NEAREST anchor (it always gets 1).
+// The old fixed floor (1e-3) sent the thumb home whenever every anchor was more than ~0.6
+// away, and a repeat touch on the real glove lands 0.4-0.7 from its hold: the self-test
+// replay of 2026-11-07 drew every touch with the thumb lying at home.
 function thumbWarp(anchors,dirs){
-  if(!dirs||dirs.length<15||!dirs.every(Number.isFinite))return [0,0,0];   // no usable pose: the thumb stays home
-  let sw=1e-3; const o=[0,0,0];
-  for(const a of anchors){
-    let d=0; for(let k=0;k<15;k++)d+=(a.dirs[k]-dirs[k])**2;
-    const w=Math.exp(-d/(2*WARP_SIGMA*WARP_SIGMA));
+  if(!dirs||dirs.length<15||!dirs.every(Number.isFinite)||!anchors.length)return [0,0,0];   // no usable pose: the thumb stays home
+  const d2=anchors.map(a=>{let d=0; for(let k=0;k<15;k++)d+=(a.dirs[k]-dirs[k])**2; return d;});
+  const dmin=Math.min(...d2);
+  let sw=0; const o=[0,0,0];
+  anchors.forEach((a,i)=>{
+    const w=Math.exp(-(d2[i]-dmin)/(2*WARP_SIGMA*WARP_SIGMA));
     sw+=w; for(let k=0;k<3;k++)o[k]+=w*a.offset[k];
-  }
+  });
   const r=o.map(v=>v/sw);
   return r.every(Number.isFinite)?r:[0,0,0];
 }
@@ -1088,6 +1093,19 @@ function contactFix(qs,pairs,hand,mx){
     const ang=2*Math.acos(Math.min(1,Math.abs(q[0])))*180/Math.PI;
     return ang>CONTACT_MAX_DEG?qPow(q,CONTACT_MAX_DEG/ang):q;
   });
+}
+// Display only. With no detected touch, a drawn thumb tip that already sits within NEAR_GAP
+// (about two finger widths) of a fingertip is taken as reaching for it, and contactFix closes
+// it. Detection can't tell a light touch from a near miss on this glove (self-test replay
+// 2026-11-07), so the drawing doesn't wait for it. A near miss is drawn closed too.
+const NEAR_GAP=0.75;
+function nearPair(qs,hand,mx){
+  const a=digitTip(0,qs[0],hand,mx); let best=null,bd=NEAR_GAP;
+  for(const [p,f] of Object.entries(PAIR_FINGER)){
+    const b=digitTip(f,qs[f],hand,mx), d=Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+    if(d<bd){bd=d;best=p;}
+  }
+  return best?[best]:[];
 }
 // ===== end hand kinematics =====
 

@@ -1,0 +1,146 @@
+
+== File ==
+file: C:/Users/nagpa/Downloads/handrig_calibration_1794090951829.json
+version: 3   status: complete   started: 2026-11-07T22:30:20.719Z   ended: 2026-11-07T22:34:57.836Z
+dashboard: touch-calibration v3 · black box · 2026-11-07  hash c1d2636f/150646  page handrig_dashboard.html
+browser: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36
+
+== Link health ==
+rate: min 30.7386 Hz, mean 49.9268 Hz over 276 s
+frames 15609, lost 0 (0 %), bad frames 0
+raw stream: 15609 frames over 328.5 s, firmware 50.0 Hz median spacing (mean 49.9 Hz)
+gaps over 60 ms between frames: 1, longest 15900 ms
+
+== Sensor health ==
+HAND    cal=True bad=False flag='' bias=[1.4525, 0.4658, -0.3356] noise=[0.6199, 0.5992, 0.8768]
+        acc offset [0, 0, 0]  accel bias [-0.6637, 0.7278, 0.0581]  clipped samples 0  latched drop False
+THUMB   cal=True bad=False flag='' bias=[0.2566, -1.2884, -2.2365] noise=[0.6461, 1.1773, 1.4902]
+        acc offset [0.0165, -0.0173, 0.0318]  accel bias [-0.1259, 0.9492, -0.1252]  clipped samples 0  latched drop False
+INDEX   cal=True bad=False flag='' bias=[1.0622, 1.0145, -1.9152] noise=[0.5208, 0.4746, 0.5467]
+        acc offset [0.0068, -0.0015, 0.0238]  accel bias [-0.482, 0.7949, -0.2614]  clipped samples 0  latched drop False
+MIDDLE  cal=True bad=False flag='' bias=[-0.7203, -0.8787, -3.8917] noise=[0.5615, 1.6782, 0.8146]
+        acc offset [0.0258, -0.0055, 0.0062]  accel bias [-0.661, 0.716, -0.2398]  clipped samples 0  latched drop False
+RING    cal=True bad=False flag='' bias=[-0.4, -1.3647, -3.9963] noise=[0.3402, 0.4126, 0.6804]
+        acc offset [0.0137, -0.0098, -0.0147]  accel bias [-0.7353, 0.6112, -0.2414]  clipped samples 0  latched drop False
+PINKY   cal=True bad=False flag='' bias=[5.837, -0.6588, 7.0556] noise=[0.4816, 0.2693, 1.1596]
+        acc offset [0.2572, 0.1864, -0.1609]  accel bias [-0.8355, 0.5211, -0.1205]  clipped samples 0  latched drop False
+hand mount: tilt 16.5599 deg, psi -10.3428 deg, checked False
+  calibration 'guided-still' at 20 s: sample counts [873, 835, 869, 874, 875, 852]
+raw still window (calibration hold): mean |a| and gyro std per sensor
+  hand    |a| 0.979 g   gyro std [7.37, 13.29, 4.54]   identical consecutive frames 4
+  thumb   |a| 0.982 g   gyro std [12.46, 9.6, 10.58]   identical consecutive frames 2
+  index   |a| 1.010 g   gyro std [21.58, 10.26, 9.54]   identical consecutive frames 0
+  middle  |a| 1.000 g   gyro std [11.79, 12.31, 7.0]   identical consecutive frames 1
+  ring    |a| 0.976 g   gyro std [12.23, 8.77, 6.68]   identical consecutive frames 3
+  pinky   |a| 0.753 g   gyro std [13.48, 9.43, 6.37]   identical consecutive frames 1
+
+== Holds ==
+hold            rows   spread  notes
+FIST              71   0.0138  
+SPREAD            71   0.0174  
+TI ring           71   0.0058  
+TI straight       72   0.0058  
+TM ring           71   0.0116  
+TM straight       71   0.0058  
+TR ring           71   0.0076  
+TR straight       71   0.0104  
+TP ring           71   0.0087  
+TP straight       71   0.0048  
+NEARTI            71   0.0115  
+NEARTM            72   0.0112  
+NEARTR            71   0.0068  
+NEARTP            70   0.0128  
+TM+TR rock        71   0.0083  
+FLATCHECK         71   0.0133  
+missed holds: none
+retries: 0
+
+== Replay of every hold through the detector ==
+ok   FIST           read right  100 %
+ok   SPREAD         read right  100 %
+ok   TI ring        read right  100 %
+ok   TI straight    read right  100 %
+ok   TM ring        read right  100 %
+ok   TM straight    read right  100 %
+ok   TR ring        read right  100 %
+ok   TR straight    read right  100 %
+ok   TP ring        read right  100 %
+ok   TP straight    read right  100 %
+ok   NEARTI         read right  100 %
+ok   NEARTM         read right  100 %
+ok   NEARTR         read right  100 %
+ok   NEARTP         read right  100 %
+ok   TM+TR rock     read right  100 %
+ok   FLATCHECK      read right  100 %
+16 of 16 holds read correctly (own replay)
+dashboard's replay: 16 of 16  failed []
+
+== Template radius and what limited it ==
+pose              spread 3*spread  radius  limited by / nearest others (half distance)
+TI ring           0.0058    0.017   0.156  NEARTI;  NEARTI 0.18, NEARTM 0.28, NEARTR 0.37
+TI straight       0.0058    0.017   0.156  NEARTI;  NEARTI 0.16, NEARTM 0.26, NEARTR 0.35
+TM ring           0.0116    0.035   0.179  NEARTM;  NEARTM 0.29, FIST 0.40, NEARTR 0.43
+TM straight       0.0058    0.017   0.179  NEARTM;  NEARTM 0.18, NEARTR 0.32, NEARTI 0.35
+TR ring           0.0076    0.023   0.102  NEARTM;  NEARTR 0.18, NEARTM 0.19, NEARTI 0.30
+TR straight       0.0104    0.031   0.102  NEARTM;  NEARTM 0.10, NEARTR 0.11, NEARTI 0.20
+TP ring           0.0087    0.026   0.072  NEARTP;  NEARTP 0.16, NEARTR 0.25, NEARTM 0.30
+TP straight       0.0048    0.015   0.072  NEARTP;  NEARTP 0.07, NEARTR 0.13, NEARTM 0.17
+TM+TR rock        0.0083    0.025   0.193  NEARTM;  NEARTM 0.19, NEARTR 0.27, NEARTI 0.41
+radius range 0.072 to 0.193
+
+== Finger rolls ==
+from the export: index -0  middle 4  ring 2  pinky -7 deg
+
+== Thumb offsets ==
+  rest              offset [0, 0, 0]  |0.00|
+  rest              offset [0, 0, 0]  |0.00|
+  rest              offset [0, 0, 0]  |0.00|
+  rest              offset [1.13, 0.2, 1.17]  |1.64|
+  rest              offset [2.01, -0.09, 1.09]  |2.29|
+  rest              offset [1.87, 0.36, 1.48]  |2.41|
+  rest              offset [1.79, 0.72, 0.88]  |2.12|
+  rest              offset [0, 0, 0]  |0.00|
+  TI      ring      offset [1.13, 0.2, 1.17]  |1.64|
+  TI      straight  offset [1.14, 0.23, 1.23]  |1.69|
+  TM      ring      offset [2.01, -0.09, 1.09]  |2.29|
+  TM      straight  offset [1.97, -0.07, 1.38]  |2.41|
+  TR      ring      offset [1.87, 0.36, 1.48]  |2.41|
+  TR      straight  offset [1.99, 0.62, 1.8]  |2.75|
+  TP      ring      offset [1.79, 0.72, 0.88]  |2.12|
+  TP      straight  offset [1.91, 0.83, 1.14]  |2.38|
+  TM+TR   rock      offset [1.66, 0.44, 1.6]  |2.35|
+
+== Flat check ==
+a flat hand read 10.7 deg bent at the end
+
+== Self-test ==
+FAIL    0 %  Touch thumb and index  frames 30, skipped 0; on-set: nothing 30
+        last distance/limit: TI 0.432/0.156  TM 1.006/0.179  TR 0.729/0.102  TP 0.687/0.072
+FAIL    0 %  Touch thumb and middle  frames 30, skipped 0; on-set: nothing 30
+        last distance/limit: TI 0.572/0.156  TM 0.733/0.179  TR 0.607/0.102  TP 0.542/0.072
+FAIL    0 %  Touch thumb and ring  frames 31, skipped 0; on-set: nothing 31
+        last distance/limit: TI 0.846/0.156  TM 0.971/0.179  TR 0.638/0.102  TP 0.743/0.072
+FAIL    0 %  Touch thumb and pinky  frames 31, skipped 0; on-set: nothing 31
+        last distance/limit: TI 1.083/0.156  TM 1.259/0.179  TR 0.844/0.102  TP 0.498/0.072
+pass  100 %  Flat hand, nothing touching  frames 30, skipped 0; on-set: nothing 30
+        last distance/limit: TI 1.259/0.156  TM 1.445/0.179  TR 1.103/0.102  TP 1.161/0.072
+
+== Errors and events ==
+errors: 0
+event counts: calibration 1, run end 1, run start 1, self-test end 1, self-test start 1, sensor state 6
+      20.0 s  f1001   calibration: {'kind': 'guided-still', 'bad': [], 'n': [873, 835, 869, 874, 875, 852]}
+      20.1 s  f1006   sensor state: {'sensor': 'HAND', 'from': None, 'to': 'ok'}
+      20.1 s  f1006   sensor state: {'sensor': 'THUMB', 'from': None, 'to': 'ok'}
+      20.1 s  f1006   sensor state: {'sensor': 'INDEX', 'from': None, 'to': 'ok'}
+      20.1 s  f1006   sensor state: {'sensor': 'MIDDLE', 'from': None, 'to': 'ok'}
+      20.1 s  f1006   sensor state: {'sensor': 'RING', 'from': None, 'to': 'ok'}
+      20.1 s  f1006   sensor state: {'sensor': 'PINKY', 'from': None, 'to': 'ok'}
+     277.1 s  f13834  run end: {'status': 'complete'}
+
+== What looks wrong, most serious first ==
+1. self-test failed: Touch thumb and index, Touch thumb and middle, Touch thumb and ring, Touch thumb and pinky
+2. hand IMU sits tipped 16.5599 deg
+3. TP ring: weak (radius 0.07, limited by NEARTP)
+4. TP straight: weak (radius 0.07, limited by NEARTP)
+5. thumb offset over 2.5 for TR straight (about a finger length: check that hold)
+6. hand mount angle was never checked (no whole-hand turn with straight fingers)
