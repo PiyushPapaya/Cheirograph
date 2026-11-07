@@ -49,3 +49,27 @@ Re-seat the glove and change hand position between sessions. Variety between ses
 1. Rename the exports and move them into `ml/dataset/`.
 2. Run `python tools/check_dataset.py ml/dataset/`. Fix or re-record anything it flags. Never hand-edit a sample file.
 3. Log the session in DOCUMENTATION.md: letters, reps, anything odd.
+
+## Touch-pose test set
+
+Status: planned (2026-11-07). Nothing is recorded.
+
+Why: the glove has no contact sensing. It measures the orientation of six segments, so "ring finger touches thumb" is never measured, only inferred from the pose. The classifier does not need the 3D fingertips to touch in the dashboard. It needs each pose to give repeatable, distinct readings. These poses test exactly that. Whether touching and nearly touching look different in the data is unverified until this set is recorded.
+
+Prerequisite: the thumb curl fix is confirmed visually on the glove (2026-11-07).
+
+Poses (14), names from `tools/pose_labels.py`. 10 reps each, fully release the hand between reps. 2 sessions, re-seat the glove between sessions. Run Batch Capture after Noise Check says GO. That is 140 reps per session. The dashboard pose list and coverage cells (goal 20) use the same names.
+
+| Group | Poses |
+|---|---|
+| References | `FLAT`, `FISTOUT` (fist, thumb outside), `FISTIN` (fist, thumb tucked), `THUMBOUT` (thumb out sideways) |
+| Thumb touches | `TI`, `TM`, `TR`, `TP` (thumb to index, middle, ring, pinky tip) |
+| Combinations | `OKRING` (thumb and index ring, others straight), `ROCK` (thumb on middle and ring, index and pinky straight), `TRSTRAIGHT` (thumb on ring only, others straight), `TRP` (thumb on ring and pinky) |
+| Near misses | `NEARTI`, `NEARTR` (thumb about 1 cm away, must read as not touching) |
+
+Files holding several poses are named `handrig_batch_POSES_<session>_<ts>.csv`. Batch Capture and `check_dataset.py` accept these non-letter labels now (synthetic data only, not yet with a real export). Check with `python tools/check_dataset.py ml/dataset/ --goal-reps 20 --goal-sessions 2`.
+
+After recording, in order:
+1. Run `train_touch.py` (see [10-touch-detection](../10-touch-detection/PLAN.md)) and `train_baseline.py`, both leave-one-session-out. Read the confusion between poses, especially touch vs near miss.
+2. If the 3D view matters, fit finger lengths, thumb base and the joint split, using the touch poses as known constraints. This is the open decision [guided functional calibration](../DECISIONS.md#open-guided-functional-calibration).
+3. Only if touch vs near miss matters and the data cannot separate them: add real contact sensing (conductive pads on the fingertips, read by spare XIAO pins). Hardware option, not started. See [real contact sensing vs inferred touch](../DECISIONS.md#open-real-contact-sensing-vs-inferred-touch).

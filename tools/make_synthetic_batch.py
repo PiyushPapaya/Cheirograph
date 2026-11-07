@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 
 from batch_io import EXPECTED_HEADER
+from pose_labels import NEAR_MISS, POSES
 
 # Curl in degrees for (thumb, index, middle, ring, pinky), plus index/middle
 # spread. 0 = straight, ~140 = fully curled at the middle phalanx.
@@ -53,7 +54,37 @@ LETTERS = {
     "Y": ([0, 140, 140, 140, 0], 0, 0),
 }
 
+# Touch poses (--poses): same layout as LETTERS. Each touch pose bends the thumb
+# to its own angle and curls the touched finger toward it. NEAR* poses reuse a
+# touching pose's values with the thumb 12 degrees short, so the tip is about
+# 1 cm away: close, but separable.
+POSE_SHAPES = {
+    #                 T    I    M    R    P    spread_I spread_M
+    "FLAT":       ([0, 0, 0, 0, 0], 0, 0),
+    "FISTOUT":    ([20, 140, 140, 140, 140], 0, 0),
+    "FISTIN":     ([120, 140, 140, 140, 140], 0, 0),
+    "THUMBOUT":   ([0, 140, 140, 140, 140], 0, 8),
+    "TI":         ([40, 70, 0, 0, 0], 0, 0),
+    "TM":         ([60, 0, 70, 0, 0], 0, 0),
+    "TR":         ([80, 0, 0, 70, 0], 0, 0),
+    "TP":         ([100, 0, 0, 0, 70], 0, 0),
+    "OKRING":     ([45, 80, 0, 0, 0], 0, 0),
+    "ROCK":       ([70, 0, 70, 70, 0], 0, 0),
+    "TRSTRAIGHT": ([85, 0, 0, 80, 0], 0, 0),
+    "TRP":        ([90, 0, 0, 70, 70], 0, 0),
+}
+for _near, _src in (("NEARTI", "TI"), ("NEARTR", "TR")):
+    _c, _si, _sm = POSE_SHAPES[_src]
+    POSE_SHAPES[_near] = ([_c[0] - 12] + _c[1:], _si, _sm)
+assert set(POSE_SHAPES) == set(POSES) and set(NEAR_MISS) <= set(POSE_SHAPES)
+
 THUMB_REST_DEG = -40      # thumb points forward and out toward -X when "straight"
+
+
+HEADER_LINES = ["# SYNTHETIC test data from tools/make_synthetic_batch.py, NOT a glove capture",
+                "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
+                "# q* = hand-relative orientation conj(q_hand)*q_finger (viewer frame, bias-corrected) "
+                "at capture time, order (w,x,y,z), sign pinned to w>=0."]
 
 
 def q_axis_angle(axis, deg):
@@ -97,8 +128,8 @@ def pin(q):
     return q if q[0] >= 0 else -q
 
 
-def make_rep(rng, letter, sess):
-    curls, spread_i, spread_m = LETTERS[letter]
+def make_rep(rng, letter, sess, shapes=LETTERS):
+    curls, spread_i, spread_m = shapes[letter]
     spreads = [0, spread_i, spread_m, 0, 0]
     q_hand = random_tilt(rng, 25)
     up = np.array([0.0, 1.0, 0.0])     # an accelerometer at rest reads +1 g pointing UP
@@ -131,8 +162,18 @@ def main():
     ap.add_argument("--reps", type=int, default=30, help="reps per letter per session")
     ap.add_argument("--drift-deg", type=float, default=10.0,
                     help="std of the per-session, per-finger yaw error in degrees (0 = perfect filter)")
+    ap.add_argument("--poses", action="store_true",
+                    help="write one handrig_batch_POSES_<sess>_<ts>.csv per session with every "
+                         "touch pose (tools/pose_labels.py) instead of the letter files")
+    ap.add_argument("--curl-offset-sd", type=float, default=6.0,
+                    help="per-session curl offset in degrees, what re-seating the glove does")
+    ap.add_argument("--near-deg", type=float, default=12.0,
+                    help="how far NEAR* poses sit from their touching pose, thumb curl in degrees")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    for near, src in (("NEARTI", "TI"), ("NEARTR", "TR")):
+        c, si, sm = POSE_SHAPES[src]
+        POSE_SHAPES[near] = ([c[0] - args.near_deg] + c[1:], si, sm)
 
     rng = np.random.default_rng(args.seed)
     out = Path(args.out)
@@ -142,8 +183,21 @@ def main():
     for s in range(1, args.sessions + 1):
         # Things that change when the glove is taken off and put back on.
         sess = {"yaw_drift": rng.normal(0, args.drift_deg, 5) if args.drift_deg else np.zeros(5),
-                "curl_offset": rng.normal(0, 6, 5),
+                "curl_offset": rng.normal(0, args.curl_offset_sd, 5),
                 "gyro_bias": rng.normal(0, 1.5, (6, 3))}
+        if args.poses:
+            lines = [HEADER_LINES[0], HEADER_LINES[1], HEADER_LINES[2], ",".join(EXPECTED_HEADER)]
+            for label in POSE_SHAPES:
+                for rep in range(1, args.reps + 1):
+                    raw, quat = make_rep(rng, label, sess, POSE_SHAPES)
+                    row = [label, str(rep), str(ts)]
+                    row += [f"{v:.5f}" for v in raw.ravel()]
+                    row += [f"{v:.6f}" for v in quat.ravel()]
+                    lines.append(",".join(row))
+                    ts += 1500
+            path = out / f"handrig_batch_POSES_{s:02d}_{ts}.csv"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            continue
         for letter in args.letters.upper():
             lines = ["# SYNTHETIC test data from tools/make_synthetic_batch.py, NOT a glove capture",
                      "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
@@ -159,7 +213,8 @@ def main():
                 ts += 1500
             path = out / f"handrig_batch_{letter}_{s:02d}_{ts}.csv"
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"wrote {args.sessions * len(args.letters)} files to {out}")
+    n_files = args.sessions * (1 if args.poses else len(args.letters))
+    print(f"wrote {n_files} files to {out}")
 
 
 if __name__ == "__main__":

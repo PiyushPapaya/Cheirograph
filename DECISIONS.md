@@ -14,11 +14,22 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Finger-vs-hand relative formula](#open-finger-vs-hand-relative-formula) | Fusion |
 | open | [BLE throughput if the central refuses the link requests](#open-ble-throughput-if-the-central-refuses-the-link-requests) | BLE |
 | open | [Guided functional calibration](#open-guided-functional-calibration) | Calibration |
+| open | [Real contact sensing vs inferred touch](#open-real-contact-sensing-vs-inferred-touch) | Hardware |
+| open | [SPREAD reads 25 deg bent](#open-spread-reads-25-deg-bent) | Calibration |
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-11-07 | [Learned thumb base movement](#2026-11-07--learned-thumb-base-movement) | Calibration |
+| 2026-11-07 | [Finger roll from the fist hold](#2026-11-07--finger-roll-from-the-fist-hold) | Calibration |
+| 2026-11-07 | [Stillness gate removed from guided holds](#2026-11-07--stillness-gate-removed-from-guided-holds) | Calibration |
+| 2026-11-07 | [Contact correction as a display-only cap](#2026-11-07--contact-correction-as-a-display-only-cap) | UI |
+| 2026-11-07 | [Fitted hand with a rejection rule](#2026-11-07--fitted-hand-with-a-rejection-rule) (superseded) | Calibration |
+| 2026-11-07 | [Three finger segments, joint shares guessed](#2026-11-07--three-finger-segments-joint-shares-guessed) | UI |
+| 2026-11-07 | [Touch labels derived from the pose name, no new CSV column](#2026-11-07--touch-labels-derived-from-the-pose-name-no-new-csv-column) | Data |
+| 2026-11-07 | [Session templates as the live touch detector](#2026-11-07--session-templates-as-the-live-touch-detector) | Fusion |
 | 2026-11-07 | [Small committed GIF and mp4 for README video](#2026-11-07--small-committed-gif-and-mp4-for-readme-video) | Docs |
-| 2026-11-07 | [Thumb bend measured as twist about a measured axis](#2026-11-07--thumb-bend-measured-as-twist-about-a-measured-axis) | Fusion |
+| 2026-11-07 | [Thumb rotation split over base and tip joint](#2026-11-07--thumb-rotation-split-over-base-and-tip-joint) | Fusion |
+| 2026-11-07 | [Thumb bend measured as twist about a measured axis](#2026-11-07--thumb-bend-measured-as-twist-about-a-measured-axis) (superseded) | Fusion |
 | 2026-11-07 | [Thumb anchored below the palm plane](#2026-11-07--thumb-anchored-below-the-palm-plane) | UI |
 | 2026-10-31 | [Hand IMU tilt measured at calibration, hand-axes picker removed](#2026-10-31--hand-imu-tilt-measured-at-calibration-hand-axes-picker-removed) | Calibration |
 | 2026-10-31 | [Hand IMU mount angle learned live from the gyros](#2026-10-31--hand-imu-mount-angle-learned-live-from-the-gyros) | Calibration |
@@ -71,13 +82,23 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 ## Open decisions
 
+### Open: batch quality gate and the pinky zero-g offset
+
+**Options:** (a) leave the `tiltErr` limit at 2 degrees. (b) Correct the pinky offset before the gate sees it. (c) Loosen the limit for the pinky only.
+
+**Leaning:** (a) until there is real batch data.
+
+**Why it's open:** the pinky has a zero-g offset of about (0.250, 0.190, -0.165) g. If it keeps `tiltErr` above 2 degrees, the gate could reject every rep. This is a tuning risk found in the dashboard audit, unverified: the gate logic was read and found correct, but it has not been run on real pinky data. Decide after real batch data.
+
 ### Open: auto re-zero erasing small thumb poses
 
-**Options:** (a) leave `HEAL_POSE_DEG` 8 as is. (b) Gate the thumb: no auto re-zero while the thumb's flex is beyond some angle. (c) Gate on the thumb's own motion history.
+**Options:** (a) leave `HEAL_POSE_DEG` 8 as is. (b) Gate the thumb: no auto re-zero while the thumb's total rotation is beyond some angle. (c) Gate on the thumb's own motion history.
 
 **Leaning:** (a) until there is a clean 50 Hz CSV.
 
-**Why it's open:** the thumb's main axis is 19 to 27 deg off vertical, so about 18 to 25 deg of thumb motion still looks like "home" to the heading check. A held thumb pose could slide to zero after about 1 s still, on a flat hand only. This is calculated, not measured on the glove. A gate (b) would also stop re-zero from healing real thumb drift like T4 (53.7 deg off before healing, 13.9 after). Decide after the TH3 capture.
+**Update 2026-11-07:** auto re-zero is now blocked while a touch is detected, so a held straight touch survives. The thumb-only case in this item is unchanged.
+
+**Why it's open:** the thumb's main axis (from the low-rate captures, before the later correction) is 19 to 27 deg off vertical, so about 18 to 25 deg of thumb motion still looks like "home" to the heading check. The thumb moves on two axes (see the split decision), so this figure is rough. A held thumb pose could slide to zero after about 1 s still, on a flat hand only. This is calculated, not measured on the glove. A gate (b) would also stop re-zero from healing real thumb drift like T4 (53.7 deg off before healing, 13.9 after). Decide after the TH3 capture.
 
 ### Open: per-finger mount correction
 
@@ -85,15 +106,17 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Leaning:** (a).
 
+**Update 2026-11-07, first real calibration export:** the fist hold shows the finger sensors are rolled by 11, 27, 29 and 34 deg (index to pinky), the same pattern as the T5 gyro fit (10, 17, 21, 30 deg). For display this is now solved from the fist hold, see [finger roll](#2026-11-07--finger-roll-from-the-fist-hold). Detection, exports and the dataset still use the raw orientation, so for ML features the question stays open. Whether the roll is stable between sessions is unverified (one export).
+
 **Why it's open:** on the 2026-10-31 T5 replay, gravity / gyro mounts gave thumb p90 12.2 / 12.7 (vs 14.3 without), index 17.4 / 15.3 (vs 20.3), middle 16.9 / 16.9 (vs 20.3), ring 17.8 / 17.6 (vs 21.7), pinky 29.2 / 27.9 (vs 32.0). The gain is a few degrees on a low-rate, clipped capture, so not a clear win. Re-test on a clean capture.
 
 ### Open: thumb-aware ML features
 
-**Options:** (a) keep the `curl` feature set (d_y only). (b) Use `dir` or `quat` for the thumb. (c) Add a thumb flex feature along the measured axis.
+**Options:** (a) keep the `curl` feature set (d_y only). (b) Use `dir` or `quat` for the thumb. (c) Add a thumb total-rotation feature (`2 acos|w|`, no direction, like the dashboard readout) or a two-axis one. The single measured flex axis was dropped on 2026-11-07.
 
-**Leaning:** (c), unverified.
+**Leaning:** (b) or (c), unverified.
 
-**Why it's open:** `curl` is nearly blind to the thumb's main motion, which is about the measured axis. `dir` and `quat` carry the thumb's yaw drift, because gravity cannot correct that axis when the hand is flat. Letters that differ mainly by thumb position depend on this. Needs real Phase 8 data from several sessions to compare.
+**Why it's open:** `curl` is nearly blind to the thumb's motion, which is mostly sideways swing plus some downward bend. `dir` and `quat` carry the thumb's yaw drift, because gravity cannot correct that axis when the hand is flat. Letters that differ mainly by thumb position depend on this. Needs real Phase 8 data from several sessions to compare.
 
 ### Open: finger-vs-hand relative formula
 
@@ -124,6 +147,32 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Why it's open:** it cannot fix gyro clipping, and it cannot stop yaw drift during use. Calibrating against clipped data would bake the error in. The cost is more dashboard UI work, plus a routine of about a minute that has to be done each session. The gain is that axes and signs are measured instead of picked by hand. Unverified until tried.
 
+**Update 2026-11-07, 3D hand fit built:** fitting the 3D hand is now done in simulation (`fitHand`, see [fitted hand](#2026-11-07--fitted-hand-with-a-rejection-rule)). Guided calibration grew to 20 s still plus 16 steps of about 15 s (hand turn, fist, spread, near misses, rock, ring and straight for each finger), about 4.5 minutes. Unverified on the glove. The joint split is still a guess.
+
+**Update 2026-11-07, touch-template stage built:** the guided calibration now has a touch-template stage (20 s still, then 8 holds of 10 s: index, middle, ring, pinky, each as ring and as straight). It does not fit the 3D hand. It only stores each hold as a template of the session, see [session templates](#2026-11-07--session-templates-as-the-live-touch-detector). Fitting finger lengths, thumb base and the joint split from the touch constraints is still open. Not tried on the glove (unverified).
+
+**Update 2026-11-07, first real export and third pass:** the first real guided run (13 of 15 holds kept) rejected the fitted hand (gap 0.83), so fitting finger lengths and thumb base from the touch constraints is dropped, see [learned thumb base movement](#2026-11-07--learned-thumb-base-movement). The guided run now has 17 steps (a final flat check added), about 4.6 minutes, with no stillness gate. Still open: the new capture has not run on the glove, Self-test has never run, and guided holds are not in the Batch Capture dataset.
+
+**Added 2026-11-07, touch-pose constraints:** the touch poses (thumb to each fingertip, see "Touch-pose test set" in [ml/future-data-collection-plan.md](ml/future-data-collection-plan.md)) are known geometric constraints: at that moment the thumb tip and the finger tip are at the same point. They could be used to fit finger lengths, the thumb base position and the base/tip joint split, instead of using generic hand proportions. The 3D model today uses generic proportions. On that model the closest fingertip distance to the thumb base is index 0.68, middle 1.13, ring 1.66 (only at about 130 deg curl) and pinky 2.19 units, against a thumb reach of 1.8 units, so the pinky cannot reach. That is a calculation on model geometry, not glove data. Record the touch poses first, then decide.
+
+### Open: real contact sensing vs inferred touch
+
+**Options:** (a) IMU pose only: touch is inferred from the six segment orientations, as now. (b) Fingertip pads: conductive pads on the fingertips, read by spare XIAO pins.
+
+**Leaning:** (a) until the near-miss data says otherwise.
+
+**Update 2026-11-07:** (a) is now built twice: a trained model per pair and session templates (see the two decisions below). Both detect "this pose matches a touch pose", not contact. Whether touch and a 1 cm near miss separate on the glove is still unverified. The synthetic gate failed when sessions had offsets bigger than the near-miss gap, which is a warning that the answer may be no. Pads stay on the table until real near-miss data is in.
+
+**Why it's open:** the glove never measures contact. Touching and nearly touching (about 1 cm apart) may look identical in the IMU data, but this is unverified until the touch-pose set is recorded and `train_baseline.py` shows how touch and near-miss poses get confused. The classifier mostly needs repeatable, distinct poses, not true contact. Cost of (b): more wires on a glove that already has wire-fatigue risk, new firmware, and a BLE frame change that has to go through the dashboard parser and `check_dataset.py` together. Hardware option, not started.
+
+### Open: SPREAD reads 25 deg bent
+
+**Options:** (a) drift in the hand-relative pose by that point in the run. (b) The finger roll or sensor mount makes sideways spread look like bend. (c) The spread was not really flat or open in that hold.
+
+**Leaning:** none. Cause unknown (unverified).
+
+**Why it's open:** in the first real export (`10-touch-detection/calibration_2026-11-07.json`) SPREAD read about 25 deg bent on all fingers. The new FLATCHECK stage at the end of the guided run repeats a flat hand. If it also reads off, that points at drift (a). If it reads flat, look at (b) and (c). Needs the rerun.
+
 ### Open: hardware watchdog for a stuck SCL line
 
 **Options:** (a) leave it. A stuck SCL hangs the glove until someone power-cycles it. (b) Enable the nRF52 hardware watchdog so a hung loop reboots the chip.
@@ -148,6 +197,90 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 ## Decisions
 
+### 2026-11-07 | Learned thumb base movement
+
+**Options:** (a) keep `fitHand` (rigid lengths, fixed thumb base). (b) Loosen it: wider bounds, plus a free joint share. (c) Let the thumb base move: each touch hold stores the thumb base offset that puts the tip on the fingertip, and live poses blend those offsets.
+
+**Choice:** (c). Blend weight is a Gaussian on whole-hand similarity (sigma 0.18). Non-touch poses anchor at zero offset. Near misses use their pair's ring offset.
+
+**Why:** the first real calibration export rejected the fit (gap 0.83). Offline: current bounds 0.88, wide bounds 0.59, wide plus a free joint share 0.51 (per-hold up to 0.92). So (a) and (b) fail. The thumb sensor turned only 29 to 45 deg for every touch, because the thumb's base joint travels and a sensor on the tip cannot see it. Replay on the real holds: mean tip gap 1.84 default, 0.11 with the learned thumb, 0.009 drawn. Held-out rows (templates from the first half of each hold) 13 of 13 correct (`tools/verify_real_calibration.mjs`).
+
+**Cost:** this is pose-space interpolation, not a model of the thumb. The gaps are small partly by construction, because the offsets come from the same holds. Poses between holds are blended and unmeasured. One session, one person. Not tried live on the glove (unverified).
+
+### 2026-11-07 | Finger roll from the fist hold
+
+**Options:** (a) no correction, as before. (b) Gravity mount per finger. (c) Gyro mount per finger. (d) Take each finger's roll from the fist hold and correct the drawn fingers only.
+
+**Choice:** (d). `rollFromFist` and `unrollQs`. Display only: detection and exports keep the raw orientation.
+
+**Why:** the first real fist hold gave rolls of 11, 27, 29 and 34 deg (index to pinky), the same pattern as the T5 gyro fit (10, 17, 21, 30 deg). Two separate sources agree, and the fist is already in the guided run.
+
+**Cost:** it assumes all fingers really curl about the same axis in a fist. Detection and the dataset do not get the correction, so the open item on [per-finger mount correction](#open-per-finger-mount-correction) stays open for ML. Needs a fist at every calibration. Unverified live.
+
+### 2026-11-07 | Stillness gate removed from guided holds
+
+**Options:** (a) keep the gate (hand, thumb and finger still, 30 samples, spread <= 0.2). (b) Loosen the thresholds. (c) Remove the gate: use the last 7 s of each 10 s hold and let spread <= 0.1 decide.
+
+**Choice:** (c).
+
+**Why:** in the first real export only 35 to 82 of about 100 samples were kept per hold and 2 of 15 holds were missed (NEARTM, NEARTP), while the spread was only 0.007 to 0.017. The gate rejected good holds. Spread already measures what matters. Skipping the first 3 s drops the move-into-position part.
+
+**Cost:** a hold with a slow drift or a pause could pass, which the old gate would have caught. The stricter spread limit (0.1, was 0.2) and the replay check after each run are the safeguards. Not tried on the glove (unverified).
+
+### 2026-11-07 | Contact correction as a display-only cap
+
+**Options:** (a) leave the 3D model alone: detection only changes a label. (b) While a touch is detected, turn the touching digits toward the point between the tips until they meet, with no limit. (c) Same as (b), capped at 40 deg per digit, eased in and out, display only.
+
+**Choice:** (c). 8 passes, 40 deg cap, eased through the same group that handles rest bend.
+
+**Why:** the user saw touches felt on the glove but never drawn on the model. An uncapped pull (b) would show contact whatever the sensors said, so a wrong detection would look like a right one. The cap keeps the picture tied to the measured pose. Nothing feeds back into fusion, features or the dataset. Corrections release to 0 deg when the touch ends (simulated page run).
+
+**Cost:** on a straight touch the thumb can only reach a thin shell of tip positions (one sensor couples its joints), so a gap can remain. In the run with the fit rejected it was up to about 0.6. Not tried on the glove (unverified).
+
+### 2026-11-07 | Fitted hand with a rejection rule
+
+**Superseded 2026-11-07 (later) by [learned thumb base movement](#2026-11-07--learned-thumb-base-movement).** The first real export rejected the fit (gap 0.83), and exploring it offline showed no rigid length fit can work. `fitHand`, `solveN` and the saved hand are deleted. The text below is kept as the record of what was tried.
+
+**Options:** (a) keep the generic hand. (b) Fit the hand to the user from the touch holds and trust any result. (c) Fit, but reject the result when the holds do not agree.
+
+**Choice:** (c). `fitHand`: Levenberg-Marquardt over thumb base, thumb length and 4 finger scales. Each touch hold is a constraint that two tips are in the same place. Bounds: base +-0.5, length 2.2 to 3.1, scale 0.85 to 1.2. It starts from the default each session. If the mean gap stays over 0.35 the fit is rejected and the default hand is used. Saved in `localStorage`.
+
+**Why:** on a simulated different hand the old model left ring-pose tips 0.64 to 0.73 apart (finger width about 0.38). That simulation was rough. With a second parameter set of the same joint model, 7 of 8 holds real and 2 deg noise, the gap went from 0.46 to 0.03 (0.001 with contact correction). Testing the full run showed the cost of no rejection: a fit dragged the thumb base onto the palm on poses that were not real touches. Tighter bounds and the rejection rule came from that, tests first.
+
+**Cost:** sloppy holds give the default hand, not a better one. The numbers show the solver works, not that the joint model matches a real hand. Updates the open item "Guided functional calibration": fitting the 3D hand is done in simulation, unverified on the glove.
+
+### 2026-11-07 | Three finger segments, joint shares guessed
+
+**Options:** (a) keep 2 segments and a cosmetic 40 % tip bend. (b) 3 segments with the sensor's rotation split over the joints.
+
+**Choice:** (b). Segment lengths 0.45 / 0.30 / 0.25. Joint shares are q^0.5, q, q^1.35 (knuckle, middle joint, tip).
+
+**Why:** the sensor sits on the middle phalanx, but its whole rotation was applied at the knuckle, so fingers bent wrongly and tips landed in the wrong place. Three segments let a touch use real geometry.
+
+**Cost:** only the sensor's own segment is measured. The shares are guesses, and the fit and contact correction partly hide a wrong split. Tune from the exported holds. Not tried on the glove (unverified).
+
+Related: the thumb was lengthened to len 2.6, z -1.1 (was the phalanges' length). The thumb pivots near the wrist, so with the old length it reached the index only at about 100 deg of curl and a straight touch could not be drawn. A 2.6 palm is about 10 cm, unverified against the user's hand. This updates the anchor in "Thumb anchored below the palm plane" (anchor idea stays, length and depth change).
+
+### 2026-11-07 | Touch labels derived from the pose name, no new CSV column
+
+**Options:** (a) add a touch column to the batch CSV. (b) One lookup table from pose name to touch set (`tools/pose_labels.py`), applied when training. (c) Label touches by hand after recording.
+
+**Choice:** (b). 14 poses, four pairs (thumb to index, middle, ring, pinky). The same pose name is used by the dashboard list, `make_synthetic_batch.py`, `check_dataset.py` and `train_touch.py`. `train_touch.py` skips rows whose label is not a pose and says how many.
+
+**Why:** the CSV format stays fixed, so no parser changes and old files stay valid. One table is one place to fix a wrong label. A new touch set means a new pose name, not a format change. (c) is slow and error-prone.
+
+**Cost:** the label is only as good as the pose I actually held. A rep where the thumb slipped is still labelled as touching. Pose names are limited to 12 characters by the dashboard label field. Finger-to-finger contact is not covered. Synthetic checks only, not recorded on the glove (unverified).
+
+### 2026-11-07 | Session templates as the live touch detector
+
+**Options:** (a) only a trained model per pair (logistic regression on the 15 `dir` numbers), loaded as JSON. (b) Session templates: in guided calibration, hold each touch pose and keep it as a template of this session. A pair touches when the thumb and that finger are near one of its templates. (c) Both, with templates first.
+
+**Choice:** (c). Readout order: session templates, then the loaded model, then the old thumb-index rule. The model stays for the dataset path. Templates are the live path.
+
+**Why:** the synthetic leave-one-session-out runs showed that session-to-session offset, not the model, limits the trained detector. Recall / near-miss false alarm for the linear model: no offset 1.00 / 0.00 on all pairs; curl offset sd 6 deg with a 12 deg near miss, TI 0.90 / 0.28 and TR 0.76 / 0.25; plus 10 deg yaw drift, TI 0.95 / 0.53. kNN was not better on near misses (TI 1.00 / 0.15 and TR 1.00 / 0.12 even with no offset). A template and the live pose share the session offset, so it cancels. On synthetic numbers a 15 deg offset is still detected by a same-session template and defeats a template from another session. The gate in `train_touch.py` was not weakened to pass.
+
+**Cost:** about 140 s of guided calibration each session. The radius rule (max of 0.3 and 3 x spread, capped at half the distance to the flat hand) is a guess. Straight touches can sit close to flat and be weak. Templates age with sideways drift and live in memory only. The guided holds are not saved to the dataset. Only the pose is matched, not contact. All synthetic or simulated-page checks, nothing on the glove (unverified).
+
 ### 2026-11-07 | Small committed GIF and mp4 for README video
 
 **Options:** (a) drag an mp4 into the README in GitHub's web editor. GitHub hosts it, free limit 10 MB per file. (b) Commit a short GIF to `docs/media/` and embed it. (c) Commit a small mp4 and link it. (d) No video, images only. (e) A combination of (b) and (c).
@@ -159,9 +292,21 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 **Cost:** about 5.5 MB (GIF, mp4 and cover together) goes into git history for good, and deleting the files later does not shrink the history. The GIF is low resolution and only 10 fps, so it looks choppy. Only one test is shown. How it renders on GitHub is unverified until pushed. The 163° in the hook is read off the dashboard by eye, and the after run is video only, not re-measured.
 
 
+### 2026-11-07 | Thumb rotation split over base and tip joint
+
+**Options:** (a) apply the tip sensor's whole rotation at the base, plus a cosmetic extra tip bend (the model before this). (b) Single measured flex axis (the entry below). (c) Split the sensor's rotation over the two joints: base gets `q^f`, tip gets `q^(1-f)`, so the product is `q`.
+
+**Choice:** (c), with `THUMB_BASE_FRAC = 0.5`. Supersedes "Thumb bend measured as twist about a measured axis". `THUMB_FLEX_AXIS` and `thumbFlexRad` are removed. The thumb bend readout is the total rotation from rest, `2 acos|w|`.
+
+**Why:** the user said the thumb sensor is already at the tip, so (a) sent the whole thumb where the tip points (the "points straight down" look). Per-capture axis energy share (X / Y / Z): T1 0.16 / 0.74 / 0.10, T2 0.12 / 0.65 / 0.23, T3 0.07 / 0.90 / 0.03, T4 0.05 / 0.78 / 0.17, T6 0.62 / 0.28 / 0.09. T1 to T4 are mostly sideways swing, T6 is mostly downward bend about X. One axis cannot cover both, which kills (b). With (c) the tip segment ends exactly where the sensor points, about any axis. `tools/verify_thumb_rig.mjs`: 0.0 % inside the palm for swing up to 90 deg and tip bend up to 90 deg. Browser check with an injected 90 deg bend: tip direction (0, -1, 0), bend reads 90.0.
+
+**Cost:** `f = 0.5` is a guess at how the two joints share the bend. Only the tip direction is measured, so the base and the mid joint position are not. The readout has no direction, so an outward swing also reads as bend, and the curl sign control does not apply to the thumb. Not tried on the glove (unverified).
+
 ### 2026-11-07 | Thumb bend measured as twist about a measured axis
 
-**Options:** (a) keep pitch about X for the thumb, like the fingers. (b) Measure the thumb's bend axis from its gyro and take the twist of `q_rel` about it. (c) Learn the axis live.
+**Superseded later the same day by "Thumb rotation split over base and tip joint" (above). Kept as written to show the failure.** The single axis was incomplete: the thumb moves on two axes. Its premise (sensor on the proximal phalanx, tip cosmetic) was also wrong per the user, and I took it from the docs without checking the glove.
+
+**Options: (a) keep pitch about X for the thumb, like the fingers. (b) Measure the thumb's bend axis from its gyro and take the twist of `q_rel` about it. (c) Learn the axis live.
 
 **Choice:** (b). `THUMB_FLEX_AXIS` is the normalised mean of the T3 and T4 gyro PCA axes, and `thumbFlexRad(q) = 2 atan2(v.n, w)`, wrapped. It drives the curl readout and the tip bend.
 
@@ -177,7 +322,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Why:** the 2026-08-08 check only covered the rest pose (7.5 % buried). Walking the axis in 200 steps, an inward swing about Y buried 65.0 % of the thumb at 15 deg, 77.5 % at 30, 82.5 % at 45 and 86 % at 90. Under the palm it is 0.0 % buried at 0, 15, 30 and 45 deg. The default camera also moved to the thumb's side (camYaw -0.7), because it looked from +X while the left thumb is at -X. `tools/verify_thumb_rig.mjs` checks this.
 
-**Cost:** the anchor is a guess from the rest direction (6.5 deg outward), and the thumb now looks tucked under the palm, not beside it. One IMU on the proximal phalanx means the tip joint is cosmetic. The thumb-index gesture rule thresholds were guesses and the anchor moved, so they are unverified.
+**Cost:** the anchor is a guess from the rest direction (6.5 deg outward), and the thumb now looks tucked under the palm, not beside it. (Later correction: the sensor is on the tip segment per the user, so the tip joint is not purely cosmetic; see the split decision.) The thumb-index gesture rule thresholds were guesses and the anchor moved, so they are unverified.
 
 ### 2026-10-31 | Hand IMU tilt measured at calibration, hand-axes picker removed
 
@@ -468,6 +613,8 @@ The cost is a visible 30–250 ms rate dip during a live re-init. I kept it visi
 **Options:** fingertip, base, or middle phalanx.
 
 **Choice:** middle phalanx. The thumb uses its proximal phalanx.
+
+*Note, 2026-11-07:* the thumb sensor is on the tip segment now, per the user. When it moved is unknown (unverified). The July photo does not show the thumb clearly. The text above is the original plan and is left as written. See `hardware/WIRING.md`.
 
 **Why:** past the middle knuckle, one sensor sees both the base and middle knuckle bending, which is the strongest single curl signal. The fingertip sees the same thing but needs a longer wire and gets in the way of touch. The base misses most of the curl.
 

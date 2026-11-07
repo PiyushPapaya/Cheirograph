@@ -24,6 +24,10 @@ Roadmap: [GENERAL_PLAN.md](GENERAL_PLAN.md). Design choices: [DECISIONS.md](DECI
 | v5 firmware (runtime fault recovery) | **v5 plus the self-healing dashboard works on the glove (user-observed, 2026-10-31). Motion tests not re-run, no new numbers.** Dashboard also learns accel offsets live (synthetic test only). Flashed 2026-10-31. Motion tests found gyro clipping, a 17 Hz frame rate and a dashboard calibration bug. Fixes written and compiled (gyro ±2000 °/s, BLE link requests, closed-form calibration settle). Updated v5 flashed: serial shows 50 Hz connected, MTU 527, 15 ms interval. Dashboard RATE and CSV rate not yet confirmed, motion tests not re-run. Dashboard now has self-healing (stillness-based bias tracking, adaptive snap-back, auto re-zero on a flat hand, HEALTH readout): replay on the old captures cut end-of-test finger error to under 5 deg in most tests, not yet tried on the glove. Recovery paths still untested | [09](09-firmware-hardening/) |
 | Thumb rig (dashboard) | Reworked twice on 2026-11-07 (see the correction in that entry). Now: anchor under the palm, tip sensor's rotation split over base and tip joint (`THUMB_BASE_FRAC` 0.5, a guess). Checked offline with `tools/verify_thumb_rig.mjs`. **Not yet tried on the glove (unverified).** The single measured flex axis was dropped | [tools/](tools/) |
 | Thumb tracking | **Dashboard changes made 2026-11-07 (anchor under the palm, rotation split over two joints, readout is total rotation). Not tried on the glove, no clean 50 Hz thumb CSV yet.** Verified only with injected rotations and `tools/verify_thumb_rig.mjs`. The thumb sensor is on the tip segment per the user (not visible in the July photo). | [tools/](tools/), [motion tests](09-firmware-hardening/motion-tests/README.md) |
+| Thumb curl | Works on the glove (user-observed, 2026-11-07, no CSV). The split rotation fix is confirmed visually only | [tools/](tools/) |
+| Touch detection | Built 2026-11-07: pose-to-touch label table, trainer, dashboard readout, guided calibration (now 17 steps, about 4.6 min, no stillness gate) that records per-session touch templates, plus Self-test, coach, live "04 Touch" section and Export calibration (now v3, the black box). **First real export 2026-11-07:** 13 of 15 holds kept, replay detection right on all of them. That run was the old capture. The new capture, flat check and Self-test have not run on the glove (unverified). The trainer's gate failed on first synthetic data, see the 2026-11-07 entry | [10-touch-detection](10-touch-detection/). Dashboard audited the same day, five bugs fixed (see the audit entry). Nothing from the audit has run on the glove (unverified) |
+| Dashboard black box | Export calibration saves raw frames of all six sensors, events, stage marks, holds and self-test as version 3 JSON, even after a stopped or disconnected run. `tools/analyze_touch_calibration.py` reports frozen sensors and pinned gyros. Tested on simulated runs only (`tools/verify_blackbox.mjs`). **Not yet run on the glove (unverified)** | [10-touch-detection](10-touch-detection/) |
+| 3D hand and contact display | `fitHand` was removed after the real hand rejected it (gap 0.83). Now: learned thumb base movement (pose-space interpolation of offsets learned from the touch holds), finger roll from the fist hold, 3-segment fingers, display-only contact correction. Replay of one real session: mean tip gap 1.84 default, 0.11 learned, 0.009 drawn (small partly by construction). **New capture and live drawing not tried on the glove (unverified).** Joint shares are guesses | [10-touch-detection](10-touch-detection/) |
 | Dataset tooling (checker, kNN baseline) | Built, tested on synthetic data only | [tools/](tools/) |
 | Real labelled data, classifier, BLE HID | Not started | |
 
@@ -45,6 +49,32 @@ Pinky accel "25–28 % low" (2026-08-07): explained on 2026-10-31. It is a zero-
 ---
 
 ## Entries
+
+### 2026-11-07 | Phase 8: dashboard audit and black box
+
+**Plan:** end the day with a dashboard that works on the next glove run, and make one run produce everything needed to find what is still wrong. An earlier attempt stopped partway: the recording code was done, but the audit was unfinished and never tested end to end.
+
+**Achieved:**
+- Black box (`DASH_VERSION` "touch-calibration v3 · black box · 2026-11-07"). Export calibration now saves a version 3 JSON with raw frames of all six sensors, the event log, stage marks, session facts, holds, results and the self-test. It works after a stopped or disconnected run. Caps: 20000 frames (6.7 min at 50 Hz) and 3000 events. A 5 minute run is about 3.5 MB (scaled from 1.61 MB measured for 6800 frames). Raw values are rounded to 3 decimals in the file.
+- Report script `tools/analyze_touch_calibration.py`: new `raw_faults` flags a sensor with 50 or more identical frames in a row, and a gyro axis pinned at 240 deg/s or more for 5 or more samples. Each report section now runs on its own, so a partial or damaged file prints what is missing instead of crashing. It still reads the version 1 file.
+- New test `tools/verify_blackbox.mjs`. It runs the page's real export code on simulated 17-stage runs and feeds the result through the Python report. Passing cases: clean, stopped, disconnected, frozen sensor, invalid sensor, frame loss, clipped gyro, buffer full, self-test failure.
+- Audit of the dashboard. Five bugs fixed in `tools/handrig_dashboard.html`:
+  - `onNotify`: a throw in `parseFrame` left the bad frame in `rxBuf`, so every later packet hit it and the stream froze. Now caught, logged with `noteError("frame")`, skipped.
+  - `setTouchModel` was called but never defined (also in the last commit). The touch model file picker always showed "not a valid touch model JSON", and a saved model never reloaded. Added.
+  - `validTouchModel` accepted unknown pair names, which would have made `contactFix` throw in `render()` on every frame. Now rejected.
+  - The 3D loop had no try/catch, so one throw would stop the view for good. Wrapped, reported with `noteError("render")`. I found no real way to trigger this, and its check only inspects the page text.
+  - Coach text from the previous run stayed on screen during a new guided run. Cleared in `startGuided`. No automated check, it needs the DOM.
+- Audited with no bug found: buttons and state conflicts, timers and listeners, disconnect mid-run, bad sensors, left/right model switch, on-screen text, render helpers, batch quality gate logic.
+- Accepted, not fixed (low risk): `setMountTilt` gives NaN if two fingers saw exactly opposite up; Zero stays enabled during batch capture; `rawHist` is not cleared on reconnect; a drop between `startNotifications()` and `onConnected()` would leave `linkUp` true.
+- Verification: all `tools/verify_*.mjs`, `verify_touch_model.py` and `verify_check_dataset.py` exit 0. The three dashboard copies match by md5. The page loads in a real browser with no console errors and the 3D canvas is present.
+
+**Problems:**
+- `verify_touch_js.mjs` broke after the pair name fix. It loaded only the touch section of the page and `PAIR_FINGER` sits outside it. The page itself was fine. The test now loads that constant. With no argument it prints "skipped", because `verify_touch_model.py` supplies its fixture.
+- Limits, all unverified: nothing here has run on the glove. Simulated exports leave replay, rolls and flat check empty, so those report sections have only run on the version 1 file or on missing data. The live frame handler's lost-frame and clip counters were not exercised by the black box test. Self-test has never run on the glove.
+
+**Next:** hard-reload the dashboard, connect, run Guided calibration, run Self-test, Export calibration, then `python tools/analyze_touch_calibration.py <file>`. Compare with the first export (kept holds, SPREAD reading, flat check, rolls, replay). Then record the pose set. Steps are in `10-touch-detection/PLAN.md`.
+
+---
 
 ### 2026-11-07 | Phase 8: README rewrite, thumb rig check
 
@@ -94,9 +124,125 @@ Conclusions:
 
 Plan: a "Touch-pose test set" section in [ml/future-data-collection-plan.md](ml/future-data-collection-plan.md). Planned, nothing recorded. 13 poses (references, thumb to each fingertip, rock pose and two other combinations, two 1 cm near misses), 10 reps each, 2 sessions, 130 reps per session. Prerequisite: confirm the thumb curl fix on the glove. Unverified: whether Batch Capture and `check_dataset.py` accept non-letter labels. After recording: leave-one-session-out with `train_baseline.py`, then optionally fit the 3D model using the touch poses as constraints, and only if the data cannot separate touch from near miss, add fingertip contact pads. Both are in [DECISIONS.md](DECISIONS.md) as open items (guided functional calibration, real contact sensing vs inferred touch).
 
+**Touch detection built (user requests, later 2026-11-07):**
+
+Reports and requests, in order:
+- Thumb curl now works on the glove (user-observed, no CSV). The split rotation fix is confirmed visually only.
+- I want the computer to detect touching, for example thumb and index forming a ring, and I want dataset labels that say which fingers touch, for better recognition and more possible gestures. I asked for a detailed plan, then for it to be implemented.
+- My own idea, also implemented: calibrate in several stages. First still, then touch each finger with the thumb and hold 10 s, once as a ring and once with both digits as straight as possible.
+
+Built (all uncommitted, tools and dashboard only; the three dashboard copies are identical, md5 `ac92366b0d80de339ab76e7c40176d89`). Plan in [10-touch-detection/PLAN.md](10-touch-detection/PLAN.md).
+
+Dataset path:
+- `tools/pose_labels.py`: 14 poses mapped to touch sets over four pairs (TI, TM, TR, TP). The CSV format does not change, the touch labels come from the pose name.
+- Dashboard: pose list on the batch label, pose coverage cells (goal 20 reps).
+- `tools/train_touch.py`: one logistic regression per pair on the 15 `dir` numbers, leave-one-session-out. Prints GATE PASS or GATE FAIL (recall >= 90 %, near-miss false alarms <= 10 %) and exports JSON.
+- Dashboard "touch model" file input with a live readout. `check_dataset.py` accepts `POSES` files. `make_synthetic_batch.py` has `--poses`, `--curl-offset-sd`, `--near-deg`.
+
+Live path (guided calibration, added today, not in the first plan):
+- New button "Guided calibration": 20 s still, then 8 stages (index, middle, ring, pinky, each as a ring and as straight as possible), 5 s to get into position, 10 s hold. About 140 s in total.
+- Samples count only while the hand, thumb and that finger are still. A hold needs 30 samples and a spread of 0.2 or less, otherwise it repeats, up to 3 tries, then it is reported as missed.
+- Each hold becomes a template of this session. A pair touches when the thumb and that finger are near one of its templates. Only those two digits count, so several pairs can be on at once.
+- Radius = max(0.3, 3 x spread), capped at half the distance to the flat hand. Templates under 0.15 are reported as too close to flat. Leaving a touch takes 1.3 x radius, and only when no other touch matches.
+- GESTURE readout order: session templates, then the loaded model, then the old thumb-index rule. `touchStatus` shows the nearest template, its distance and its limit, for tuning.
+- Auto re-zero is blocked during the guided run. Templates are cleared on disconnect and live in memory only.
+
+Findings:
+- The first synthetic run of `train_touch.py` printed GATE FAIL. The implementer stopped instead of weakening the gate. I then checked whether the linear model was the limit, leave-one-session-out on synthetic poses, recall / near-miss false alarm:
+  - No session offset, near miss 30 deg: linear 1.00 / 0.00 on all pairs. kNN: TI 1.00 / 0.15, TR 1.00 / 0.12.
+  - Session curl offset sd 6 deg, near miss 12 deg: linear TI 0.90 / 0.28, TR 0.76 / 0.25.
+  - Plus yaw drift 10 deg, near 12: linear TI 0.95 / 0.53, TR 0.46 / 0.03. Near 30: TI 1.00 / 0.23, TR 0.76 / 0.12.
+  - So the model is not the limit. Session-to-session offset is. Linear beats kNN on near misses. This is synthetic data, a warning and not a glove result.
+- The gate was not changed. `verify_touch_model.py` now checks both ways: clean data must print GATE PASS, and data with offsets bigger than the near-miss gap must print GATE FAIL. Shuffled labels must also fail.
+- The offset finding is why session templates are the better live path: a template and the live pose share the session offset. Verified on synthetic numbers only: a 15 deg offset is still detected by a same-session template and defeats a template from another session.
+- A real bug showed up in the browser run and was fixed test-first: moving from an index touch to a straight middle touch showed both pairs, because hysteresis kept the old one.
+
+Verified: `verify_touch_model.py`, `verify_guided_touch.mjs`, `verify_thumb_rig.mjs`, the batch and noise verify scripts and `verify_check_dataset.py` all exit 0. Real page with simulated sensors and simulated time: 8 of 8 stages, the retry fired on a deliberately moving hold, and the live readout was right for ring TI, ring TR, and thumb on middle and ring (both pairs). Flat, fingers only and fist read no touch.
+
+**Problems:**
+- Nothing is verified on the glove. Model file loading through the real file picker and the saved-model restore were not exercised. The 0.3 radius is a guess. The guided timing was simulated, not run in real time.
+- It detects "this pose matches your touch pose", not contact. Touching and nearly touching may look alike.
+- Straight touches may sit close to a flat hand, so they may be flagged weak.
+- Auto re-zero can still erase a straight touch held on a flat hand after about 1 s, outside the guided run.
+- Sideways drift ages the templates during a session. Rerun guided calibration if detection degrades.
+- Guided holds are not saved to the dataset yet. Batch Capture is still the dataset path.
+
+Decisions logged in [DECISIONS.md](DECISIONS.md): touch labels from the pose name, and session templates as the live detector.
+
+**Touch not drawn, hand fit and self-check (user report, later 2026-11-07):**
+
+Report: on the glove the 3D model does not show the touch when fingers touch, as a ring or straight. I feel the touch, but touch and finger position recognition is not fully realised and I cannot check it. I asked for a deep dive, all flaws listed and fixed, more calibration steps to map out my fingers and hand, and a smart assistant for touch recognition and display accuracy.
+
+Flaws found and fixed (all in `tools/handrig_dashboard.html`, three copies identical, uncommitted):
+1. Touches were never drawn. Detection only changed a label. Added a contact correction: while a touch is detected, the touching digits turn at their base toward the point between the tips (8 passes, capped at 40 deg per digit, eased in and out). Display only.
+2. The hand was generic. Added `fitHand`: Levenberg-Marquardt over thumb base, thumb length and 4 finger scales, using each touch hold as the constraint that two tips are in the same place. Bounds: base +-0.5, length 2.2 to 3.1, scale 0.85 to 1.2. Starts from the default each session. Rejected when the mean gap stays over 0.35. Saved in `localStorage`.
+3. Fingers bent wrongly. A middle-phalanx sensor's rotation was applied at the knuckle in 2 segments with a cosmetic 40 % tip bend. Now 3 real segments (0.45 / 0.30 / 0.25), joint shares q^0.5, q, q^1.35. The shares are guesses, only the sensor's segment is measured.
+4. The thumb was too short. It pivots near the wrist but had only the phalanges' length, so it reached the index only at about 100 deg of curl and a straight touch could not be drawn. Now len 2.6, z -1.1 (a 2.6 palm is about 10 cm, unverified against my hand).
+5. The touch radius was a blind guess. Guided calibration now has near-miss, fist and spread stages. Each template's radius is capped at half the distance to the nearest non-touch pose. A pair's tightest radius applies to all its poses, because only ring poses have a near-miss hold.
+6. Combined touches had no stage. Added a rock stage. A two-pair template needs all its digits.
+7. Auto re-zero could erase a held straight touch. It is now blocked while a touch is detected.
+8. The mount check was outside calibration. Added a hand-turn stage.
+9. It could not be checked. Added Self-test (5 prompts, pass at 70 %), a coach (plain rules naming weak or missed holds and the fit status), a live meter for all four pairs (for example `TI 0.18/0.30`), and Export calibration (JSON: holds with rows, templates, fit, self-test).
+
+Guided calibration is now 20 s still plus 16 steps of about 15 s, about 4.5 minutes.
+
+Found by testing, also fixed: the first full run showed a fit dragging the thumb base onto the palm on poses that were not real touches, and an off-template pose reading as a touch through a wide straight radius. Both got tests first, then the fixes above (rejection, tighter bounds, shared pair radius). The coach also said "learned cleanly" above a rejected fit. Fixed.
+
+Measured, simulated only:
+- Before: on a simulated different hand the old model left ring-pose tips about 0.64 to 0.73 apart (finger width about 0.38). The simulation was rough, indicative only.
+- `tools/verify_hand_fit.mjs` (new), on a second parameter set of the same joint model, 7 of 8 holds real, 2 deg noise: default gap 0.46, fitted 0.03, with contact 0.001. A nearly straight touch beyond thumb reach: 1.01 to 0.18. This shows the fit and solver work. It does not show the joint model matches a real hand.
+- Real page, simulated sensors and time, default hand with deliberately non-touching fake poses so the fit was correctly rejected: 16 stages ran. Scene vs maths 0.0000 with and without a touch. Drawn gaps (before to after correction): ring TI 0.80 to 0.01, ring TM 1.12 to 0.00, ring TR 1.75 to 0.01, ring TP 2.50 to 0.56, straight TI 1.35 to 0.32, straight TM 1.69 to 0.61, straight TP 1.67 to 0.57, rock 1.08 to 0.18. Near misses, fist, flat, spread and an off-template pose read no touch. Corrections release to 0 deg. Self-test passed.
+- All verify scripts exit 0.
+
+Limits:
+- Nothing here has been tried on the glove.
+- One sensor couples the thumb's joints, so its tip reaches a thin shell of positions. Straight touches depend on the capped correction, so a gap can remain (up to about 0.6 in the fake-pose run, where the fit was rejected).
+- Touch is inferred, not measured. Near-miss separation depends on real data.
+- Radii on real data will differ. Sideways drift ages the templates during a session.
+- Guided holds are in the JSON export, not in the Batch Capture dataset.
+- The thumb-index gesture rule was not retuned. Model loading through the real file picker has not been exercised.
+
+Decisions logged in [DECISIONS.md](DECISIONS.md): three finger segments, fitted hand with rejection, contact correction as a display-only cap. The thumb length change updates the earlier anchor decision, and the "guided functional calibration" open item has an update.
+
+**First real calibration, and a third pass (user report, later 2026-11-07):**
+
+Report: I ran guided calibration on the glove and exported it. It did not work out well. The coverage grid sat on top of the 3D view and covered the thumb. I asked for an additional section, a plan to fully improve the dashboard, and both problems fixed, especially calibration.
+
+**Correction to the entries above.** The "fitted hand" (`fitHand`, thumb base, thumb length, 4 finger scales, rejected at a mean gap over 0.35) was built on simulated data and the real hand refused it. It is deleted, see below. The "Next" list from the previous pass is done: the export exists (`10-touch-detection/calibration_2026-11-07.json`, mirror `Data/csv/10-touch-detection__calibration_2026-11-07.json`).
+
+What the first real export showed (analysed with a replay, numbers from that one file):
+- 13 of 15 holds kept. NEARTM and NEARTP were missed.
+- Samples kept per hold: 35 to 82 of about 100. Spread was only 0.007 to 0.017. So the stillness gate was far too strict, not the hand. Cause of the strictness beyond that is unverified.
+- Self-test was not in the export (null). It has never run on the glove.
+- Detection replay on those holds: every touch 100 %, every non-touch 0 %, rock read both pairs. Ring and straight are close (distance 0.25 to 0.33): on this hand they are nearly one pose.
+- Hand fit rejected, gap 0.83. Exploring it offline: current bounds 0.88, wide bounds 0.59, wide plus a free joint share 0.51 (per-hold up to 0.92). So a rigid length fit cannot work. The thumb sensor turned only 29 to 45 deg for every touch. The thumb's base joint travels, and a sensor on the tip cannot see it.
+- The fist hold shows the finger sensors are rolled: 11, 27, 29, 34 deg for index to pinky. The T5 gyro fit gave the same pattern (10, 17, 21, 30 deg). This reopens the open item on mount correction, and for display it is now solved from the fist hold.
+- SPREAD read about 25 deg bent on all fingers. Cause unknown (unverified). The new flat check should show whether it is drift.
+
+Changes (all in `tools/handrig_dashboard.html`, three copies identical, uncommitted):
+1. New section "04 Touch" at the top of the right column: a live bar per thumb-finger pair (distance / limit), status, coach notes, and the coverage grid. The grid no longer overlays the 3D view. Checked at 1400 px and 375 px, no overflow.
+2. Capture: the stillness gate is gone. The last 7 s of each 10 s hold are used and spread <= 0.1 decides. New final FLATCHECK stage, so 17 steps, about 4.6 min.
+3. Finger roll: `rollFromFist` and `unrollQs` correct the drawn fingers. Display only. Detection and exports keep the raw orientation.
+4. `fitHand`, `solveN` and the saved hand are deleted. Replaced by a learned thumb movement: each touch hold stores the thumb base offset that puts the tip on the fingertip. Live poses blend those offsets with a Gaussian weight on whole-hand similarity (sigma 0.18). Non-touch poses anchor at zero, near misses use their pair's ring offset. This is pose-space interpolation, not a model of the thumb.
+5. A replay check runs after each guided run, and the coach reports it, plus a drift warning over 15 deg. Export is now version 2: q for all holds, replay, flat check, rolls and anchors.
+
+Results:
+- `tools/verify_real_calibration.mjs` (new, runs on the real export): held-out rows (templates from the first half of each hold, tested on the second) 13 of 13 holds correct. Mean tip gap on the real holds: 1.84 default, 0.11 with the learned thumb, 0.009 drawn.
+- The real page was fed the real holds through the actual guided code: 17 steps, 9 touches learned, none missed, replay 16 of 16. NEARTM and NEARTP were synthesised because the real ones were missed, and the flat check was synthetic too. Drawn gaps 0.000 to 0.026. Fist, spread and near misses read no touch. Fist sideways lean at most 0.05. A flat thumb moved 0.
+- All verify scripts exit 0.
+
+Limits:
+- All of this replays one session. The gaps are small partly by construction, because the offsets were learned from those same holds. Poses between the holds are blended and unmeasured.
+- The new capture, flat check and live behaviour have not run on the glove.
+- Touch is inferred, and this is one person and one fit of the glove.
+- Self-test has never run on the glove.
+- Guided holds are still not in the Batch Capture dataset.
+
+Decisions logged in [DECISIONS.md](DECISIONS.md): learned thumb base movement (supersedes the fitted hand), finger roll from the fist hold, stillness gate removed from guided holds. Open items updated: per-finger mount correction, guided functional calibration, and a new one for SPREAD at 25 deg.
+
 **Next:**
-- Try the thumb fix on the glove (the current version, see the correction below). This comes first.
-- Then record the touch-pose set (check the label question first).
+- Rerun guided calibration on the glove (17 steps), run Self-test, export, and compare with `calibration_2026-11-07.json`. Check the flat check and the SPREAD reading.
+- Then record the pose set (14 poses, see [ml/future-data-collection-plan.md](ml/future-data-collection-plan.md)).
 - After the first push, check how the GIF and the mp4 link render on GitHub. If the GIF is too soft, swap it for a better one.
 - Re-run the motion tests on the current dashboard and firmware, then start Phase 8 data collection.
 

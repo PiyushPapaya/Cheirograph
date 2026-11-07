@@ -24,7 +24,7 @@ Keep it in sync with the firmware. If you change a wire, update this file in the
 
 | Mux Channel | I²C Address | Finger | Sensor placement |
 |---|---|---|---|
-| 0 | 0x68 | Thumb | Proximal phalanx |
+| 0 | 0x68 | Thumb | Tip segment (per the user, 2026-11-07; earlier docs said proximal phalanx; when it moved is unknown, not visible in the July photo) |
 | 1 | 0x68 | Index | Middle phalanx |
 | 2 | 0x68 | Middle | Middle phalanx |
 | 3 | 0x68 | Ring | Middle phalanx |
@@ -169,6 +169,7 @@ With all 5 finger sensors taped to the glove and the hand IMU seated flat:
 
 | Date | Change | Changed by |
 |---|---|---|
+| 2026-11-07 | Thumb sensor location corrected to the tip segment, on the user's report. The table said proximal phalanx. Docs only, no wiring change. When the sensor moved is unknown (unverified). | Piyush |
 | 2026-10-31 | Channel table marked confirmed; noted the hand IMU's separate `Wire1` bus (found 2026-10-19). Docs only, no wiring change. | Piyush |
 | 2026-07-19 | All 6 IMUs mounted and wired on the glove; mux channel map confirmed against physical build (thumb=ch0 `SD0/SC0`, pinky=ch4 `SD4/SC4`, matching the table above). Confirmed finger sensor axis convention (`-Y`=fingertip, `+Z`=up) and that the hand IMU uses a different Z sense (`az≈-0.98g` flat, palm down). Axis remap to the visualization's model frame flagged as an open item, not yet applied. | Piyush |
 | 2026-07-16 | Added Phase 3/4 mux + 5-finger-IMU bench wiring (breadboard, no finger identity assigned yet). Mux channel switching verified via `scanChannels()` — 0x68 on channels 0-4, no cross-talk. | Piyush |

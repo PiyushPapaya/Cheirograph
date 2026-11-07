@@ -145,16 +145,35 @@
   .batchflash.bad{opacity:1;transition:none;border:4px dashed var(--ink)}
   .batchflash.bad::after{content:"REJECTED — HOLD STILL";background:var(--bg);color:var(--ink);padding:6px 14px;border:1px solid var(--ink);font-size:14px;letter-spacing:.16em}
 
-  /* per-letter coverage grid: hollow cell until the goal is reached, then filled */
-  .batchgrid{position:absolute;top:52px;right:30px;z-index:2;display:none;
-    grid-template-columns:repeat(13,22px);gap:2px;background:var(--bg);border:1px solid var(--ink);padding:6px}
+  /* touch section: one bar per thumb-finger pair, then coach notes and coverage */
+  .touchpanel{flex:none;border-bottom:1px solid var(--ink)}
+  .tpbody{display:grid;gap:8px;padding:10px 20px 12px}
+  .touchbars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 20px}
+  .tm{display:grid;grid-template-columns:88px minmax(0,1fr) 78px;align-items:center;gap:8px;font-size:11px;color:var(--ink-3)}
+  .tm i{display:block;height:6px;border:1px solid var(--line-2)}
+  .tm u{display:block;height:100%;width:0;background:var(--ink-3);text-decoration:none}
+  .tm b{font-weight:500;text-align:right}
+  .tm.on{color:var(--ink)}
+  .tm.on u{background:var(--ink)}
+  .tpstate{font-size:11px;letter-spacing:.06em;line-height:1.45;padding:5px 8px;border:1px solid var(--line-2);color:var(--ink-2)}
+  .tpstate[data-level="ok"]{border-color:var(--ink);color:var(--ink)}
+  .tpstate[data-level="run"]{border-style:dashed;border-color:var(--ink);color:var(--ink)}
+  .tpstate[data-level="warn"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}   /* inverted block = alert, as elsewhere */
+  .tpnote{font-size:11px;line-height:1.5;color:var(--ink-2);white-space:pre-line}
+  .tpnote:empty{display:none}
+  @media (max-width:560px){.touchbars{grid-template-columns:1fr}}
+
+  /* per-label coverage grid: hollow cell until the goal is reached, then filled */
+  .batchgrid{display:none;grid-template-columns:repeat(13,minmax(0,1fr));gap:2px}
   .batchgrid.show{display:grid}
-  .batchgrid .cell{width:22px;height:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  .batchgrid .cell{height:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;
     border:1px solid var(--line-2);line-height:1;gap:3px}
   .batchgrid .cell span{font-size:9px;color:var(--ink-3)}
   .batchgrid .cell b{font-size:9px;font-weight:500;color:var(--ink-2)}
   .batchgrid .cell.done{background:var(--ink);border-color:var(--ink)}
   .batchgrid .cell.done span,.batchgrid .cell.done b{color:var(--bg)}
+  .batchgrid .cell.pose{grid-column:span 3;min-width:0}   /* pose names are longer than one letter */
+  .batchgrid .cell.pose span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   .noisepanel{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:9;background:rgba(0,0,0,.94)}
   .noisepanel.show{display:flex}
@@ -247,7 +266,7 @@
     .conn-state{flex:1;padding:10px 20px}
     .grp{grid-template-columns:1fr}
     .glabel{border-right:0;padding:10px 20px 0}
-    .batchgrid{grid-template-columns:repeat(7,22px)}
+    .batchgrid{grid-template-columns:repeat(6,minmax(0,1fr))}
   }
   @media (max-width:560px){
     .cards{grid-template-columns:1fr}
@@ -293,12 +312,11 @@
 
       <div class="batchhint" id="batchhint">■ armed — hold the pose, press <b>Space</b> to save · <b>Esc</b> to stop</div>
       <div class="batchflash" id="batchflash"></div>
-      <div class="batchgrid" id="batchgrid" title="Reps captured per letter this session. A letter fills in once it reaches the coverage goal."></div>
 
       <div class="calbanner" id="calbanner">
         <div class="c">
           <div class="big" id="calcount">20</div>
-          <div class="lab">Hold your hand flat &amp; still</div>
+          <div class="lab" id="callab" aria-live="polite">Hold your hand flat &amp; still</div>
           <div class="sub" id="calsub">measuring gyro bias on all sensors…</div>
           <div class="calbar"><i id="calfill"></i></div>
         </div>
@@ -329,6 +347,9 @@
         <div class="gbody">
           <button id="cal" disabled>Calibrate · 20 s</button>
           <button id="zero" disabled>Zero orient.</button>
+          <button id="guided" disabled title="A 20 s still hold, then 17 steps of about 15 s: hand turn, fist, spread, each finger to the thumb as a ring and straight, near misses, the rock pose and a flat check. Teaches this session's touch poses. Click again or press Esc to stop.">Guided calibration</button>
+          <button id="selftest" disabled title="After guided calibration: asks for each touch and scores what the detector says.">Self-test</button>
+          <button id="calexport" disabled title="Download the whole run as JSON: raw frames, event log, holds, results and self-test. Works after a stopped or disconnected run too.">Export calibration</button>
           <label class="ctrl" title="Lower = smoother but weaker gravity correction, so residual gyro bias drifts more over time, even sitting still. Higher = snappier and more drift-resistant, slightly noisier instant readings. The floor is 0.1 because lower values visibly drift within seconds even when perfectly still: that is the filter converging too slowly to trust the accelerometer, not noise.">smoothing <input type="range" id="beta" min="0.1" max="0.3" step="0.01" value="0.1"><span id="betav">0.10</span></label>
         </div>
       </div>
@@ -337,6 +358,7 @@
         <div class="gbody">
           <label class="ctrl" title="Which pitch sign means curling toward the palm is not measured yet. |pitch| counts either direction. Signed modes count one direction and read 0 for the other.">curl sign <select id="curlsign"></select></label>
           <label class="ctrl" title="The glove is a LEFT hand, so the model is drawn as a left hand by default. Right mirrors the geometry (thumb on the other side, spread swings the other way).">model hand <select id="handmodel"></select></label>
+          <label class="ctrl" title="Load the JSON written by tools/train_touch.py. The GESTURE readout then lists which fingers touch the thumb. Once Guided calibration has run, its templates take over.">touch model <input type="file" id="touchModelFile" accept=".json,application/json" aria-label="Load touch model"></label>
           <span class="ctrlnote">Curl one finger slowly: pick the curl sign where its % rises. Swing the thumb away from the index: pick the model hand where it moves away too. Display only, exports are unaffected.</span>
         </div>
       </div>
@@ -355,7 +377,7 @@
       <div class="grp">
         <div class="glabel">Batch</div>
         <div class="gbody">
-          <label class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps, so there is no need to stop the batch to switch letters.">label <input type="text" id="batchLabel" maxlength="12" value="A" aria-label="Batch label"></label>
+          <label class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps, so there is no need to stop the batch to switch letters.">label <input type="text" id="batchLabel" maxlength="12" value="A" aria-label="Batch label" list="poseList"><datalist id="poseList"></datalist></label>
           <button id="batchToggle" disabled title="20 s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5 s between reps to fight drift.">Batch capture</button>
           <span class="batchcount" id="batchCount">0 reps captured</span>
           <button id="batchCsv" disabled>Export batch CSV</button>
@@ -364,7 +386,17 @@
     </div>
   </section>
 
-  <aside class="side" aria-label="Sensors">
+  <aside class="side" aria-label="Touch and sensors">
+    <section class="touchpanel" aria-label="Touch">
+      <div class="sechead"><b>04</b> Touch <span>distance / limit · full bar = touching</span></div>
+      <div class="tpbody">
+        <div class="tpstate" id="touchState" role="status" data-level="off"></div>
+        <div class="touchbars" id="touchbars"></div>
+        <div class="tpnote" id="touchStatus" role="status">Run Guided calibration to teach your touches.</div>
+        <div class="tpnote" id="coach" role="status"></div>
+        <div class="batchgrid" id="batchgrid" title="Reps captured per label this session. A cell fills in once it reaches the coverage goal."></div>
+      </div>
+    </section>
     <div class="sechead"><b>02</b> Sensors <span>S0 hand · S1–S5 fingers</span></div>
     <section class="cards" id="cards"></section>
   </aside>
@@ -426,7 +458,7 @@ const ACC_OFFSET_KEY="gestura_acc_offset_v1";
 try{
   const o=JSON.parse(localStorage.getItem(ACC_OFFSET_KEY)||"null");
   if(Array.isArray(o)&&o.length===6)o.forEach((v,i)=>{
-    if(Array.isArray(v)&&v.length===3&&v.every(Number.isFinite))ACC_OFFSET[i]=v;
+    if(Array.isArray(v)&&v.length===3&&v.every(x=>Number.isFinite(x)&&Math.abs(x)<=1.5))ACC_OFFSET[i]=v;   // a zero-g offset is a fraction of a g: anything bigger is a stale or damaged value
   });
 }catch(e){}
 const HLEN=400;              // trace history length
@@ -526,7 +558,7 @@ const S=META.map(()=>({
   last:0, alive:false, dropCount:0,
   dropBad:false, goodRun:0, prevFlag:"", prevBad:false,   // firmware-dropout latch (see parseFrame)
   // self-healing state (see "self-healing" below parseFrame)
-  stillS:0, aSlow:null, tiltErr:180, calUp:null, clipT:-Infinity, dropT:-Infinity, zeroT:0, curlView:0,
+  stillS:0, aSlow:null, tiltErr:180, calUp:null, clipT:-Infinity, dropT:-Infinity, zeroT:0,
   hist:{gx:[],gy:[],gz:[],ax:[],ay:[],az:[]},
 }));
 
@@ -574,7 +606,8 @@ function curlDegFor(rad,mode){
 // ===== 3D =====
 let renderer,scene,camera,palm;
 const fingerGroups=[];
-let camYaw=0.7,camPitch=0.5,camDist=10.5;   // 10.5 (was 9): leaves a margin around the fingertips in the framed viewport
+// Start on the thumb's side of the hand: the left model's thumb is at -X, so from +X it hid behind the palm.
+let camYaw=DISPLAY.handModel==="left"?-0.7:0.7,camPitch=0.5,camDist=10.5;   // 10.5 (was 9): leaves a margin around the fingertips in the framed viewport
 
 // One solid drawn as hidden-line-removed linework. `angle` is EdgesGeometry's threshold:
 // an edge is kept when the two faces meeting there differ by more than that many degrees.
@@ -623,25 +656,31 @@ function buildScene(){
   // 0% clipped because they're perfectly straight the whole way. So: back to a straight
   // segment, same proven style as the fingers, no kink. yaw:0,bend:0,restCurl:0,
   // restSweep:0 -> zero rest rotation anywhere, dead straight from anchor along local +Z.
-  // x:1.45 keeps it outside the box's x:1.2 edge; a small inward yaw (-0.15) angles it
-  // toward the hand without re-crossing the edge until almost the very last step —
-  // verified full-path clip fraction is 7.5%, all of it right at the tip end, same
-  // negligible-overlap category the fingers already have at their own base attachment.
-  // y:0.1 keeps it level with the fingers (points the same forward direction as them at
-  // rest). This gives up literally touching the index in exchange for something that
-  // reliably renders as a clean, recognizable digit instead of gambling on another kink.
+  // This gives up literally touching the index in exchange for something that reliably
+  // renders as a clean, recognizable digit instead of gambling on another kink.
+  // 2026-11-07: that check only covered the REST pose. The thumb's real motion is a swing
+  // about the palm normal (motion tests T3/T4), so a thumb level with the palm walked
+  // straight into the solid box: 65 % buried after 15 deg inward, 82 % after 45 deg. On
+  // screen it just vanished. A real thumb sits below the palm plane, so the anchor is now
+  // y:-0.6, under the box (bottom face y:-0.275) with room for the 0.21 radius. It passes
+  // under the palm instead of through it (tools/verify_thumb_rig.mjs). yaw:0.11 is the
+  // thumb's measured rest direction, 6.5 deg outward of the hand's forward (T5 gyro fit).
+  // len:2.6 and z:-1.1: the thumb pivots near the wrist, so it must include the metacarpal
+  // inside the palm. A palm 2.6 long is about 10 cm, which makes a thumb from that joint
+  // about 2.6. At the old 1.8 it could only reach the index at 100 deg of curl, so a
+  // straight touch was impossible to draw. tools/verify_hand_fit.mjs covers this.
   // (The anchors live in FINGER_ANCHORS below, and the digits are built by buildFingers()
   // so the "model hand" display setting can rebuild them mirrored without a page reload.)
   buildFingers(DISPLAY.handModel);
 
   addEventListener("resize",resize);resize();
-  renderer.setAnimationLoop(render);
+  renderer.setAnimationLoop(()=>{try{render();}catch(err){noteError("render",err);}});   // three.js reschedules after the callback: a throw would stop drawing for good
   initOrbit(cv);
 }
 
 // Anchors as drawn for a RIGHT hand (thumb at +X). This is the original model.
 const FINGER_ANCHORS={
-  THUMB :{x: 1.45,y:0.1, z:-0.9, len:1.8,rad:0.21,yaw:-0.15,bend:0,restCurl:0,restSweep:0},
+  THUMB :{x: 1.3, y:-0.6,z:-1.1, len:2.6,rad:0.21,yaw:0.11,bend:0,restCurl:0,restSweep:0},
   INDEX :{x: 0.82,z: 1.25,len:2.1,rad:0.19,yaw: 0.06,bend:0},
   MIDDLE:{x: 0.27,z: 1.35,len:2.3,rad:0.19,yaw: 0.0, bend:0},
   RING  :{x:-0.28,z: 1.28,len:2.1,rad:0.18,yaw:-0.05,bend:0},
@@ -698,9 +737,11 @@ function buildFingers(side){
   const mx=side==="left"?-1:1;   // S = diag(mx,1,1)
   META.forEach(m=>{
     if(m.role==="palm"){fingerGroups[0]=null;return;}
-    const r=FINGER_ANCHORS[m.name];
-    // x and every rotation about Y flip under the mirror; z, y, restCurl do not.
-    const a={...r,x:r.x*mx,yaw:r.yaw*mx,bend:(r.bend||0)*mx,restSweep:(r.restSweep||0)*mx};
+    const r=FINGER_ANCHORS[m.name], di=m.id-1, thumb=di===0;
+    // x and every rotation about Y flip under the mirror; z and y do not. Base and lengths
+    // come from digitBase and digitLen, so the drawn hand and the maths can't disagree.
+    const [bx,by,bz]=digitBase(di,HAND,mx);
+    const a={...r,x:bx,y:by,z:bz,len:digitLen(di,HAND),yaw:r.yaw*mx};
     // g's rotation.y=a.yaw is the STATIC anatomical rest pose (thumb sideways, others
     // near-forward) and is set ONCE here, never touched per-frame. It used to get
     // overwritten every frame in render() by folding it into the same quaternion as the
@@ -714,34 +755,34 @@ function buildFingers(side){
     // direction this finger's rest pose actually points.
     const g=new THREE.Group();g.position.set(a.x,a.y??0.1,a.z);g.rotation.y=a.yaw;
 
-    // Only ONE IMU per finger (middle phalanx / thumb proximal phalanx) — there is no
-    // independent per-joint data. segBase gets the full measured relative rotation;
-    // segTip is a child of segBase and additionally re-applies a fraction of that SAME
-    // curl angle (see render()) purely so a curling finger reads visually as a curl
-    // instead of one rigid stick pivoting at the base. It is a cosmetic split of one
-    // real measurement, not a second sensor.
-    const baseLen=a.len*0.55, tipLen=a.len*0.45;
+    // Only ONE IMU per digit, so the joints are a split of one measurement, not more sensors.
+    // Fingers have the three real segments and the sensor's own segment is the middle one;
+    // the thumb has two and its sensor is on the tip. See "hand kinematics" for the split.
+    const [fBase,fMid,fTip]=thumb?[THUMB_SEGS[0],0,THUMB_SEGS[1]]:FINGER_SEGS;
+    const baseLen=a.len*fBase, midLen=a.len*fMid, tipLen=a.len*fTip;
     const segBase=new THREE.Group();
     // 12 radial segments (30 degrees apart) is coarse enough that the edge pass draws
     // each facet line, which is what gives the finger its drawn-from-a-pencil look.
     const cylB=wire(new THREE.CylinderGeometry(a.rad*0.9,a.rad,baseLen,12));
     cylB.rotation.x=Math.PI/2;cylB.position.z=baseLen/2;segBase.add(cylB);
     segBase.add(wire(new THREE.SphereGeometry(a.rad*1.05,12,8),{color:THEME.ink2,angle:10}));   // knuckle
-    const segTip=new THREE.Group();segTip.position.z=baseLen;
-    const cylT=wire(new THREE.CylinderGeometry(a.rad*0.7,a.rad*0.9,tipLen,12));
+    const segMid=new THREE.Group();segMid.position.z=baseLen;
+    if(midLen){
+      const cylM=wire(new THREE.CylinderGeometry(a.rad*0.8,a.rad*0.9,midLen,12));
+      cylM.rotation.x=Math.PI/2;cylM.position.z=midLen/2;segMid.add(cylM);
+    }
+    const segTip=new THREE.Group();segTip.position.z=midLen;
+    const cylT=wire(new THREE.CylinderGeometry(a.rad*0.7,a.rad*0.8,tipLen,12));
     cylT.rotation.x=Math.PI/2;cylT.position.z=tipLen/2;segTip.add(cylT);
     const tip=wire(new THREE.SphereGeometry(a.rad*0.75,12,8),{color:THEME.ink2,angle:10});tip.position.z=tipLen;segTip.add(tip);
-    segBase.add(segTip);
+    segMid.add(segTip);segBase.add(segMid);
 
-    // restBend sits BETWEEN g (static yaw) and segBase (live rotation, overwritten every
-    // frame) — a second static parent so the baked-in bend survives render() the same way
-    // the yaw does, instead of being clobbered by the per-frame quaternion assignment.
-    // rotation.y (not .x): this is a second in-plane adduction joint, composing with g's
-    // yaw around the same axis — see the anchors comment above for why.
-    const restBend=new THREE.Group();restBend.rotation.y=a.bend||0;
+    // restBend sits BETWEEN g (static yaw) and segBase (live rotation). It stays identity
+    // except during a detected touch, when it holds that digit's contact correction.
+    const restBend=new THREE.Group();
     restBend.add(segBase);
     g.add(restBend);
-    g.userData={restYaw:a.yaw,restCurl:a.restCurl||0,restSweep:a.restSweep||0,segBase,segTip};
+    g.userData={segBase,segMid,segTip,restBend};
     palm.add(g);fingerGroups[m.id]=g;
   });
 }
@@ -804,11 +845,31 @@ function drawTriad(){
 
 const _tmp=new THREE.Quaternion();
 const _idQ=new THREE.Quaternion();    // identity, never mutated
-const _te=new THREE.Euler();          // scratch, segTip rotation
 const _ce=new THREE.Euler();          // scratch, curl extraction only
 const CURL_MAX_DEG=90;                // reference full-curl angle for the % readout
-const TIP_CURL_FRAC=0.4;              // extra cosmetic bend re-applied at segTip
+const _jq=new THREE.Quaternion();     // scratch, joint share of a digit's rotation
+const _dq=new THREE.Quaternion();     // scratch, digit rotation as drawn (roll removed)
+const rollQ=[0,1,2,3,4].map(()=>new THREE.Quaternion()), rollQi=[0,1,2,3,4].map(()=>new THREE.Quaternion());
+let fingerRolls=[0,0,0,0,0];
+function setRolls(r){
+  fingerRolls=r;
+  r.forEach((a,i)=>{rollQ[i].set(0,0,Math.sin(a/2),Math.cos(a/2));rollQi[i].copy(rollQ[i]).invert();});
+}
 const VIEW_SMOOTH_MS=40;   // display easing time constant (see render)
+// ===== thumb bend =====
+// The thumb's sensor sits on its TIP segment, so its rotation is the sum of every thumb
+// joint. Applied whole at the base, as on the fingers, it swung the entire thumb to where
+// the tip points: a bent thumb stuck straight down instead of curling. So the rotation is
+// split: the base takes a fraction f of it and the tip the rest. Powers of one rotation
+// share its axis, so q^f q^(1-f) = q, and the tip segment ends up exactly where the sensor
+// says, about any axis. With f = 0.5 both joints turn the same amount, which is a guess at
+// how the real joints share the bend; only the tip's direction is measured.
+// The thumb moves on two axes (sideways in T1-T4, downward tip bend in T6), so pitch alone
+// can't read it. Its bend is the total rotation from rest, 2 acos|w|. |w| because q and -q
+// are the same rotation. It has no direction: swinging outward reads as bend too.
+const THUMB_BASE_FRAC=0.5;
+function thumbBendRad(q){return 2*Math.acos(Math.min(1,Math.abs(q.w)));}
+// ===== end thumb bend =====
 function render(){
   camera.position.set(camDist*Math.cos(camPitch)*Math.sin(camYaw),camDist*Math.sin(camPitch),camDist*Math.cos(camPitch)*Math.cos(camYaw));
   camera.lookAt(0,0,0);
@@ -833,24 +894,45 @@ function render(){
     const local=st.bad ? st.localQ.copy(_idQ) : st.localQ.copy(invPalm).multiply(st.rel);
     // st.localQ doubles as the cache the card readout and batch export read, so
     // they always match what is actually drawn.
-    g.userData.segBase.quaternion.slerp(local,k||1);
+    // identity slerped toward dq by f is q^f: each joint's share of the measured rotation,
+    // the same split as digitLocal(). The thumb has no middle segment.
+    const i=m.id-1, thumb=m.id===1, ud=g.userData, f=thumb?THUMB_BASE_FRAC:FINGER_BASE_FRAC;
+    const dq=_dq.copy(rollQ[i]).multiply(local).multiply(rollQi[i]);
+    (st.dispQ||(st.dispQ=new THREE.Quaternion())).copy(dq);
+    ud.segBase.quaternion.slerp(_jq.copy(_idQ).slerp(dq,f),k||1);
+    if(thumb)ud.segTip.quaternion.slerp(_jq.copy(_idQ).slerp(dq,1-f),k||1);
+    else{
+      ud.segMid.quaternion.slerp(_jq.copy(_idQ).slerp(dq,1-f),k||1);
+      ud.segTip.quaternion.slerp(_jq.copy(_idQ).slerp(dq,FINGER_TIP_FRAC),k||1);
+    }
 
-    // curl = the pitch component of the SAME "local" rotation already driving the whole
-    // finger; a bent finger has real forward-pitch, an extended one doesn't. Re-applied
-    // at reduced weight on segTip only (see buildScene comment) — not new data.
-    // This stays SIGNED whatever the "curl sign" control says: the tip just continues
-    // the base's real rotation in the same direction, so it needs no sign convention.
-    // The control only affects the curl % readout (curlDegFor). detectGesture() reads
-    // the tip's world pose, so it follows this signed geometry, not the readout.
-    _ce.setFromQuaternion(local,"YXZ");
-    const curlRad=st.bad?0:_ce.x;
+    // curl readout: the pitch of the local rotation, signed. The "curl sign" control only
+    // affects the % readout (curlDegFor).
+    _ce.setFromQuaternion(dq,"YXZ");
+    const curlRad=st.bad?0:thumb?thumbBendRad(dq):_ce.x;
     st.curlRad=curlRad;
-    st.curlView+=(curlRad-st.curlView)*(k||1);   // same easing as segBase, so the tip doesn't lead it
-    g.userData.segTip.quaternion.setFromEuler(_te.set(g.userData.restCurl+st.curlView*TIP_CURL_FRAC,g.userData.restSweep,0));
   });
+  applyContact(k||1);
   detectGesture();
   renderer.render(scene,camera);
   drawTriad();     // after render: camera.matrixWorldInverse is now current
+}
+
+// The thumb's base follows the learned movement all the time, and during a detected touch the
+// tips are drawn together. Both are eased like every other drawn rotation and return to rest
+// on their own. Display only: exports never read these.
+const _cq=new THREE.Quaternion(), _bp=new THREE.Vector3();
+function applyContact(k){
+  const mx=DISPLAY.handModel==="left"?-1:1;
+  const dirs=warpAnchors.length?touchDirs(performance.now()):null;
+  const hand=dirs?warpHand(HAND,thumbWarp(warpAnchors,dirs),mx):HAND;
+  const qs=[1,2,3,4,5].map(id=>{const l=S[id].dispQ||_idQ;return [l.w,l.x,l.y,l.z];});
+  const C=contactFix(qs,activeTouches(),hand,mx);
+  C.forEach((c,i)=>{
+    const g=fingerGroups[i+1]; if(g)g.userData.restBend.quaternion.slerp(_cq.set(c[1],c[2],c[3],c[0]),k);
+  });
+  const t=fingerGroups[1];
+  if(t)t.position.lerp(_bp.fromArray(digitBase(0,hand,mx)),k);
 }
 
 // ===== first threshold-based gesture rule =====
@@ -878,6 +960,699 @@ function detectGesture(){
   thumb.userData.segTip.getWorldQuaternion(_gThumbQ);
   _gDir.set(0,0,1).applyQuaternion(_gThumbQ);
   GESTURE={active:dist<TOUCH_DIST&&_gDir.y>UP_MIN,dist,up:_gDir.y};
+}
+
+// ===== hand kinematics =====
+// Pure maths, no three.js, so the thumb warp and the contact solver can be tested on their own.
+// Quaternions are [w,x,y,z]. A digit's tip is its base plus the sum of its segments, each
+// turned by its share of the sensor's rotation q. Powers of one rotation share its axis, so
+// the joints add up exactly: q^a q^(1-a) = q.
+//   finger, sensor on the MIDDLE phalanx: proximal q^a, middle q (measured), distal q^(1+b)
+//   thumb, sensor on the TIP segment:     base q^f, tip q (measured)
+// a and b are guesses at how real joints share a bend. Only the measured segment is real.
+const FINGER_BASE_FRAC=0.5, FINGER_TIP_FRAC=0.35, FINGER_SEGS=[0.45,0.30,0.25], THUMB_SEGS=[0.55,0.45];
+const DIGIT_NAMES=["THUMB","INDEX","MIDDLE","RING","PINKY"];
+const PAIR_FINGER={TI:1,TM:2,TR:3,TP:4};               // digit index, thumb is 0
+const CONTACT_MAX_DEG=40, WARP_SIGMA=0.18;
+const qMul=(a,b)=>[a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],
+  a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0]];
+function qRot(q,v){   // v + 2w(u x v) + 2u x (u x v), u = vector part
+  const [w,x,y,z]=q, tx=2*(y*v[2]-z*v[1]), ty=2*(z*v[0]-x*v[2]), tz=2*(x*v[1]-y*v[0]);
+  return [v[0]+w*tx+y*tz-z*ty, v[1]+w*ty+z*tx-x*tz, v[2]+w*tz+x*ty-y*tx];
+}
+function qPow(q,f){
+  const s=q[0]<0?-1:1, w=Math.min(1,s*q[0]), half=Math.acos(w), n=Math.sin(half);
+  if(!(n>=1e-9))return [1,0,0,0];   // identity, and also what a NaN quaternion falls back to
+  const k=Math.sin(half*f)/n*s, r=[Math.cos(half*f),q[1]*k,q[2]*k,q[3]*k];
+  return r.every(Number.isFinite)?r:[1,0,0,0];
+}
+function qArc(u,v){   // shortest rotation taking direction u onto direction v
+  const nu=Math.hypot(...u), nv=Math.hypot(...v);
+  if(!(nu>=1e-9&&nv>=1e-9))return [1,0,0,0];   // also catches NaN, which `<` lets through
+  const a=u.map(c=>c/nu), b=v.map(c=>c/nv), d=a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  if(!(d>=-0.9999))return [1,0,0,0];
+  const q=[1+d,a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]], n=Math.hypot(...q);
+  return q.map(c=>c/n);
+}
+const qYaw=a=>[Math.cos(a/2),0,Math.sin(a/2),0];
+// hand: thumb base [x,y,z] and length as drawn for a right hand, plus a length scale per finger.
+function handDefault(){const t=FINGER_ANCHORS.THUMB;return {thumb:[t.x,t.y,t.z],thumbLen:t.len,scale:[1,1,1,1]};}
+function digitLen(i,hand){return i===0?hand.thumbLen:FINGER_ANCHORS[DIGIT_NAMES[i]].len*hand.scale[i-1];}
+function digitBase(i,hand,mx){
+  if(i===0)return [hand.thumb[0]*mx,hand.thumb[1],hand.thumb[2]];
+  const a=FINGER_ANCHORS[DIGIT_NAMES[i]];
+  return [a.x*mx,a.y??0.1,a.z];
+}
+function digitLocal(i,q,hand){   // base to tip, before the digit's static yaw
+  const L=digitLen(i,hand), z=l=>[0,0,l], add=(a,b)=>a.map((c,k)=>c+b[k]);
+  if(i===0)return add(qRot(qPow(q,THUMB_BASE_FRAC),z(L*THUMB_SEGS[0])),qRot(q,z(L*THUMB_SEGS[1])));
+  return add(add(qRot(qPow(q,FINGER_BASE_FRAC),z(L*FINGER_SEGS[0])),qRot(q,z(L*FINGER_SEGS[1]))),
+    qRot(qPow(q,1+FINGER_TIP_FRAC),z(L*FINGER_SEGS[2])));
+}
+// C is an extra rotation at the digit's base (contactFix). The order matches the scene graph.
+function digitTip(i,q,hand,mx,C=[1,0,0,0]){
+  const v=qRot(qYaw(FINGER_ANCHORS[DIGIT_NAMES[i]].yaw*mx),qRot(C,digitLocal(i,q,hand)));
+  return digitBase(i,hand,mx).map((c,k)=>c+v[k]);
+}
+// Finger roll. A finger sensor can sit rolled about the finger, and rel is in the sensor's own
+// frame, so a straight curl draws leaning sideways. Real glove, fist hold: 11, 27, 29, 34 deg
+// index to pinky, the same pattern as the T5 gyro fit. A real fist curls about X, so its
+// direction has no sideways part. Turning about the finger's axis Z by a, x' = x cos a - y sin a
+// = 0 gives tan a = x/y. rel' = R rel R^-1 re-expresses the rotation in the corrected frame.
+// Display only: detection and exports keep the raw orientation.
+function rollFromFist(d){
+  if(!(d[1]<=-0.2))return 0;   // not really curled (or not a number): the direction says nothing about the roll
+  return Math.max(-0.8,Math.min(0.8,Math.atan(d[0]/d[1])));
+}
+function unrollQs(qs,rolls){
+  return qs.map((q,i)=>{
+    if(!rolls[i])return q;
+    const c=Math.cos(rolls[i]/2), z=Math.sin(rolls[i]/2);
+    return qMul(qMul([c,0,0,z],q),[c,0,0,-z]);
+  });
+}
+// Learned thumb movement. To reach across the palm the thumb's base joint travels, and a
+// sensor on the tip barely sees it: on the glove the tip turned 30-45 deg for every touch.
+// Fitting lengths couldn't explain that, not even with wide bounds and free joints (best
+// mean gap 0.5). But every touch hold says exactly where the thumb tip was: on the fingertip.
+// So each hold stores the base offset that puts it there, and live poses blend those offsets
+// with a Gaussian weight on how similar the whole hand is (pose-space interpolation).
+// Poses that aren't touches anchor the offset at zero. The small term keeps a pose far from
+// everything at home instead of snapping to whichever anchor happens to be nearest.
+function thumbWarp(anchors,dirs){
+  if(!dirs||dirs.length<15||!dirs.every(Number.isFinite))return [0,0,0];   // no usable pose: the thumb stays home
+  let sw=1e-3; const o=[0,0,0];
+  for(const a of anchors){
+    let d=0; for(let k=0;k<15;k++)d+=(a.dirs[k]-dirs[k])**2;
+    const w=Math.exp(-d/(2*WARP_SIGMA*WARP_SIGMA));
+    sw+=w; for(let k=0;k<3;k++)o[k]+=w*a.offset[k];
+  }
+  const r=o.map(v=>v/sw);
+  return r.every(Number.isFinite)?r:[0,0,0];
+}
+function warpHand(hand,off,mx){return {...hand,thumb:[hand.thumb[0]+off[0]*mx,hand.thumb[1]+off[1],hand.thumb[2]+off[2]]};}
+function buildWarp(templates,negs,hand,mx,rolls){
+  const offsetOf=t=>{
+    const qs=unrollQs(t.q,rolls), a=digitTip(0,qs[0],hand,mx), o=[0,0,0];
+    for(const p of t.pairs){const f=PAIR_FINGER[p],b=digitTip(f,qs[f],hand,mx);for(let k=0;k<3;k++)o[k]+=(b[k]-a[k])/t.pairs.length;}
+    return o;
+  };
+  const touch=templates.filter(t=>t.q).map(t=>({dirs:t.mean,offset:offsetOf(t),pairs:t.pairs,shape:t.shape}));
+  const flat=Array.from({length:15},(_,i)=>i%3===2?1:0);
+  const rest=negs.map(n=>{
+    // a near miss has the thumb almost there, so it moves almost as far as the touch itself
+    const ring=n.pairs&&touch.find(t=>t.pairs.length===1&&t.pairs[0]===n.pairs[0]&&t.shape==="ring");
+    return {dirs:n.mean,offset:ring?ring.offset:[0,0,0]};
+  });
+  return [{dirs:flat,offset:[0,0,0]},...rest,...touch];
+}
+// While a touch is detected, make the drawing agree with it. One sensor per digit can't place
+// a fingertip exactly, so a detected touch still leaves a small drawn gap. Each touching digit
+// is turned at its base toward the point between the two tips, a few times over (the idea
+// behind cyclic coordinate descent). Display only, and capped so a wrong detection can't
+// fold a finger. Returns one rotation per digit.
+function contactFix(qs,pairs,hand,mx){
+  const C=[[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0]];
+  if(!pairs.length)return C;
+  const aim=(i,target)=>{
+    const b=digitBase(i,hand,mx), Yi=qYaw(-FINGER_ANCHORS[DIGIT_NAMES[i]].yaw*mx);
+    const t=qRot(Yi,target.map((c,k)=>c-b[k])), v=qRot(C[i],digitLocal(i,qs[i],hand));
+    C[i]=qMul(qArc(v,t),C[i]);
+  };
+  for(let it=0;it<8;it++)for(const pr of pairs){
+    const f=PAIR_FINGER[pr], a=digitTip(0,qs[0],hand,mx,C[0]), b=digitTip(f,qs[f],hand,mx,C[f]);
+    const mid=a.map((c,k)=>(c+b[k])/2);
+    aim(0,mid);aim(f,mid);
+  }
+  return C.map(q=>{
+    const ang=2*Math.acos(Math.min(1,Math.abs(q[0])))*180/Math.PI;
+    return ang>CONTACT_MAX_DEG?qPow(q,CONTACT_MAX_DEG/ang):q;
+  });
+}
+// ===== end hand kinematics =====
+
+// ===== touch detection =====
+// Pure functions, no DOM. The model comes from tools/train_touch.py: one logistic
+// regression per thumb-finger pair on the 15 'dir' numbers (each finger's +Z axis
+// rotated by its hand-relative quaternion, thumb to pinky, x y z each).
+//   p = sigmoid(b + sum_k w[k] * (dirs[k] - mu[k]) / sd[k])
+function validTouchModel(m){
+  const nums=(a,n)=>Array.isArray(a)&&a.length===n&&a.every(v=>typeof v==="number"&&isFinite(v));
+  if(!m||typeof m!=="object"||!Array.isArray(m.pairs)||!m.pairs.length||!m.pairs.every(p=>p in PAIR_FINGER))return false;   // an unknown pair would throw in contactFix every frame
+  const n=m.pairs.length;
+  return nums(m.mu,15)&&nums(m.sd,15)&&m.sd.every(v=>v>0)&&nums(m.b,n)
+    &&Array.isArray(m.w)&&m.w.length===n&&m.w.every(row=>nums(row,15));
+}
+// dirs: 15 numbers, each finger's +Z axis rotated by its hand-relative quaternion.
+function touchProbs(model,dirs){
+  return model.w.map((w,i)=>{
+    let z=model.b[i];
+    for(let k=0;k<dirs.length;k++)z+=w[k]*(dirs[k]-model.mu[k])/model.sd[k];
+    return 1/(1+Math.exp(-z));
+  });
+}
+// Hysteresis, so a pair near the threshold doesn't flicker: on at 0.6, off at 0.4.
+function touchState(prev,probs){return probs.map((p,i)=>prev[i]?p>0.4:p>0.6);}
+
+// Guided calibration: a still hold, then a set of 10 s holds. Touch holds become templates of
+// THIS session. That is the point: re-seating the glove shifts every reading by a few degrees,
+// and on synthetic data that offset alone was enough to hide a touch. A template recorded in
+// the session has the same offset as the live pose, so it cancels. The other holds teach what
+// is NOT a touch: near misses, a fist and a spread hand limit how far each template reaches.
+// A template matches when all of its digits are near it. The other fingers can do anything.
+// The first 3 s of a hold are the hand settling. Everything after that is used: the first glove
+// run gated samples on stillness and threw away up to two thirds of steady holds, while the
+// real spread was 0.007-0.017. So spread alone now decides whether a hold is usable.
+const GUIDED_PREP_MS=5000, GUIDED_HOLD_MS=10000, GUIDED_USE_MS=7000, GUIDED_MIN_ROWS=30, GUIDED_MAX_SPREAD=0.1, GUIDED_TRIES=3;
+const TOUCH_FINGERS=[["TI","index"],["TM","middle"],["TR","ring"],["TP","pinky"]];
+const GUIDED_STAGES=[
+  {kind:"move",text:"Fingers straight: slowly tilt and roll your whole hand"},
+  {kind:"neg",label:"FIST",text:"Make a fist, thumb outside"},
+  {kind:"neg",label:"SPREAD",text:"Spread all fingers wide, thumb out"},
+  ...TOUCH_FINGERS.flatMap(([pair,f])=>[
+    {kind:"touch",pairs:[pair],shape:"ring",text:`Touch thumb and ${f}, both bent, to make a ring`},
+    {kind:"touch",pairs:[pair],shape:"straight",text:`Touch thumb and ${f}, both as straight as you can`},
+  ]),
+  ...TOUCH_FINGERS.map(([pair,f])=>({kind:"neg",pairs:[pair],label:"NEAR"+pair,text:`Almost touch thumb and ${f}: leave a 1 cm gap`})),
+  {kind:"touch",pairs:["TM","TR"],shape:"rock",text:"Rock pose: thumb on middle and ring, index and pinky straight"},
+  {kind:"neg",label:"FLATCHECK",text:"Flat hand again, fingers straight, like at the start"},
+];
+const TOUCH_NAMES={TI:"thumb·index",TM:"thumb·middle",TR:"thumb·ring",TP:"thumb·pinky"};
+const FLAT_DIRS=Array.from({length:15},(_,i)=>i%3===2?1:0);   // straight digits point along +Z
+// Radius in dir units: two digits each 12 deg off is about 0.3. A starting value: the
+// near-miss, fist and spread holds of each session pull it in where they need to.
+const TOUCH_TPL_MIN=0.3, TOUCH_TPL_OFF=1.3, TOUCH_TPL_WEAK=0.08;
+const stageDigits=st=>st.pairs?[0,...st.pairs.map(p=>PAIR_FINGER[p])]:[0,1,2,3,4];
+function digitDist(digits,a,b){
+  let d=0;
+  for(const g of digits)for(let k=g*3;k<g*3+3;k++)d+=(a[k]-b[k])**2;
+  return Math.sqrt(d);
+}
+function meanQuat(rows){   // rows of unit quaternions of one still hold, all close together
+  const m=[0,0,0,0];
+  for(const q of rows){const s=q[0]<0?-1:1;for(let k=0;k<4;k++)m[k]+=s*q[k];}
+  const n=Math.hypot(...m)||1;
+  return m.map(c=>c/n);
+}
+function makeTemplate(stage,rows,quats){
+  const digits=stageDigits(stage);
+  const mean=FLAT_DIRS.map((_,k)=>rows.reduce((s,r)=>s+r[k],0)/rows.length);
+  const spread=Math.sqrt(rows.reduce((s,r)=>s+digitDist(digits,r,mean)**2,0)/rows.length);
+  const q=quats?[0,1,2,3,4].map(i=>meanQuat(quats.map(r=>r[i]))):null;
+  return {pairs:stage.pairs,shape:stage.shape,digits,mean,q,spread,radius:Math.max(TOUCH_TPL_MIN,3*spread),limitedBy:null,weak:false};
+}
+// Never reach past halfway to something that is not this touch, or that pose would read as
+// touching. The flat hand is always such a pose. A straight touch can sit close to it.
+function finishTemplates(templates,negs){
+  const others=[{label:"FLAT",mean:FLAT_DIRS},...negs];
+  for(const t of templates)for(const n of others){
+    const half=digitDist(t.digits,t.mean,n.mean)/2;
+    if(half<t.radius){t.radius=half;t.limitedBy=n.label;}
+  }
+  // A 1 cm gap is the same size in any pose, so the tightest radius of a pair holds for all of
+  // its poses. Only the ring poses have a near-miss hold, and this carries it to the straight ones.
+  for(const t of templates){
+    if(t.pairs.length!==1)continue;
+    for(const o of templates)if(o.pairs.length===1&&o.pairs[0]===t.pairs[0]&&o.radius<t.radius){t.radius=o.radius;t.limitedBy=o.limitedBy;}
+  }
+  for(const t of templates)t.weak=t.radius<TOUCH_TPL_WEAK||t.radius<1.5*t.spread;
+  return templates;
+}
+// prev[pair] is true while touching: leaving takes a wider radius, so it doesn't flicker.
+// That wider radius only applies when nothing matches outright. Otherwise moving from one
+// finger to the next would keep the old touch alive alongside the new one.
+function templateTouch(prev,templates,dirs){
+  const on={};
+  for(const t of templates)if(digitDist(t.digits,t.mean,dirs)<t.radius)t.pairs.forEach(p=>on[p]=true);
+  if(Object.keys(on).length)return on;
+  for(const t of templates)
+    if(t.pairs.every(p=>prev[p])&&digitDist(t.digits,t.mean,dirs)<t.radius*TOUCH_TPL_OFF)t.pairs.forEach(p=>on[p]=true);
+  return on;
+}
+// Run recorded holds back through the detector. A hold passes when most of its rows read
+// exactly what it should: its own pairs for a touch, nothing for anything else.
+function replayCheck(stages,templates){
+  const bad=[]; let ok=0,total=0;
+  for(const s of stages){
+    if(s.kind==="move")continue;
+    total++;
+    const want=s.kind==="touch"?s.pairs:[];
+    const hits=s.rows.filter(r=>{
+      const on=Object.keys(templateTouch({},templates,r));
+      return on.length===want.length&&want.every(p=>on.includes(p));
+    }).length;
+    if(hits>=0.7*s.rows.length)ok++;else bad.push(s.name);
+  }
+  return {ok,total,bad};
+}
+// Mean angle of the digits from straight, in a pose that should be flat. It measures how
+// far orientation wandered during the run, because that pose matched the zero at the start.
+function flatCheckDeg(mean){
+  let a=0;
+  for(let i=0;i<5;i++)a+=Math.acos(Math.max(-1,Math.min(1,mean[i*3+2])))*180/Math.PI;
+  return a/5;
+}
+// The calibration coach: plain rules that turn the numbers into what to do next.
+function coachLines(templates,missed,info){
+  const out=[];
+  if(info.replay)out.push(`Replay: ${info.replay.ok} of ${info.replay.total} holds read correctly.`+(info.replay.bad.length?` Failed: ${info.replay.bad.join(", ")}.`:""));
+  for(const t of templates){
+    if(!t.weak)continue;
+    const who=t.pairs.map(p=>TOUCH_NAMES[p]).join(" + ");
+    out.push(`${who} ${t.shape}: weak, too close to ${t.limitedBy||"its own movement"}. Rerun and make the pose more distinct.`);
+  }
+  if(missed.length)out.push(`Missed: ${missed.join(", ")}. Rerun and hold steadier.`);
+  if(info.flatDeg!=null&&info.flatDeg>15)out.push(`Drift: a flat hand read ${info.flatDeg.toFixed(0)} deg bent at the end. Calibrate again, the zero moved during the run.`);
+  if(out.length===1&&!(info.replay&&info.replay.bad.length))out.push("Clean run. Next, run Self-test.");
+  else if(out.length){
+    const drift=info.flatDeg!=null&&info.flatDeg>15;
+    out.push(drift?"Next: press Calibrate with the hand flat and still, then rerun Guided calibration."
+      :"Next: rerun Guided calibration. Take the weak or missed poses slowly, and keep every other finger still.");
+  }
+  return out;
+}
+// ===== end touch detection =====
+
+// ===== black box =====
+// Pure functions, no DOM. One guided run, recorded so every mistake in it can be found later
+// from the exported file alone: the raw frames of all six sensors (the same numbers as the
+// raw CSV), a mark for every stage attempt, and a log of what happened. The frames go into
+// typed arrays of fixed size, so a long run can't grow without bound.
+const BB_FRAME_CAP=20000, BB_EVENT_CAP=3000;   // 20000 frames = 6.7 min at 50 Hz; a run is about 5
+const BB_AXES=["ax","ay","az","gx","gy","gz"];
+function bbCols(names){
+  const c=["t_ms","mask"];
+  names.forEach(n=>BB_AXES.forEach(a=>c.push(n.toLowerCase()+"_"+a)));
+  return c;
+}
+function makeBlackBox(nSensors,frameCap=BB_FRAME_CAP,eventCap=BB_EVENT_CAP){
+  return {w:nSensors*6,cap:frameCap,evCap:eventCap,t:new Float64Array(frameCap),mask:new Uint8Array(frameCap),
+    v:new Float32Array(frameCap*nSensors*6),n:0,full:0,events:[],eventsLost:0,marks:[],open:null};
+}
+function bbFrame(bb,t,mask,vals){
+  if(bb.n>=bb.cap){bb.full++;return;}
+  bb.t[bb.n]=t;bb.mask[bb.n]=mask;bb.v.set(vals,bb.n*bb.w);bb.n++;
+}
+function bbEvent(bb,ms,type,detail){
+  if(bb.events.length>=bb.evCap){bb.eventsLost++;return;}
+  bb.events.push({ms:Math.round(ms),frame:bb.n,type,...detail});
+}
+// A stage attempt: prep starts, the hold starts, it ends with an outcome. Frame indices point
+// into the raw rows, so the samples of any hold can be cut out again.
+function bbStageBegin(bb,ms,name,attempt){
+  if(bb.open)bbStageEnd(bb,ms,"cancelled");
+  bb.open={name,attempt,f0:bb.n,fHold:null,f1:null,ms0:Math.round(ms),msHold:null,ms1:null,outcome:null};
+  bb.marks.push(bb.open);
+}
+function bbHoldBegin(bb,ms){if(bb.open){bb.open.fHold=bb.n;bb.open.msHold=Math.round(ms);}}
+function bbStageEnd(bb,ms,outcome,detail){
+  const o=bb.open; if(!o)return;
+  o.f1=bb.n;o.ms1=Math.round(ms);o.outcome=outcome;Object.assign(o,detail);bb.open=null;
+}
+// JSON text of the raw rows: t_ms, mask, then the 36 values to 3 decimals. Built by hand so
+// the whole run never exists as one huge object.
+function bbRowsJson(bb){
+  const out=[];
+  for(let i=0;i<bb.n;i++){
+    let s="["+bb.t[i]+","+bb.mask[i];
+    for(let k=0;k<bb.w;k++)s+=","+(+bb.v[i*bb.w+k].toFixed(3)+0);   // +0 turns -0 into 0
+    out.push(s+"]");
+  }
+  return "["+out.join(",")+"]";
+}
+function stageName(s){return s.label||(s.pairs?`${s.pairs.join("+")} ${s.shape}`:"MOVE");}
+// The one line at the top of the Touch section: is this session calibrated, plainly.
+function touchStateInfo(o){
+  if(o.running)return {level:"run",text:o.step?`CALIBRATING · step ${o.step} of ${o.steps}`:"CALIBRATING · hold still"};
+  if(o.n&&o.stale)return {level:"warn",text:`STALE · ${o.n} touches were learned, but the glove was re-zeroed since (Calibrate or Zero orient). They may be off. Rerun Guided calibration.`};
+  if(o.n)return {level:"ok",text:`CALIBRATED · ${o.n} of ${o.total} touches learned`+(o.weak?`, ${o.weak} weak`:"")};
+  if(o.model)return {level:"off",text:"NOT CALIBRATED · a model from other sessions is loaded: it names the pair, but the bars need Guided calibration"};
+  return {level:"off",text:"NOT CALIBRATED · run Guided calibration to teach your touches"};
+}
+// What a self-test check read when it was not the wanted pair, as percentages of live frames.
+function readInstead(sets,n,want){
+  if(!n)return "no live frames";
+  const w=[...want].sort().join("+");
+  return Object.keys(sets).filter(k=>k!==w).sort((a,b)=>sets[b]-sets[a])
+    .map(k=>`${k?k.split("+").map(p=>TOUCH_NAMES[p]||p).join(" + "):"nothing"} ${(100*sets[k]/n).toFixed(0)} %`).join(", ");
+}
+// ===== end black box =====
+
+// Glue for the touch model: DOM, storage and sensor state live here, not in the section above.
+const TOUCH_KEY="gestura_touch_model_v1";
+let TOUCH_MODEL=null,touchOn=[];
+function setTouchModel(m){TOUCH_MODEL=m;touchOn=m.pairs.map(()=>false);}   // only called with a validTouchModel
+const HAND=handDefault();
+// Same formula as finger_direction() in train_baseline.py. null if any sensor is bad or stale.
+function touchDirs(now){
+  const out=[];
+  for(let id=0;id<=5;id++){
+    const st=S[id];
+    if(st.bad||!st.alive||now-st.last>=400)return null;
+    if(id===0)continue;
+    const [w,x,y,z]=handRelQuat(id);
+    out.push(2*(x*z+w*y),2*(y*z-w*x),1-2*(x*x+y*y));
+  }
+  return out;
+}
+(function(){
+  const status=document.getElementById("touchStatus");
+  const say=t=>{status.textContent=t;};
+  try{
+    const saved=JSON.parse(localStorage.getItem(TOUCH_KEY)||"null");
+    if(validTouchModel(saved)){setTouchModel(saved);say("touch model loaded from last session");}
+  }catch(e){}
+  document.getElementById("touchModelFile").addEventListener("change",e=>{
+    const f=e.target.files[0];
+    if(!f)return;
+    f.text().then(txt=>{
+      const m=JSON.parse(txt);
+      if(!validTouchModel(m))throw new Error("wrong shape");
+      setTouchModel(m);
+      try{localStorage.setItem(TOUCH_KEY,JSON.stringify(m));}catch(err){}
+      say("touch model loaded: "+m.pairs.join(" ")+(m.synthetic?" (synthetic)":""));
+    }).catch(()=>say("ERROR: not a valid touch model JSON"));
+  });
+})();
+
+// Glue for guided calibration. Timer-driven like calTick, so a background tab doesn't stall it.
+let guided=null,guidedTimer=null,touchTemplates=[],tplOn={},selfT=null,selfTimer=null,warpAnchors=[],calNegs=[];
+// zeroEpoch counts re-zeros (Calibrate, Zero orient). Touch templates, finger rolls and the
+// learned thumb movement are all measured against one zero, so after another re-zero they may be
+// off. tplEpoch is the zeroEpoch they were learned under.
+let zeroEpoch=0,tplEpoch=0,tplFrom=null;
+let runRec=null;   // the black box of the last guided run (and the self-test after it)
+const DASH_VERSION="touch-calibration v3 · black box · 2026-11-07";
+const elText=(id,t)=>{document.getElementById(id).textContent=t;};
+const relMs=now=>now-runRec.t0;
+// ---- errors: kept for the page and, if a run exists, in its log too
+const pageErrors=[];
+function noteError(kind,err){
+  const msg=String((err&&err.message)||err||"unknown error").slice(0,300);
+  const dup=pageErrors.find(e=>e.kind===kind&&e.msg===msg);
+  if(dup){dup.count++;return;}
+  if(pageErrors.length<100)pageErrors.push({kind,msg,stack:String((err&&err.stack)||"").split("\n").slice(0,4).join(" | ").slice(0,500),ms:Math.round(performance.now()),count:1});
+  bbLog("error",{kind,msg});
+}
+window.addEventListener("error",e=>noteError("window.error",e.error||{message:(e.message||"error")+" @"+(e.lineno||"?")}));
+window.addEventListener("unhandledrejection",e=>noteError("unhandledrejection",e.reason));
+// ---- run record
+function newRunRec(){
+  const now=performance.now();
+  return {startedAt:new Date().toISOString(),endedAt:null,t0:now,status:"running",live:true,exported:false,
+    bb:makeBlackBox(META.length),row:new Float64Array(META.length*6),g:null,result:null,selfTest:null,selfStatus:null,
+    framesIn:0,lost:0,lostAcc:0,badFrames0:badFrames,clip:META.map(()=>0),clipAcc:META.map(()=>0),
+    hz:{min:null,sum:0,n:0,t:now,f:0},seen:META.map(()=>null),cal:[]};
+}
+function bbLog(type,detail){if(runRec)bbEvent(runRec.bb,performance.now()-runRec.t0,type,detail||{});}
+function bbLogAt(now,type,detail){if(runRec)bbEvent(runRec.bb,relMs(now),type,detail||{});}
+// Called by the run timers (every 100 ms): link rate per second, loss and clipping summaries,
+// and every change of a sensor's state.
+function bbTick(now){
+  const r=runRec; if(!r||!r.live)return;
+  const dt=now-r.hz.t;
+  if(dt>=1000){
+    const hz=(r.framesIn-r.hz.f)*1000/dt;
+    r.hz.min=r.hz.min==null?hz:Math.min(r.hz.min,hz);r.hz.sum+=hz;r.hz.n++;r.hz.t=now;r.hz.f=r.framesIn;
+    if(r.lostAcc){bbLogAt(now,"frames lost",{n:r.lostAcc,hz:+hz.toFixed(1)});r.lostAcc=0;}
+    META.forEach(m=>{if(r.clipAcc[m.id]){bbLogAt(now,"gyro clipping",{sensor:m.name,samples:r.clipAcc[m.id]});r.clipAcc[m.id]=0;}});
+  }
+  META.forEach(m=>{
+    const st=S[m.id], fresh=st.alive&&now-st.last<400;
+    const key=!fresh?"stale":st.bad?"bad: "+st.flag:st.flag?"flag: "+st.flag:"ok";
+    if(key!==r.seen[m.id]){bbLogAt(now,"sensor state",{sensor:m.name,from:r.seen[m.id],to:key});r.seen[m.id]=key;}
+  });
+}
+// Sensors that can't be read right now, for the message when a hold had too few samples.
+function deadSensors(now){
+  return META.filter(m=>{const st=S[m.id];return st.bad||!st.alive||now-st.last>=400;}).map(m=>m.name.toLowerCase());
+}
+function guidedBanner(count,lab,sub,pct){
+  document.getElementById("calbanner").classList.add("show");
+  elText("calcount",count);elText("callab",lab);elText("calsub",sub);
+  document.getElementById("calfill").style.width=pct+"%";
+}
+function bannerOff(){
+  document.getElementById("calbanner").classList.remove("show");
+  elText("callab","Hold your hand flat & still");
+}
+// One place decides which buttons may be pressed, from the state of the whole page.
+function updateButtons(){
+  const idle=!guided&&!selfT, calRun=calState==="run", dis=(id,d)=>{document.getElementById(id).disabled=d;};
+  dis("cal",!linkUp||!idle||calRun||batchActive);
+  dis("zero",!linkUp||!idle||calRun);
+  dis("rec",!linkUp);
+  dis("guided",!linkUp||!(guided||(!selfT&&!calRun&&!batchActive)));
+  dis("selftest",!linkUp||!(selfT||(!guided&&touchTemplates.length&&!calRun&&!batchActive)));
+  dis("calexport",!runRec||(!runRec.bb.n&&!runRec.bb.events.length));
+  elText("guided",guided?"Stop guided":"Guided calibration");
+  elText("selftest",selfT?"Stop self-test":"Self-test");
+  applyBatchGate();
+}
+// The run ends here, however it ends: finished, stopped, disconnected or crashed. The record stays.
+function runOver(status){
+  if(!runRec)return;
+  if(runRec.status==="running"){runRec.status=status;runRec.endedAt=new Date().toISOString();}
+  if(runRec.bb.open)bbStageEnd(runRec.bb,performance.now()-runRec.t0,"cancelled");
+  bbLog("run end",{status});
+  runRec.live=false;
+}
+function guidedEnd(msg,status){
+  clearInterval(guidedTimer);guided=null;
+  bannerOff();
+  runOver(status);
+  updateButtons();
+  elText("touchStatus",msg);
+}
+function cancelGuided(msg,status="stopped"){
+  if(!guided)return;
+  if(calState==="run")cancelCalibration();
+  guidedEnd(msg,status);
+}
+function cancelSelf(msg,status="stopped"){
+  if(!selfT)return;
+  clearInterval(selfTimer);selfT=null;bannerOff();
+  if(runRec){runRec.selfStatus=status;runRec.live=false;if(runRec.bb.open)bbStageEnd(runRec.bb,performance.now()-runRec.t0,"cancelled");bbLog("self-test end",{status});}
+  updateButtons();
+  elText("touchStatus",msg);
+}
+// A throw inside a timer would stop the run silently. End it, keep what was recorded, say why.
+function safeTick(fn){
+  try{fn(performance.now());}
+  catch(err){
+    noteError("tick",err);
+    const why="stopped by an internal error: "+((err&&err.message)||err);
+    if(guided)cancelGuided("guided calibration "+why,"failed");
+    else if(selfT)cancelSelf("self-test "+why,"failed");
+  }
+}
+function startGuided(){
+  if(guided){cancelGuided("guided calibration stopped"+(touchTemplates.length?"; the earlier touch templates are still in use":""));return;}
+  if(selfT||!linkUp)return;
+  if(batchActive){elText("touchStatus","stop Batch Capture first");return;}
+  if(calState==="run"){elText("touchStatus","a calibration is running, wait for it to finish");return;}
+  const unsaved=runRec&&!runRec.exported&&(runRec.bb.n>0||runRec.bb.events.length>0);
+  runRec=newRunRec();
+  elText("coach","");   // the last run's advice must not sit next to this one
+  guided={i:-1,phase:"still",end:0,rows:[],quats:[],tries:0,note:"",templates:[],negs:[],missed:[],log:[]};
+  runRec.g=guided;
+  bbLog("run start",{kind:"guided"});
+  bbStageBegin(runRec.bb,0,"STILL",1);bbHoldBegin(runRec.bb,0);
+  elText("touchStatus",unsaved?"guided calibration started. The previous run was not exported and is replaced.":"guided calibration started: keep the hand flat and still for 20 s");
+  updateButtons();
+  startCalibration(CAL_INITIAL_MS,()=>{
+    if(!guided)return;
+    const now=performance.now();
+    bbStageEnd(runRec.bb,relMs(now),"done");
+    guidedStage(0,now);
+    clearInterval(guidedTimer);
+    guidedTimer=setInterval(()=>safeTick(guidedTick),100);
+  },"initial");
+}
+function guidedStage(i,now){
+  const g=guided; g.i=i; g.phase="prep"; g.end=now+GUIDED_PREP_MS; g.rows=[]; g.quats=[];
+  if(i>=GUIDED_STAGES.length){guidedDone();return;}
+  bbStageBegin(runRec.bb,relMs(now),stageName(GUIDED_STAGES[i]),g.tries+1);
+}
+function guidedDone(){
+  const g=guided, mx=DISPLAY.handModel==="left"?-1:1, neg=l=>g.negs.find(n=>n.label===l);
+  touchTemplates=finishTemplates(g.templates,g.negs); tplOn={}; calNegs=g.negs;
+  const fist=neg("FIST"), flat=neg("FLATCHECK");
+  setRolls(fist?[0,...[1,2,3,4].map(i=>rollFromFist(fist.mean.slice(i*3,i*3+3)))]:[0,0,0,0,0]);
+  warpAnchors=buildWarp(touchTemplates,g.negs,HAND,mx,fingerRolls);
+  tplEpoch=zeroEpoch; tplFrom=runRec.startedAt;
+  const replay=replayCheck(g.log,touchTemplates), flatDeg=flat?flatCheckDeg(flat.mean):null;
+  runRec.result={replay,flatDeg,rolls:fingerRolls,
+    anchors:warpAnchors.map(({offset,pairs,shape})=>({offset,pairs,shape})),
+    templates:touchTemplates.map(({pairs,shape,mean,q,spread,radius,limitedBy,weak})=>({pairs,shape,mean,q,spread,radius,limitedBy,weak}))};
+  const n=touchTemplates.length, total=GUIDED_STAGES.filter(s=>s.kind==="touch").length;
+  guidedEnd(`guided calibration: ${n}/${total} touches learned`,"complete");
+  elText("coach",coachLines(touchTemplates,g.missed,{replay,flatDeg}).join("\n"));
+}
+function guidedTick(now){
+  const g=guided; if(!g||g.phase==="still")return;
+  bbTick(now);
+  const stage=GUIDED_STAGES[g.i], title=`Step ${g.i+1} of ${GUIDED_STAGES.length}: ${stage.text}`;
+  const left=Math.max(0,Math.ceil((g.end-now)/1000));
+  if(g.phase==="prep"){
+    guidedBanner(left,title,g.note||"get into position, the hold starts when this reaches 0",100*(1-(g.end-now)/GUIDED_PREP_MS));
+    if(now>=g.end){g.phase="hold";g.end=now+GUIDED_HOLD_MS;g.rows=[];g.quats=[];g.note="";bbHoldBegin(runRec.bb,relMs(now));}
+    return;
+  }
+  guidedBanner(left,title,stage.kind==="move"?"keep moving slowly…":"hold the pose still…",100*(1-(g.end-now)/GUIDED_HOLD_MS));
+  if(stage.kind==="move"){if(now>=g.end){bbStageEnd(runRec.bb,relMs(now),"kept");guidedStage(g.i+1,now);}return;}
+  const dirs=touchDirs(now);
+  if(dirs&&g.end-now<=GUIDED_USE_MS){g.rows.push(dirs);g.quats.push([1,2,3,4,5].map(handRelQuat));}
+  if(now<g.end)return;
+  const t=g.rows.length>=GUIDED_MIN_ROWS?makeTemplate(stage,g.rows,g.quats):null;
+  const name=stageName(stage);
+  if(t&&t.spread<=GUIDED_MAX_SPREAD){
+    if(stage.kind==="touch")g.templates.push(t);else g.negs.push({label:stage.label,mean:t.mean,pairs:stage.pairs});
+    g.log.push({name,kind:stage.kind,pairs:stage.pairs,attempt:g.tries+1,n:g.rows.length,spread:t.spread,q:t.q,rows:g.rows.map(r=>r.map(v=>+v.toFixed(4)))});
+    bbStageEnd(runRec.bb,relMs(now),"kept",{rows:g.rows.length,spread:+t.spread.toFixed(4)});
+    g.tries=0;guidedStage(g.i+1,now);return;
+  }
+  const dead=deadSensors(now);
+  const why=!t?`only ${g.rows.length} usable samples${dead.length?" ("+dead.join(", ")+" not live)":""}`:`spread ${t.spread.toFixed(3)}, over the limit ${GUIDED_MAX_SPREAD}`;
+  const detail={rows:g.rows.length,spread:t?+t.spread.toFixed(4):null,why};
+  if(++g.tries<GUIDED_TRIES){
+    bbStageEnd(runRec.bb,relMs(now),"retry",detail);bbLogAt(now,"retry",{name,attempt:g.tries,why});
+    g.note=(t?"moved too much":dead.length?dead.join(", ")+" not live, check the cards":"too few samples")+`, once more (${g.tries} of ${GUIDED_TRIES-1} retries used)…`;
+    guidedStage(g.i,now);return;
+  }
+  bbStageEnd(runRec.bb,relMs(now),"missed",detail);bbLogAt(now,"missed hold",{name,why});
+  g.missed.push(name);g.tries=0;guidedStage(g.i+1,now);
+}
+// Self-test: asks for each touch and a flat hand, and scores what the detector actually says.
+const SELF_TEST=[...TOUCH_FINGERS.map(([pair,f])=>({pairs:[pair],text:`Touch thumb and ${f}`})),{pairs:[],text:"Flat hand, nothing touching"}];
+const SELF_PREP_MS=4000, SELF_CHECK_MS=3000, SELF_PASS=0.7;
+function selfStep(now){
+  selfT.phase="prep";selfT.end=now+SELF_PREP_MS;selfT.hit=0;selfT.n=0;selfT.skipped=0;selfT.sets={};selfT.meter=null;
+  bbStageBegin(runRec.bb,relMs(now),"SELF "+SELF_TEST[selfT.i].text,1);
+}
+function startSelfTest(){
+  if(selfT){cancelSelf("self-test stopped");return;}
+  if(guided||!linkUp||!touchTemplates.length||batchActive||calState==="run"||!runRec)return;
+  runRec.live=true;runRec.selfStatus="running";runRec.hz.t=performance.now();runRec.hz.f=runRec.framesIn;
+  bbLog("self-test start",{});
+  selfT={i:0,results:[]};selfStep(performance.now());
+  clearInterval(selfTimer);selfTimer=setInterval(()=>safeTick(selfTick),100);
+  elText("coach","");updateButtons();
+}
+function selfTick(now){
+  const t=selfT; if(!t)return;
+  bbTick(now);
+  const want=SELF_TEST[t.i], title=`Check ${t.i+1} of ${SELF_TEST.length}: ${want.text}`;
+  const left=Math.max(0,Math.ceil((t.end-now)/1000));
+  if(t.phase==="prep"){
+    guidedBanner(left,title,"get into position, the check starts when this reaches 0",100*(1-(t.end-now)/SELF_PREP_MS));
+    if(now>=t.end){t.phase="check";t.end=now+SELF_CHECK_MS;bbHoldBegin(runRec.bb,relMs(now));}
+    return;
+  }
+  guidedBanner(left,title,"hold it still, checking…",100*(1-(t.end-now)/SELF_CHECK_MS));
+  const dirs=touchDirs(now);
+  if(dirs){
+    const on=Object.keys(templateTouch({},touchTemplates,dirs)).sort();
+    t.n++;
+    const key=on.join("+"); t.sets[key]=(t.sets[key]||0)+1;
+    t.meter=touchMeter(dirs).map(({p,d,r})=>({p,d:d==null?null:+d.toFixed(3),r:r==null?null:+r.toFixed(3)}));
+    if(want.pairs.every(p=>on.includes(p))&&on.every(p=>want.pairs.includes(p)))t.hit++;
+  }else t.skipped++;
+  if(now<t.end)return;
+  const score=t.n?t.hit/t.n:0;
+  t.results.push({text:want.text,pairs:want.pairs,score,hit:t.hit,n:t.n,skipped:t.skipped,sets:t.sets,lastMeter:t.meter});
+  bbStageEnd(runRec.bb,relMs(now),score>=SELF_PASS?"pass":"fail",{score:+score.toFixed(3),n:t.n,skipped:t.skipped});
+  if(++t.i<SELF_TEST.length){selfStep(now);return;}
+  clearInterval(selfTimer);bannerOff();
+  const lines=t.results.map(r=>{
+    const ri=r.score<SELF_PASS?readInstead(r.sets,r.n,r.pairs):"";
+    return `${r.score>=SELF_PASS?"pass":"FAIL"} ${(100*r.score).toFixed(0)} %: ${r.text}`+(ri?` (read: ${ri})`:"");
+  });
+  const bad=t.results.filter(r=>r.score<SELF_PASS).length;
+  lines.push(bad?`${bad} of ${t.results.length} failed. Next: rerun Guided calibration, or export it and look at those holds.`:"All checks passed. Next: export the calibration if you want it kept.");
+  runRec.selfTest=t.results;runRec.selfStatus="complete";runRec.live=false;
+  bbLogAt(now,"self-test end",{status:"complete",failed:bad});
+  elText("coach",lines.join("\n"));
+  selfT=null;updateButtons();
+}
+// ---- export: everything needed to find the mistakes of one run from the file alone
+function scriptHash(){   // FNV-1a over the page's own code, so the exact file can be recognised
+  try{
+    const s=[...document.scripts].filter(x=>!x.src).map(x=>x.textContent).join("");
+    let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}
+    return (h>>>0).toString(16).padStart(8,"0")+"/"+s.length;
+  }catch(e){return "unknown";}
+}
+const r3=v=>Number.isFinite(v)?+v.toFixed(4):null;
+function sessionFacts(){
+  const r=runRec, h=r.hz;
+  const total=r.framesIn+r.lost;
+  return {
+    dashboard:{version:DASH_VERSION,scriptHash:scriptHash(),page:String(location.pathname||"").split("/").pop()},
+    userAgent:navigator.userAgent,
+    link:{hzMin:h.min==null?null:r3(h.min),hzMean:h.n?r3(h.sum/h.n):null,hzSamples:h.n,frames:r.framesIn,lost:r.lost,
+      lossPct:total?r3(100*r.lost/total):null,badFrames:Math.max(0,badFrames-r.badFrames0),bufferRefused:r.bb.full,eventsDropped:r.bb.eventsLost},
+    mount:{tiltDeg:r3(mountTiltDeg),psiDeg:r3(handMount/DEG),checked:mountChecked},
+    display:{handModel:DISPLAY.handModel,curlMode:DISPLAY.curlMode},
+    handRemap:REMAP_OF[0],
+    touch:{templates:touchTemplates.length,templatesFrom:tplFrom,stale:touchTemplates.length>0&&tplEpoch!==zeroEpoch,zeroEpoch,tplEpoch},
+    sensors:META.map(m=>{const st=S[m.id];return {id:m.id,name:m.name,calibrated:st.calibrated,bad:st.bad,flag:st.flag,
+      bias:st.bias.map(r3),noise:st.noise.map(r3),accBias:st.accBias.map(r3),accOffset:ACC_OFFSET[m.id].slice(),
+      clipSamples:r.clip[m.id],firmwareDropFrames:st.dropCount,dropLatched:st.dropBad};}),
+    calibrations:r.cal,
+  };
+}
+function buildExport(){
+  const r=runRec, g=r.g, res=r.result;
+  const head={version:3,status:r.status,date:r.startedAt,endedAt:r.endedAt,
+    stages:g?g.log:[],missed:g?g.missed:[],replay:res?res.replay:null,flatDeg:res?res.flatDeg:null,rolls:res?res.rolls:null,
+    anchors:res?res.anchors:[],templates:res?res.templates:[],selfTest:r.selfTest,selfTestStatus:r.selfStatus,selfTestPass:SELF_PASS,
+    session:sessionFacts(),events:r.bb.events,errors:pageErrors,marks:r.bb.marks,
+    settings:{prepMs:GUIDED_PREP_MS,holdMs:GUIDED_HOLD_MS,useMs:GUIDED_USE_MS,minRows:GUIDED_MIN_ROWS,maxSpread:GUIDED_MAX_SPREAD,tries:GUIDED_TRIES,
+      tplMin:TOUCH_TPL_MIN,tplOff:TOUCH_TPL_OFF,tplWeak:TOUCH_TPL_WEAK,steps:GUIDED_STAGES.length}};
+  // the raw frames are appended as text, so they never exist as one big object
+  const body=JSON.stringify(head);
+  return body.slice(0,-1)+',"raw":{"cols":'+JSON.stringify(bbCols(META.map(m=>m.name)))+',"rows":'+bbRowsJson(r.bb)+"}}";
+}
+function exportCalibration(){
+  if(!runRec)return;
+  try{
+    const text=buildExport();
+    downloadCSV(text,"handrig_calibration_"+Date.now()+".json");
+    runRec.exported=true;
+    elText("touchStatus",`exported ${(text.length/1e6).toFixed(1)} MB · run ${runRec.status}, ${runRec.bb.n} raw frames, ${runRec.bb.events.length} events`);
+  }catch(err){
+    noteError("export",err);
+    elText("touchStatus","ERROR: export failed: "+((err&&err.message)||err));
+  }
+}
+// The pairs that count as touching right now, from whichever detector is active.
+function activeTouches(){
+  if(touchTemplates.length)return Object.keys(tplOn);
+  return TOUCH_MODEL?TOUCH_MODEL.pairs.filter((p,i)=>touchOn[i]):[];
+}
+// Distance to the nearest template of each pair against its limit, so a touch can be seen
+// approaching and the numbers can be read off while testing on the glove.
+function touchMeter(dirs){
+  return TOUCH_FINGERS.map(([p])=>{
+    const ts=touchTemplates.filter(t=>t.pairs.length===1&&t.pairs[0]===p);
+    if(!ts.length||!dirs)return {p,d:null,r:null};
+    const b=ts.map(t=>({t,d:digitDist(t.digits,t.mean,dirs)})).sort((x,y)=>x.d/x.t.radius-y.d/y.t.radius)[0];
+    return {p,d:b.d,r:b.t.radius};
+  });
+}
+function buildTouchPanel(){
+  document.getElementById("touchbars").innerHTML=TOUCH_FINGERS.map(([p])=>
+    `<div class="tm" id="tm-${p}"><span>${TOUCH_NAMES[p]}</span><i><u></u></i><b>—</b></div>`).join("");
+}
+// Full bar at the limit, empty at three times the limit.
+function drawTouchPanel(dirs,on){
+  for(const {p,d,r} of touchMeter(dirs)){
+    const el=document.getElementById("tm-"+p);
+    el.classList.toggle("on",!!on[p]);
+    el.querySelector("u").style.width=d==null?"0":Math.max(0,Math.min(100,(3-d/r)*50))+"%";
+    setText(el.querySelector("b"),d==null?"—":`${d.toFixed(2)} / ${r.toFixed(2)}`);
+  }
 }
 
 // ===== BLE =====
@@ -961,8 +1736,7 @@ function onConnected(){
   document.getElementById("conn").textContent="Disconnect";
   // batchToggle is excluded here -- its enabled state is owned by applyBatchGate()
   // (below), which additionally requires a GO noise-baseline check this session.
-  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=false);
-  applyBatchGate();
+  updateButtons();
   document.getElementById("cards").classList.add("in");
   document.getElementById("batchgrid").classList.add("show");
   setStatus((device.name||"device")+" · streaming");winT=performance.now();
@@ -977,16 +1751,21 @@ function onDisc(){
   // and Export CSV stays enabled. (Before, `recording` stayed true, which kept Export
   // and Noise Check disabled forever, so the capture could not be saved.)
   if(recording)toggleRec();
+  // The run's record is kept, so Export calibration still works after a drop.
+  bbLog("disconnect",{guided:!!guided,selfTest:!!selfT,calibrating:calState==="run"});
+  cancelGuided("guided calibration stopped: glove disconnected. Export calibration still has what was captured.","disconnected");
+  cancelSelf("self-test stopped: glove disconnected","disconnected");
   cancelCalibration();   // a half-finished hold has no data left to finish with
   document.getElementById("dot").className="dot err";
   document.getElementById("conn").textContent="Connect";
-  ["cal","zero","rec"].forEach(id=>document.getElementById(id).disabled=true);
+  touchTemplates=[];tplOn={};warpAnchors=[];calNegs=[];setRolls([0,0,0,0,0]);   // all of it belongs to one session on the hand
+  drawTouchPanel(null,{});
   window.BatchGate.reset(); // a new BLE connection is a new session
-  applyBatchGate();
   document.getElementById("batchgrid").classList.remove("show");
   document.getElementById("veil").style.display="flex";
   setStatus("disconnected","err");S.forEach(s=>s.alive=false);
   stopBatchCapture();
+  updateButtons();
 }
 function disconnect(){if(device&&device.gatt.connected)device.gatt.disconnect();}
 
@@ -1004,7 +1783,9 @@ function onNotify(e){
     // every sensor renders convincing garbage. Verify before trusting the sync.
     let ck=0; for(let k=0;k<FRAME_LEN-1;k++) ck^=rxBuf[i+k];
     if(ck!==rxBuf[i+FRAME_LEN-1]){ badFrames++; i++; continue; }  // advance 1, keep hunting
-    parseFrame(rxBuf.subarray(i,i+FRAME_LEN));i+=FRAME_LEN;
+    // A throw must not leave this frame in rxBuf: every later packet would hit it again and the stream would stay dead.
+    try{parseFrame(rxBuf.subarray(i,i+FRAME_LEN));}catch(err){noteError("frame",err);}
+    i+=FRAME_LEN;
   }
   rxBuf=rxBuf.subarray(i);
 }
@@ -1017,8 +1798,10 @@ function pushHist(h,gx,gy,gz,ax,ay,az){
 function parseFrame(f){
   const dv=new DataView(f.buffer,f.byteOffset,f.byteLength);
   const seq=dv.getUint8(1), t=dv.getUint32(2,true), mask=dv.getUint8(6);
-  if(lastSeq>=0){lostWin+=(seq-lastSeq-1)&0xff;}
+  const rr=runRec&&runRec.live?runRec:null;   // the black box, only while a run is recording
+  if(lastSeq>=0){const gap=(seq-lastSeq-1)&0xff;lostWin+=gap;if(rr){rr.lost+=gap;rr.lostAcc+=gap;}}
   totWin++;lastSeq=seq;framesWin++;
+  if(rr)rr.framesIn++;
   // dt==0 can happen when the firmware sends catch-up frames in the same ms after
   // a stalled BLE write. Those frames add no elapsed time, so they must not add
   // rotation either (substituting 0.02 here would integrate each one twice).
@@ -1033,9 +1816,10 @@ function parseFrame(f){
     // CSV always stores the RAW sensor frame, never the remapped one — the
     // remap is a viewing convention and may change; the capture must not.
     if(recRow)recRow.push(ax,ay,az,gx,gy,gz);
+    if(rr){const o=sid*6;rr.row[o]=ax;rr.row[o+1]=ay;rr.row[o+2]=az;rr.row[o+3]=gx;rr.row[o+4]=gy;rr.row[o+5]=gz;}
     const ao=ACC_OFFSET[sid], cax=ax-ao[0], cay=ay-ao[1], caz=az-ao[2];
     // a sample at the gyro's full scale is a lower bound, not a reading: rotation was lost
-    if(Math.max(Math.abs(gx),Math.abs(gy),Math.abs(gz))>=GYR_CLIP_DPS)S[sid].clipT=performance.now();
+    if(Math.max(Math.abs(gx),Math.abs(gy),Math.abs(gz))>=GYR_CLIP_DPS){S[sid].clipT=performance.now();if(rr){rr.clip[sid]++;rr.clipAcc[sid]++;}}
 
     const st=S[sid];
     // v4: a clear mask bit means the firmware itself does not trust this
@@ -1122,6 +1906,7 @@ function parseFrame(f){
     // "raw stays reinterpretable" convention (see 08_ble_dashboard.ino SENSOR AXES note).
     pushBatchRaw(st,ax,ay,az,gx,gy,gz);
   }
+  if(rr)bbFrame(rr.bb,t,mask,rr.row);
   if(recRow){
     recFrames.push(recRow);
     // At the cap, stop through toggleRec() so the button label, its active state and
@@ -1203,7 +1988,8 @@ function healBeta(st){
 // sideways while the hand lies flat look the same to gravity, so that spread is
 // zeroed too. Fingerspelling poses are not palm-down-flat, so they never trigger it.
 function healRezero(dt){
-  if(calState==="run"||!S[0].calibrated||S[0].bad){rezeroActive=false;return;}
+  // a straight touch can look like the flat pose, and re-zero would erase it while it is held
+  if(guided||selfT||activeTouches().length||calState==="run"||!S[0].calibrated||S[0].bad){rezeroActive=false;return;}
   const used=S.filter(st=>!st.bad);
   const ok=used.every(st=>{
     if(!st.calibrated||!st.calUp||st.stillS<HEAL_REZERO_S||st.tiltErr>HEAL_TILT_OK_DEG)return false;
@@ -1287,7 +2073,7 @@ function setMountTilt(){
 const _mv=new THREE.Vector3();
 try{   // last session's angle as the starting guess, only if it was learned for the same hand axes
   const v=JSON.parse(localStorage.getItem(MOUNT_KEY)||"null");
-  if(v&&v.remap===REMAP_OF[0]&&Number.isFinite(v.psi))setHandMount(v.psi);
+  if(v&&v.remap===REMAP_OF[0]&&Number.isFinite(v.psi)&&Math.abs(v.psi)<=2*Math.PI)setHandMount(v.psi);
 }catch(e){}
 const mountFit={sxy:0,sdot:0,w:0,n:0};
 function learnMount(dt){
@@ -1421,6 +2207,7 @@ function startCalibration(durationMs=CAL_INITIAL_MS, onDone=null, kind="initial"
   // banner hung until you came back to the tab.
   clearInterval(calTimer);
   calTimer=setInterval(calTick,100);
+  updateButtons();
 }
 function calTick(){
   if(calState!=="run"){clearInterval(calTimer);return;}
@@ -1434,12 +2221,14 @@ function cancelCalibration(){
   clearInterval(calTimer);
   calState="idle";calOnDone=null;
   document.getElementById("calbanner").classList.remove("show");
+  updateButtons();
 }
 function finishCalibration(){
+  const calRows=[];
   META.forEach(m=>{
     const st=S[m.id],c=calAcc[m.id];
     st.dropBad=false;   // a fresh calibration verdict supersedes any pending dropout latch
-    if(c.n<5){st.flag="no data";st.bad=true;return;}
+    if(c.n<5){st.flag="no data";st.bad=true;calRows.push({id:m.id,n:c.n,flag:st.flag,bad:true});return;}
     for(let k=0;k<3;k++){
       const mean=c.gs[k]/c.n; st.bias[k]=mean;
       st.noise[k]=Math.sqrt(Math.max(0,c.gq[k]/c.n-mean*mean));
@@ -1461,6 +2250,7 @@ function finishCalibration(){
     else if(maxBias>40)   { st.flag="bias "+maxBias.toFixed(0)+"°/s · bad gyro"; st.bad=true; }
     else if(maxNoise>15)  { st.flag="noisy "+maxNoise.toFixed(0)+"°/s"; st.bad=true; }
     st.calibrated=true;
+    calRows.push({id:m.id,n:c.n,accMag:r3(am),bias:st.bias.map(r3),noise:st.noise.map(r3),accBias:st.accBias.map(r3),flag:st.flag,bad:st.bad});
 
     // Re-settle the filter's orientation from the calibration-average gravity
     // vector, not from a blind reset + a hope-it-converged-by-now wait.
@@ -1491,6 +2281,9 @@ function finishCalibration(){
     // the old loop was heading for, with zero heading as before.
     const axAvg=c.as[0]/c.n, ayAvg=c.as[1]/c.n, azAvg=c.as[2]/c.n;
     const an=Math.hypot(axAvg,ayAvg,azAvg), ux=axAvg/an, uy=ayAvg/an, uz=azAvg/an;
+    if(!(an>1e-6)){   // a sensor reading all zeros has no "up": dividing by it left NaN in the filter for good
+      st.fil.q=[1,0,0,0];st.calUp=null;st.zeroT=performance.now();st.qRef.copy(st.fil.three());return;
+    }
     if(uz<-0.9999) st.fil.q=[0,1,0,0];   // upside down: u x Z vanishes, any 180 deg turn about a horizontal axis works
     else{const qn=Math.hypot(1+uz,uy,ux); st.fil.q=[(1+uz)/qn,uy/qn,-ux/qn,0];}
     st.calUp=[ux,uy,uz];   // the calibration pose, as each sensor sees gravity (auto re-zero target)
@@ -1502,11 +2295,18 @@ function finishCalibration(){
   });
   setMountTilt();
   alignHeadings();
+  zeroEpoch++;   // every touch template, roll and thumb offset was measured against the old zero
+  if(runRec){
+    const kind=guided&&guided.phase==="still"?"guided-still":batchActive?"batch":"plain";
+    runRec.cal.push({ms:Math.round(performance.now()-runRec.t0),kind,sensors:calRows});
+    bbLog("calibration",{kind,bad:calRows.filter(r=>r.bad).map(r=>META[r.id].name+": "+r.flag),n:calRows.map(r=>r.n)});
+  }
   if(!mountChecked)setStatus(`calibrated${mountTiltDeg>15?` · XIAO sits tipped ${mountTiltDeg.toFixed(0)}°, corrected`:""} · now tilt and roll the whole hand, fingers straight, ~2 s: checks how the XIAO sits`);
   calState="done";
   clearInterval(calTimer);
   document.getElementById("calbanner").classList.remove("show");
   const cb=calOnDone; calOnDone=null;
+  updateButtons();
   if(cb)cb();
 }
 // Heading alignment. Gravity fixes each filter's tilt, but its heading (rotation about
@@ -1538,7 +2338,12 @@ function alignHeadings(){
     const f=_rz.copy(st.fil.three()).premultiply(_yawQ); st.fil.q=[f.w,f.x,f.y,f.z];
   });
 }
-function zeroOrient(){const now=performance.now();S.forEach(st=>{st.qRef.copy(st.fil.three());st.zeroT=now;});}
+function zeroOrient(){
+  if(guided||selfT||calState==="run")return;   // a new zero in the middle of a run would shift every hold after it
+  const now=performance.now();S.forEach(st=>{st.qRef.copy(st.fil.three());st.zeroT=now;});
+  zeroEpoch++;bbLog("zero orient",{});
+}
+function calClick(){if(!guided&&!selfT&&!batchActive&&calState!=="run")startCalibration();}
 
 // ===== recording =====
 let recording=false, recFrames=[];
@@ -1790,11 +2595,14 @@ const BATCH_GATED_TITLE="Run Noise Check and get a GO result first — Batch Cap
 // never drift out of sync with (connected && a GO was recorded this session).
 function applyBatchGate(){
   const connected=!!(device&&device.gatt&&device.gatt.connected);
-  const ok=window.BatchGate.satisfied(connected);
+  const gate=window.BatchGate.satisfied(connected);
+  // a guided run, a self-test or a calibration owns the zero; batch capture can't start in the middle of one
+  const busy=!batchActive&&(!!guided||!!selfT||calState==="run");
+  const ok=gate&&!busy;
   const btn=document.getElementById("batchToggle");
-  if(!ok&&batchActive)stopBatchCapture(); // gate revoked (disconnect) mid-batch -> stop cleanly
+  if(!gate&&batchActive)stopBatchCapture(); // gate revoked (disconnect) mid-batch -> stop cleanly
   btn.disabled=!ok;
-  btn.title=ok?BATCH_ARMED_TITLE:BATCH_GATED_TITLE;
+  btn.title=ok?BATCH_ARMED_TITLE:gate?"Wait for the guided calibration, self-test or calibration to finish.":BATCH_GATED_TITLE;
 }
 
 function pushBatchRaw(st,ax,ay,az,gx,gy,gz){
@@ -1819,6 +2627,7 @@ function startBatchCapture(){
   // guard keeps the function itself safe against any other caller (keyboard
   // shortcut, console, future UI) that bypasses the DOM disabled state.
   if(!window.BatchGate.satisfied(!!(device&&device.gatt&&device.gatt.connected)))return;
+  if(guided||selfT||calState==="run")return;
   batchActive=true;batchState="calibrating";
   const ae=document.activeElement;
   if(ae&&ae.id==="batchToggle")ae.blur();   // see the keydown handler: Space must not hit the button
@@ -1827,10 +2636,14 @@ function startBatchCapture(){
     if(!batchActive)return;
     batchState="armed";updateBatchUI();
   },"initial");
+  updateButtons();
 }
 function stopBatchCapture(){
+  const wasCal=batchActive&&calState==="run";
   batchActive=false;batchState="idle";
+  if(wasCal)cancelCalibration();   // its calibration would otherwise finish into nothing and leave the banner up until then
   updateBatchUI();
+  updateButtons();
 }
 
 // Computed fresh from st.rel rather than read from st.localQ: localQ is only refreshed
@@ -1944,13 +2757,29 @@ function updateBatchUI(){
 // visible at a glance instead of tallying exported CSVs by hand.
 const BATCH_ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const BATCH_GOAL_REPS=30;   // ~3 sessions x ~10 reps/session, per the phase-8 target
+// Touch poses, same names and order as the keys of POSES in tools/pose_labels.py
+// (tools/verify_touch_model.py checks the two stay equal).
+const POSE_LABELS=["FLAT","FISTOUT","FISTIN","THUMBOUT","TI","TM","TR","TP","OKRING","ROCK","TRSTRAIGHT","TRP","NEARTI","NEARTR"];
+const POSE_GOAL_REPS=20;    // 2 sessions x 10 reps
 function buildBatchGrid(){
   const wrap=document.getElementById("batchgrid");
+  const list=document.getElementById("poseList");
+  POSE_LABELS.forEach(name=>{
+    const o=document.createElement("option");o.value=name;list.appendChild(o);
+  });
   BATCH_ALPHABET.forEach(letter=>{
     const cell=document.createElement("div");
     cell.className="cell";
     cell.id="bg-"+letter;
     cell.innerHTML=`<span>${letter}</span><b>0</b>`;
+    wrap.appendChild(cell);
+  });
+  POSE_LABELS.forEach(name=>{
+    const cell=document.createElement("div");
+    cell.className="cell pose";
+    cell.id="bg-"+name;
+    cell.title=name;
+    cell.innerHTML=`<span>${name}</span><b>0</b>`;
     wrap.appendChild(cell);
   });
 }
@@ -1961,6 +2790,13 @@ function updateBatchGrid(){
     const n=batchRepCounts[letter]||0;
     cell.querySelector("b").textContent=n;
     cell.classList.toggle("done",n>=BATCH_GOAL_REPS);
+  });
+  POSE_LABELS.forEach(name=>{
+    const cell=document.getElementById("bg-"+name);
+    if(!cell)return;
+    const n=batchRepCounts[name]||0;
+    cell.querySelector("b").textContent=n;
+    cell.classList.toggle("done",n>=POSE_GOAL_REPS);
   });
 }
 
@@ -1991,6 +2827,7 @@ function exportBatchCSV(){
 }
 
 document.addEventListener("keydown",e=>{
+  if(e.code==="Escape"&&(guided||selfT)){if(guided)cancelGuided("guided calibration stopped"+(touchTemplates.length?"; the earlier touch templates are still in use":""));else cancelSelf("self-test stopped");return;}
   if(!batchActive)return;
   const tag=(e.target&&e.target.tagName)||"";
   if(e.code==="Escape"){stopBatchCapture();return;}   // Esc is safe from anywhere, even a text field
@@ -2126,7 +2963,7 @@ function drawTrace(id){
 // the closing requestAnimationFrame() call, so a single bad frame silently froze the
 // whole UI for the rest of the session.
 function refreshCards(){
-  try{refreshOnce();}catch(err){console.error("refreshCards:",err);}
+  try{refreshOnce();}catch(err){console.error("refreshCards:",err);noteError("refresh",err);}
   requestAnimationFrame(refreshCards);
 }
 function refreshOnce(){
@@ -2167,7 +3004,8 @@ function refreshOnce(){
       // so this is a curl reading, not per-joint flexion. Which pitch sign means "curl"
       // is not yet verified on the glove, so the default stays |pitch|; the "curl sign"
       // control switches to a signed reading once that is measured (see curlDegFor).
-      const curlDeg=fresh&&!st.bad?curlDegFor(st.curlRad,DISPLAY.curlMode):0;
+      // The thumb's bend has no sign (see thumbBendRad), so the curl sign control doesn't apply to it.
+      const curlDeg=fresh&&!st.bad?curlDegFor(st.curlRad,m.id===1?"abs":DISPLAY.curlMode):0;
       const pct=Math.max(0,Math.min(100,(curlDeg/CURL_MAX_DEG)*100));
       const lab=!fresh?"—":pct<20?"extended":pct>65?"curled":"bending";
       setText(ui.cur.pct,fresh?pct.toFixed(0)+" %":"— %");
@@ -2178,9 +3016,31 @@ function refreshOnce(){
     drawTrace(m.id);
   });
 
+  const tsi=touchStateInfo({running:!!guided,step:guided&&guided.i>=0?guided.i+1:0,steps:GUIDED_STAGES.length,n:touchTemplates.length,
+    total:GUIDED_STAGES.filter(s=>s.kind==="touch").length,weak:touchTemplates.filter(t=>t.weak).length,
+    stale:tplEpoch!==zeroEpoch,model:!!TOUCH_MODEL});
+  const tse=document.getElementById("touchState");
+  setText(tse,tsi.text);
+  if(tse.dataset.level!==tsi.level)tse.dataset.level=tsi.level;
   const ge=document.getElementById("gest");
-  setText(ge,GESTURE.active?"thumb·index":"—");
-  ge.classList.toggle("hl",GESTURE.active);
+  if(touchTemplates.length){
+    // This session's templates beat a model trained on other sessions.
+    const dirs=touchDirs(now);
+    tplOn=dirs?templateTouch(tplOn,touchTemplates,dirs):{};
+    const names=Object.keys(tplOn).map(p=>TOUCH_NAMES[p]);
+    setText(ge,names.length?names.join(" + "):"—");
+    ge.classList.toggle("hl",names.length>0);
+    drawTouchPanel(dirs,tplOn);
+  }else if(TOUCH_MODEL){
+    const dirs=touchDirs(now);
+    touchOn=dirs?touchState(touchOn,touchProbs(TOUCH_MODEL,dirs)):touchOn.map(()=>false);
+    const names=TOUCH_MODEL.pairs.filter((p,i)=>touchOn[i]).map(p=>TOUCH_NAMES[p]||p);
+    setText(ge,(names.length?names.join(" + "):"—")+(TOUCH_MODEL.synthetic?" · synthetic":""));
+    ge.classList.toggle("hl",names.length>0);
+  }else{
+    setText(ge,GESTURE.active?"thumb·index":"—");
+    ge.classList.toggle("hl",GESTURE.active);
+  }
 
   const dt=now-winT;
   if(dt>=500){
@@ -2240,13 +3100,18 @@ document.getElementById("beta").addEventListener("input",e=>{
   hm.addEventListener("change",e=>{
     DISPLAY.handModel=e.target.value;saveDisplay();
     buildFingers(DISPLAY.handModel);
+    // the learned thumb offsets were solved for the other mirror, so solve them again for this one
+    if(touchTemplates.length)warpAnchors=buildWarp(touchTemplates,calNegs,HAND,DISPLAY.handModel==="left"?-1:1,fingerRolls);
   });
 })();
 
 document.getElementById("conn").addEventListener("click",()=>{
   if(device&&device.gatt.connected)disconnect();else connect();});
 document.getElementById("conn2").addEventListener("click",connect);
-document.getElementById("cal").addEventListener("click",()=>startCalibration());
+document.getElementById("cal").addEventListener("click",calClick);
+document.getElementById("guided").addEventListener("click",startGuided);
+document.getElementById("selftest").addEventListener("click",startSelfTest);
+document.getElementById("calexport").addEventListener("click",exportCalibration);
 document.getElementById("zero").addEventListener("click",zeroOrient);
 document.getElementById("rec").addEventListener("click",toggleRec);
 document.getElementById("csv").addEventListener("click",exportCSV);
@@ -2273,8 +3138,8 @@ if(!supportOk()){
   setConnectBusy(false);   // disables both Connect buttons when Web Bluetooth is missing
 }
 
-buildScene();buildCards();buildBatchGrid();
-restoreBatchRows();updateBatchUI();
+buildScene();buildCards();buildBatchGrid();buildTouchPanel();
+restoreBatchRows();updateBatchUI();updateButtons();
 refreshCards();
 </script>
 </body>

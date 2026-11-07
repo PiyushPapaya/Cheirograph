@@ -76,7 +76,8 @@ def check_file(bf, problems, warnings):
         return
 
     letter_in_name = name.split("_")[2].upper() if bf.session != "?" else None
-    if letter_in_name and set(bf.labels) != {letter_in_name}:
+    # A POSES file holds many labels on purpose (tools/pose_labels.py).
+    if letter_in_name and letter_in_name != "POSES" and set(bf.labels) != {letter_in_name}:
         warnings.append(f"{name}: file name says {letter_in_name} but rows are labelled "
                         f"{sorted(set(bf.labels))}")
 

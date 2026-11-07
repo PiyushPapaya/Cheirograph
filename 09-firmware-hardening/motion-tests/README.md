@@ -152,15 +152,16 @@ What the videos show (visual only, nothing re-measured): T2 before, the real han
 
 ## Thumb re-test (2026-11-07, not run yet)
 
-On the current dashboard (thumb anchored under the palm, flex about a measured axis). Press Record before Calibrate. Save the CSV, a hand video and a screen recording per test.
+On the current dashboard (thumb anchored under the palm, sensor rotation split over base and tip joint with `THUMB_BASE_FRAC` 0.5). The thumb sensor is on the tip segment. Reload with Ctrl+F5, reconnect, recalibrate. Press Record before Calibrate. Save the CSV, a hand video and a screen recording per test.
 
 - TH1: thumb in and out alone, slow, 5x, hand flat.
 - TH2: same, fast, 5x.
 - TH3: thumb tucked across the palm and held 5 s, then back, 3x.
 - TH4: fist with the thumb outside, 3x.
 - TH5: fingers straight, thumb still, rotate the whole hand.
+- TH6: bend only the thumb tip, slow, 5x. Does the model's thumb curl, and does it still point sensibly (not straight down)?
 
-Analyse the CSV first: re-measure `THUMB_FLEX_AXIS`, check the thumb return error, and decide the re-zero gate (DECISIONS.md, open items). Check the rate first; it needs to be about 50 Hz.
+Analyse the CSV first: check the tip direction against the video and the joint split (is 0.5 about right, or does the base look over- or under-rotated), check the thumb return error, and decide the re-zero gate (DECISIONS.md, open items). Check the rate first; it needs to be about 50 Hz.
 
 ## Analysis commands
 

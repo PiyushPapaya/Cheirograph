@@ -138,6 +138,21 @@ these into the real dataset.
 python make_synthetic_batch.py --out synth/ --sessions 3 --reps 30
 ```
 
+### `pose_labels.py` and `train_touch.py`  *(Phase 8, touch detection)*
+`pose_labels.py` is the one table from pose name to touch set (14 poses, pairs
+TI TM TR TP). `train_touch.py` fits one logistic regression per pair on the 15
+`dir` numbers of `POSES` exports, evaluates leave-one-session-out, prints
+`GATE PASS` or `GATE FAIL` (recall >= 90 %, near-miss false alarms <= 10 %) and
+writes a JSON model the dashboard can load. Synthetic results are not glove
+results. Plan and guided calibration: `10-touch-detection/`.
+- Dependency: `numpy`.
+```bash
+python train_touch.py path/to/exports/ --out touch_model.json
+```
+Checks: `python verify_touch_model.py` (end to end, including gate pass and
+fail cases), `node verify_touch_js.mjs` (dashboard maths matches Python),
+`node verify_guided_touch.mjs` (guided calibration stages and templates), `node verify_hand_fit.mjs` (kinematics, finger roll, thumb warp and contact correction; the old hand fit was removed), `node verify_real_calibration.mjs` (replays the real export `10-touch-detection/calibration_2026-11-07.json`: held-out detection, tip gaps, and the real page fed the real holds). `node verify_blackbox.mjs` (runs the page's real export code on simulated 17-stage runs, clean and broken, through the Python report). `analyze_touch_calibration.py` reads the version 3 black box export (and still the version 1 file); it flags frozen sensors and pinned gyro axes, and each section runs on its own so a damaged file still prints a partial report.
+
 ### `train_baseline.py`  *(Phase 9 prep)*
 A k-nearest-neighbours baseline to compare Edge Impulse against. Compares three
 feature sets built from the hand-relative quaternions: `quat` (raw, 20 numbers),
@@ -229,3 +244,5 @@ tested on 2.5.3 (open decision in `DECISIONS.md`).
 
 Tests: `python verify_check_dataset.py`, and `node verify_*.mjs` for the
 dashboard logic.
+`verify_thumb_rig.mjs` checks that the thumb stays out of the palm box and that
+the flex axis reads the right sign.
