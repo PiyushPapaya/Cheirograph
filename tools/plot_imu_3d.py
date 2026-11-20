@@ -25,12 +25,10 @@ Dependencies: numpy, matplotlib (see requirements.txt).
 """
 
 import argparse
-import csv
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers the 3d projection)
 
 # Per-kind cosmetics + axis labels. accel is in g, gyro in deg/s.
 KINDS = {

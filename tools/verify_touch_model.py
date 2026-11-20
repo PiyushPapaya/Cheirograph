@@ -33,7 +33,6 @@ sys.path.insert(0, str(HERE))
 from batch_io import find_csvs, load_batch                # noqa: E402
 from pose_labels import PAIRS, POSES                       # noqa: E402
 from train_baseline import features                        # noqa: E402
-import train_touch                                         # noqa: E402
 
 # sha256 over the letter rows (t_ms column dropped, files sorted by letter and session) of
 #   make_synthetic_batch.py --sessions 2 --reps 3 --seed 5

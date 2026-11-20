@@ -26,14 +26,12 @@ Usage:
 """
 
 import argparse
-import csv
 from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation, PillowWriter
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 SENSOR_NAMES = {0: "hand", 1: "finger1", 2: "finger2", 3: "finger3", 4: "finger4", 5: "finger5"}
 COLORS = {0: "#e8a33d", 1: "#5fb3a3", 2: "#6a8fd8", 3: "#9a7fd4", 4: "#d97a92", 5: "#c9c14a"}
@@ -76,7 +74,7 @@ def main():
         ax3d = fig.add_subplot(111, projection="3d")
         for sid in sensor_ids:
             arr = np.array(rows[sid])
-            t, xyz = arr[:, 0], arr[:, 1:4]
+            xyz = arr[:, 1:4]
             ax3d.plot(xyz[:, 0], xyz[:, 1], xyz[:, 2], color=COLORS[sid],
                       linewidth=0.8, alpha=0.85, label=SENSOR_NAMES[sid])
         ax3d.set_xlabel("aX (g)"); ax3d.set_ylabel("aY (g)"); ax3d.set_zlabel("aZ (g)")

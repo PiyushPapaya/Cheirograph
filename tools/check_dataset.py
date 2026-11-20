@@ -39,7 +39,6 @@ Exit code: 0 = no problems, 1 = problems found (or coverage short with --strict)
 import argparse
 import sys
 from collections import defaultdict
-from pathlib import Path
 
 import numpy as np
 

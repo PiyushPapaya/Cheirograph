@@ -42,7 +42,7 @@ def load(path: Path):
         for row in csv.reader(f):
             if not row or row[0].startswith("#"):
                 continue
-            idx, _host_time, sensor_id = int(row[0]), row[1], int(row[2])
+            idx, sensor_id = int(row[0]), int(row[2])
             gx, gy, gz = (float(row[3]), float(row[4]), float(row[5]))
             samples.setdefault(idx, {})[sensor_id] = (gx, gy, gz)
     return samples
