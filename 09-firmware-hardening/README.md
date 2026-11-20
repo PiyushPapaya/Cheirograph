@@ -6,7 +6,7 @@
 
 Stage 08's v4 firmware was good at *noticing* faults: it flagged a frozen sensor, dropped bad readings from the validity mask, and unwedged a jammed I²C bus at boot. A review on 2026-10-06 found four places where it noticed a fault but could not get out of it. During a 30-minute labelling session any of them means stopping, power-cycling the glove and recalibrating. v5 fixes those four, plus three smaller BLE and power issues (fixes 14-16). The BLE frame is byte-for-byte the same, so the dashboard works with either version.
 
-**Firmware:** [`09_firmware_hardening.ino`](09_firmware_hardening.ino). Flash it the same way as stage 08. Stage 08's sketch stays as it was, as the record.
+**Firmware:** [`09_firmware_hardening.ino`](09_firmware_hardening/09_firmware_hardening.ino). Flash it the same way as stage 08. Stage 08's sketch stays as it was, as the record.
 
 ## The fixes
 

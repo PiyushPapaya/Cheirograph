@@ -42,6 +42,7 @@ python tools/verify_check_dataset.py
 
 - `calibration_2026-11-07.json`: first real export (old 15-step capture).
 - `calibration_2026-11-07_v3.json` (3.8 MB, mirrored in `Data/csv/`): first real version 3 session, guided calibration then Self-test. 16 of 16 holds kept, Self-test 0 % on all four touches.
+- `calibration_2026-11-07_v3_guided-only.json`: the same session exported after the guided run, before Self-test (13834 frames).
 - `report_2026-11-07_v3.txt`: the offline analysis of that file.
 - `node tools/verify_selftest_replay.mjs` replays the v3 session through the page code and checks the drawn thumb gaps.
 
