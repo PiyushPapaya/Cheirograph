@@ -241,6 +241,20 @@ raw sensor frame; Batch Capture exports hand-relative quaternions.
 
 ---
 
+## Run all checks
+
+```bash
+python tools/run_all_checks.py
+```
+One PASS/FAIL line per check, exit code 1 if any fails. It covers: the three
+dashboard copies match (md5), every `verify_*.mjs` and `verify_*.py` passes,
+`make_synthetic_batch.py` output passes `check_dataset.py`, no dead relative
+links in tracked `.md` files, and `Data/` mirrors every tracked csv, json,
+sketch, image and html file from the numbered stage folders. Standard library
+only. Run it before every commit.
+
+---
+
 ## Setup
 
 ```bash
@@ -251,8 +265,7 @@ pip install -r requirements.txt
 ```
 
 `requirements.txt` is pinned. Update it in the same commit as any script that
-adds a dependency. Note: it pins numpy 2.2.6, but the October scripts were
-tested on 2.5.3 (open decision in `DECISIONS.md`).
+adds a dependency. Tested with Python 3.12 (numpy 2.5.4, matplotlib 3.11.2).
 
 Tests: `python verify_check_dataset.py`, and `node verify_*.mjs` for the
 dashboard logic.

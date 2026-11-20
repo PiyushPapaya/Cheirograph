@@ -21,7 +21,7 @@ if (start < 0 || end < 0) {
   process.exit(1);
 }
 if (!process.argv[2]) {
-  console.log("skipped: needs a fixture, which verify_touch_model.py writes and passes in (step 6). Usage: node tools/verify_touch_js.mjs <fixture.json>");
+  console.log("SKIP: needs a fixture, which verify_touch_model.py writes and passes in (step 6). Usage: node tools/verify_touch_js.mjs <fixture.json>");
   process.exit(0);
 }
 const fx = JSON.parse(readFileSync(process.argv[2], "utf8"));

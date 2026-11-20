@@ -188,7 +188,9 @@ def sensor_health(r):
         marks = d.get("marks") or []
         still = next((m for m in marks if m["name"] == "STILL" and m.get("f1") is not None), None)
         if still:
-            blk = a[still["fHold"] or 0:still["f1"]]
+            # skip the first 150 frames (~3 s): the hand is still settling into the pose
+            f0 = still.get("f0")
+            blk = a[(f0 + 150 if f0 is not None else (still["fHold"] or 0)):still["f1"]]
             if len(blk) > 50:
                 print("raw still window (calibration hold): mean |a| and gyro std per sensor")
                 for s in range(6):
