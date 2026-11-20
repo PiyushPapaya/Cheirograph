@@ -20,6 +20,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
 | open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
 | open | [Samples per letter](#open-samples-per-letter) | Data |
+| 2026-11-08 | [Ring vs straight drawn by a template-guided shape weight](#2026-11-08--ring-vs-straight-drawn-by-a-template-guided-shape-weight) | Display |
 | 2026-11-07 | [Thumb display: nearest-anchor weights plus near-pair contact](#2026-11-07--thumb-display-nearest-anchor-weights-plus-near-pair-contact) | Display |
 | 2026-11-07 | [Learned thumb base movement](#2026-11-07--learned-thumb-base-movement) | Calibration |
 | 2026-11-07 | [Finger roll from the fist hold](#2026-11-07--finger-roll-from-the-fist-hold) | Calibration |
@@ -208,6 +209,16 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-11-08 | Ring vs straight drawn by a template-guided shape weight
+
+**Options:** (a) raise the fixed joint shares globally. (b) Display-only shape weight per pair: a logistic on the distance to this session's ring and straight templates picks how much ring shape to draw. (c) Leave as is.
+
+**Choice:** (b). `w = 1/(1+exp((d_ring - d_straight)/SHAPE_TAU))`, `SHAPE_TAU` 0.04, smoothed 0.2 per frame. Ring adds 35 deg (`RING_EXTRA_DEG`) of flatten to the proximal segment and curl to the distal one, and flattens the thumb base. Detection, templates and exports are untouched.
+
+**Why:** with fixed shares, ring and straight looked the same (PIP/DIP 35 vs 31 deg for TM). (a) changes every pose and is not driven by data. (b) uses the session's own holds and separates exponentially, so the two touches differ clearly (TM 70 vs 0 deg). It stays display-only, so detection results do not move.
+
+**Cost:** the drawn joint shape is a model guess, not measured. It works only after guided calibration. TI templates are only 0.052 apart (others 0.21 to 0.30), so TI draws a partial blend (w 0.78/0.22). The fix is a more distinct re-record, not a smaller TAU. Not tried on the live glove (unverified).
 
 ### 2026-11-07 | Thumb display: nearest-anchor weights plus near-pair contact
 

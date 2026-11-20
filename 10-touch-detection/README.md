@@ -45,6 +45,14 @@ python tools/verify_check_dataset.py
 - `report_2026-11-07_v3.txt`: the offline analysis of that file.
 - `node tools/verify_selftest_replay.mjs` replays the v3 session through the page code and checks the drawn thumb gaps.
 
+## Ring vs straight drawing (2026-11-08)
+
+The 3D hand draws a ring and a straight touch of the same pair as different shapes. The weight is display-only: a two-way softmax over the distances to this session's ring and straight templates (`SHAPE_TAU` 0.04, smoothed 0.2 per frame). A ring flattens the proximal segment 35 deg and curls the distal one 35 deg more. Detection and exports do not change.
+
+- `node tools/verify_touch_shape.mjs` checks it on the v3 export. Mean PIP/DIP ring vs straight: TM 70 vs 0 deg, TR 60 vs 0, TP 67 vs 0, TI 49 vs 13. Tip gaps 0.002 to 0.041.
+- TI ring and straight templates are only 0.052 apart, so TI blends. Re-record it with a rounder O.
+- Not yet seen on the live glove (unverified).
+
 ## Known limits
 
 - It detects "this pose matches your touch pose", not contact. Touching and a 1 cm near miss may look alike (unverified).

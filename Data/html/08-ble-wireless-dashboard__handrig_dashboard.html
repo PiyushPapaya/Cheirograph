@@ -847,7 +847,6 @@ const _tmp=new THREE.Quaternion();
 const _idQ=new THREE.Quaternion();    // identity, never mutated
 const _ce=new THREE.Euler();          // scratch, curl extraction only
 const CURL_MAX_DEG=90;                // reference full-curl angle for the % readout
-const _jq=new THREE.Quaternion();     // scratch, joint share of a digit's rotation
 const _dq=new THREE.Quaternion();     // scratch, digit rotation as drawn (roll removed)
 const rollQ=[0,1,2,3,4].map(()=>new THREE.Quaternion()), rollQi=[0,1,2,3,4].map(()=>new THREE.Quaternion());
 let fingerRolls=[0,0,0,0,0];
@@ -894,17 +893,10 @@ function render(){
     const local=st.bad ? st.localQ.copy(_idQ) : st.localQ.copy(invPalm).multiply(st.rel);
     // st.localQ doubles as the cache the card readout and batch export read, so
     // they always match what is actually drawn.
-    // identity slerped toward dq by f is q^f: each joint's share of the measured rotation,
-    // the same split as digitLocal(). The thumb has no middle segment.
-    const i=m.id-1, thumb=m.id===1, ud=g.userData, f=thumb?THUMB_BASE_FRAC:FINGER_BASE_FRAC;
+    // The segments are set in applyContact() from dispQ, split over the joints by digitSegs().
+    const i=m.id-1, thumb=m.id===1;
     const dq=_dq.copy(rollQ[i]).multiply(local).multiply(rollQi[i]);
     (st.dispQ||(st.dispQ=new THREE.Quaternion())).copy(dq);
-    ud.segBase.quaternion.slerp(_jq.copy(_idQ).slerp(dq,f),k||1);
-    if(thumb)ud.segTip.quaternion.slerp(_jq.copy(_idQ).slerp(dq,1-f),k||1);
-    else{
-      ud.segMid.quaternion.slerp(_jq.copy(_idQ).slerp(dq,1-f),k||1);
-      ud.segTip.quaternion.slerp(_jq.copy(_idQ).slerp(dq,FINGER_TIP_FRAC),k||1);
-    }
 
     // curl readout: the pitch of the local rotation, signed. The "curl sign" control only
     // affects the % readout (curlDegFor).
@@ -921,14 +913,23 @@ function render(){
 // The thumb's base follows the learned movement all the time, and during a detected touch the
 // tips are drawn together. Both are eased like every other drawn rotation and return to rest
 // on their own. Display only: exports never read these.
+// Each digit's segments come from digitSegs(): the plain joint split, or during a touch the
+// ring or straight shape the session's templates point to (shapeWeights).
 const _cq=new THREE.Quaternion(), _bp=new THREE.Vector3();
+let shapeW={};
 function applyContact(k){
   const mx=DISPLAY.handModel==="left"?-1:1;
-  const dirs=warpAnchors.length?touchDirs(performance.now()):null;
-  const hand=dirs?warpHand(HAND,thumbWarp(warpAnchors,dirs),mx):HAND;
+  const dirs=warpAnchors.length||touchTemplates.length?touchDirs(performance.now()):null;
+  const hand=dirs&&warpAnchors.length?warpHand(HAND,thumbWarp(warpAnchors,dirs),mx):HAND;
   const qs=[1,2,3,4,5].map(id=>{const l=S[id].dispQ||_idQ;return [l.w,l.x,l.y,l.z];});
-  const on=activeTouches();
-  const C=contactFix(qs,on.length?on:nearPair(qs,hand,mx),hand,mx);
+  const on=activeTouches(), pairs=on.length?on:nearPair(qs,hand,mx);
+  const sh=shapeWeights(shapeW,touchTemplates,pairs,dirs); shapeW=sh.next;
+  qs.forEach((q,i)=>{
+    const g=fingerGroups[i+1]; if(!g)return;
+    const ud=g.userData, segs=digitSegs(i,q,sh.ws[i]), objs=i===0?[ud.segBase,ud.segTip]:[ud.segBase,ud.segMid,ud.segTip];
+    segs.forEach((s,n)=>objs[n].quaternion.slerp(_cq.set(s[1],s[2],s[3],s[0]),k));
+  });
+  const C=contactFix(qs,pairs,hand,mx,sh.ws);
   C.forEach((c,i)=>{
     const g=fingerGroups[i+1]; if(g)g.userData.restBend.quaternion.slerp(_cq.set(c[1],c[2],c[3],c[0]),k);
   });
@@ -1004,15 +1005,76 @@ function digitBase(i,hand,mx){
   const a=FINGER_ANCHORS[DIGIT_NAMES[i]];
   return [a.x*mx,a.y??0.1,a.z];
 }
-function digitLocal(i,q,hand){   // base to tip, before the digit's static yaw
-  const L=digitLen(i,hand), z=l=>[0,0,l], add=(a,b)=>a.map((c,k)=>c+b[k]);
-  if(i===0)return add(qRot(qPow(q,THUMB_BASE_FRAC),z(L*THUMB_SEGS[0])),qRot(q,z(L*THUMB_SEGS[1])));
-  return add(add(qRot(qPow(q,FINGER_BASE_FRAC),z(L*FINGER_SEGS[0])),qRot(q,z(L*FINGER_SEGS[1]))),
-    qRot(qPow(q,1+FINGER_TIP_FRAC),z(L*FINGER_SEGS[2])));
+// Ring or straight touch. Two touches of the same pair can have almost the same middle
+// phalanx, so with the fixed joint split above they drew alike. The data still tells them
+// apart: on the glove (v3, 2026-11-07) the ring and straight holds of a pair sit 0.25-0.33
+// apart in dir space, wider than any template radius (0.10-0.18). So during a touch the
+// drawing leans on the session's own templates for the shape. This is model-guided, not
+// measured: one sensor per digit can't see the joints. Display only.
+//   w = 1 / (1 + e^((d_ring - d_straight) / TAU))
+// d is the distance to each template, the same metric detection uses (digitDist on the thumb
+// and the target finger). This is a 2-way softmax of -d/TAU: it only depends on which
+// template is closer and by how much. Equal distances give 0.5; every 0.04 (TAU) of lead
+// multiplies the odds by e, so a 0.1 lead is already 92/8. Smoothed by SHAPE_SMOOTH per
+// frame so it doesn't flicker between the two.
+// w = 1 draws a RING: the measured middle phalanx stays where the sensor says, the proximal
+// segment flattens by RING_EXTRA_DEG and the distal one curls RING_EXTRA_DEG more, both about
+// the measured bend axis, so the PIP and DIP joints close into an O. For the thumb (sensor on
+// the tip) the base flattens the same amount, which bends the thumb more at its middle joint.
+// w = 0 draws STRAIGHT: every segment lies along the measured one, no joint bends.
+const SHAPE_TAU=0.04, SHAPE_SMOOTH=0.2, RING_EXTRA_DEG=35;
+function shapeWeight(templates,pair,dirs){
+  const one=s=>templates.find(t=>t.pairs&&t.pairs.length===1&&t.pairs[0]===pair&&t.shape===s);
+  const r=one("ring"), s=one("straight");
+  if(!r||!s||!dirs||dirs.length<15||!dirs.every(Number.isFinite))return null;
+  const dist=m=>{let d=0;for(const g of [0,PAIR_FINGER[pair]])for(let k=g*3;k<g*3+3;k++)d+=(m[k]-dirs[k])**2;return Math.sqrt(d);};
+  const w=1/(1+Math.exp((dist(r.mean)-dist(s.mean))/SHAPE_TAU));
+  return Number.isFinite(w)?w:null;
+}
+// prev: last frame's smoothed weight per pair. Returns the new one and a weight per digit
+// (null = no shape, the plain joint split). A pair that stops touching drops out, so its next
+// touch starts from its own value instead of an old one.
+function shapeWeights(prev,templates,pairs,dirs){
+  const next={}, ws=[null,null,null,null,null];
+  for(const p of pairs){
+    const w=shapeWeight(templates,p,dirs);
+    if(w==null)continue;
+    next[p]=p in prev?prev[p]+SHAPE_SMOOTH*(w-prev[p]):w;
+    ws[0]=ws[PAIR_FINGER[p]]=next[p];
+  }
+  return {next,ws};
+}
+// q followed by an extra turn of rad about q's own axis: more (or, rad < 0, less) of the same
+// bend. Below ~6 deg the axis is noise, so it falls back to X, the finger's hinge.
+function bendMore(q,rad){
+  const s=q[0]<0?-1:1, n=Math.hypot(q[1],q[2],q[3]);
+  const ax=n>0.05?[s*q[1]/n,s*q[2]/n,s*q[3]/n]:[1,0,0], h=Math.sin(rad/2);
+  return qMul(q,[Math.cos(rad/2),ax[0]*h,ax[1]*h,ax[2]*h]);
+}
+// Each segment's orientation relative to the digit's rest, base first. w as in shapeWeight.
+// Straight (w = 0) puts the proximal exponent at 1, ring (w = 1) at the usual split.
+function digitJoints(i,q,w){
+  if(i===0){
+    if(!Number.isFinite(w))return [qPow(q,THUMB_BASE_FRAC),q];   // also null: no shape
+    return [bendMore(qPow(q,1-(1-THUMB_BASE_FRAC)*w),-RING_EXTRA_DEG*Math.PI/180*w),q];
+  }
+  if(!Number.isFinite(w))return [qPow(q,FINGER_BASE_FRAC),q,qPow(q,1+FINGER_TIP_FRAC)];
+  const R=RING_EXTRA_DEG*Math.PI/180*w;
+  return [bendMore(qPow(q,1-(1-FINGER_BASE_FRAC)*w),-R),q,bendMore(qPow(q,1+FINGER_TIP_FRAC*w),R)];
+}
+// The same as rotations of each segment against its parent, which is what the scene graph
+// nests: conj(J[k-1]) J[k]. The conjugate of a unit quaternion is its inverse.
+function digitSegs(i,q,w){
+  const J=digitJoints(i,q,w), cj=a=>[a[0],-a[1],-a[2],-a[3]];
+  return J.map((j,k)=>k?qMul(cj(J[k-1]),j):j);
+}
+function digitLocal(i,q,hand,w){   // base to tip, before the digit's static yaw
+  const L=digitLen(i,hand), S=i===0?THUMB_SEGS:FINGER_SEGS;
+  return digitJoints(i,q,w).reduce((acc,j,k)=>{const v=qRot(j,[0,0,L*S[k]]);return acc.map((c,n)=>c+v[n]);},[0,0,0]);
 }
 // C is an extra rotation at the digit's base (contactFix). The order matches the scene graph.
-function digitTip(i,q,hand,mx,C=[1,0,0,0]){
-  const v=qRot(qYaw(FINGER_ANCHORS[DIGIT_NAMES[i]].yaw*mx),qRot(C,digitLocal(i,q,hand)));
+function digitTip(i,q,hand,mx,C=[1,0,0,0],w){
+  const v=qRot(qYaw(FINGER_ANCHORS[DIGIT_NAMES[i]].yaw*mx),qRot(C,digitLocal(i,q,hand,w)));
   return digitBase(i,hand,mx).map((c,k)=>c+v[k]);
 }
 // Finger roll. A finger sensor can sit rolled about the finger, and rel is in the sensor's own
@@ -1057,9 +1119,9 @@ function thumbWarp(anchors,dirs){
 }
 function warpHand(hand,off,mx){return {...hand,thumb:[hand.thumb[0]+off[0]*mx,hand.thumb[1]+off[1],hand.thumb[2]+off[2]]};}
 function buildWarp(templates,negs,hand,mx,rolls){
-  const offsetOf=t=>{
-    const qs=unrollQs(t.q,rolls), a=digitTip(0,qs[0],hand,mx), o=[0,0,0];
-    for(const p of t.pairs){const f=PAIR_FINGER[p],b=digitTip(f,qs[f],hand,mx);for(let k=0;k<3;k++)o[k]+=(b[k]-a[k])/t.pairs.length;}
+  const offsetOf=t=>{   // measured in the shape the hold will be drawn in (shapeWeights)
+    const qs=unrollQs(t.q,rolls), {ws}=shapeWeights({},templates,t.pairs,t.mean), a=digitTip(0,qs[0],hand,mx,undefined,ws[0]), o=[0,0,0];
+    for(const p of t.pairs){const f=PAIR_FINGER[p],b=digitTip(f,qs[f],hand,mx,undefined,ws[f]);for(let k=0;k<3;k++)o[k]+=(b[k]-a[k])/t.pairs.length;}
     return o;
   };
   const touch=templates.filter(t=>t.q).map(t=>({dirs:t.mean,offset:offsetOf(t),pairs:t.pairs,shape:t.shape}));
@@ -1076,16 +1138,17 @@ function buildWarp(templates,negs,hand,mx,rolls){
 // is turned at its base toward the point between the two tips, a few times over (the idea
 // behind cyclic coordinate descent). Display only, and capped so a wrong detection can't
 // fold a finger. Returns one rotation per digit.
-function contactFix(qs,pairs,hand,mx){
+// ws: shape weight per digit (shapeWeights), so the tips meet in the drawn shape.
+function contactFix(qs,pairs,hand,mx,ws=[]){
   const C=[[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0],[1,0,0,0]];
   if(!pairs.length)return C;
   const aim=(i,target)=>{
     const b=digitBase(i,hand,mx), Yi=qYaw(-FINGER_ANCHORS[DIGIT_NAMES[i]].yaw*mx);
-    const t=qRot(Yi,target.map((c,k)=>c-b[k])), v=qRot(C[i],digitLocal(i,qs[i],hand));
+    const t=qRot(Yi,target.map((c,k)=>c-b[k])), v=qRot(C[i],digitLocal(i,qs[i],hand,ws[i]));
     C[i]=qMul(qArc(v,t),C[i]);
   };
   for(let it=0;it<8;it++)for(const pr of pairs){
-    const f=PAIR_FINGER[pr], a=digitTip(0,qs[0],hand,mx,C[0]), b=digitTip(f,qs[f],hand,mx,C[f]);
+    const f=PAIR_FINGER[pr], a=digitTip(0,qs[0],hand,mx,C[0],ws[0]), b=digitTip(f,qs[f],hand,mx,C[f],ws[f]);
     const mid=a.map((c,k)=>(c+b[k])/2);
     aim(0,mid);aim(f,mid);
   }
