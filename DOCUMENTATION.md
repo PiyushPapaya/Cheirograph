@@ -12,16 +12,16 @@ Roadmap: [GENERAL_PLAN.md](GENERAL_PLAN.md). Design choices: [DECISIONS.md](DECI
 
 ---
 
-## Where things stand (2026-11-07)
+## Where things stand (2026-11-20)
 
 | Area | State | Evidence |
 |---|---|---|
 | Six IMUs on one I²C bus via mux | Works, ~94 Hz raw | [04](04-all-six-imus-raw/) |
 | Madgwick fusion per sensor | Works on the bench, roll/pitch drift ≤ 0.35 °/min | [05](05-madgwick-fusion/) |
 | Glove mount | 30 min wear test passed | [07](07-full-glove-assembly/) |
-| BLE stream + live 3D dashboard | Live on the glove since 2026-08-07, ~47 Hz | [08](08-ble-wireless-dashboard/) |
+| BLE stream + live 3D dashboard | Live on the glove since 2026-08-07. v4 ran at ~47 Hz. On v5, the 2026-11-07 black-box session measured 50 Hz: firmware spacing 20.0 ms median, dashboard mean 49.93 Hz (minimum 30.7 Hz, 11 gaps over 30 ms), 15609 frames, 0 lost, 0 bad | [08](08-ble-wireless-dashboard/), [10](10-touch-detection/) |
 | Hand-relative quaternion | In the dashboard (JS), not in firmware | [tools/](tools/) |
-| v5 firmware (runtime fault recovery) | **v5 plus the self-healing dashboard works on the glove (user-observed, 2026-10-31). Motion tests not re-run, no new numbers.** Dashboard also learns accel offsets live (synthetic test only). Flashed 2026-10-31. Motion tests found gyro clipping, a 17 Hz frame rate and a dashboard calibration bug. Fixes written and compiled (gyro ±2000 °/s, BLE link requests, closed-form calibration settle). Updated v5 flashed: serial shows 50 Hz connected, MTU 527, 15 ms interval. Dashboard RATE and CSV rate not yet confirmed, motion tests not re-run. Dashboard now has self-healing (stillness-based bias tracking, adaptive snap-back, auto re-zero on a flat hand, HEALTH readout): replay on the old captures cut end-of-test finger error to under 5 deg in most tests, not yet tried on the glove. Recovery paths still untested | [09](09-firmware-hardening/) |
+| v5 firmware (runtime fault recovery) | **v5 plus the self-healing dashboard works on the glove (user-observed, 2026-10-31). Motion tests not re-run, no new numbers.** Dashboard also learns accel offsets live (synthetic test only). Flashed 2026-10-31. Motion tests found gyro clipping, a 17 Hz frame rate and a dashboard calibration bug. Fixes written and compiled (gyro ±2000 °/s, BLE link requests, closed-form calibration settle). Updated v5 flashed: serial shows 50 Hz connected and a 15 ms interval (the report printed MTU 527, the central's offer; the firmware asks for 247, which is the most the stack allows). The 2026-11-07 black-box session confirmed 50 Hz at the dashboard (15609 frames, 0 lost). Motion tests not re-run. Dashboard now has self-healing (stillness-based bias tracking, adaptive snap-back, auto re-zero on a flat hand, HEALTH readout): replay on the old captures cut end-of-test finger error to under 5 deg in most tests, not yet tried on the glove. Recovery paths still untested | [09](09-firmware-hardening/) |
 | Thumb rig (dashboard) | Reworked twice on 2026-11-07 (see the correction in that entry). Now: anchor under the palm, tip sensor's rotation split over base and tip joint (`THUMB_BASE_FRAC` 0.5, a guess). Checked offline with `tools/verify_thumb_rig.mjs`. **Not yet tried on the glove (unverified).** The single measured flex axis was dropped | [tools/](tools/) |
 | Thumb tracking | **Dashboard changes made 2026-11-07 (anchor under the palm, rotation split over two joints, readout is total rotation). Not tried on the glove, no clean 50 Hz thumb CSV yet.** Verified only with injected rotations and `tools/verify_thumb_rig.mjs`. The thumb sensor is on the tip segment per the user (not visible in the July photo). | [tools/](tools/), [motion tests](09-firmware-hardening/motion-tests/README.md) |
 | Thumb curl | Works on the glove (user-observed, 2026-11-07, no CSV). The split rotation fix is confirmed visually only | [tools/](tools/) |
@@ -49,6 +49,20 @@ Pinky accel "25–28 % low" (2026-08-07): explained on 2026-10-31. It is a zero-
 ---
 
 ## Entries
+
+### 2026-11-20 | Phase 8: clean slate, status sync, decisions locked
+
+**Plan:** work through milestone M0 (clean slate) and M1 (dataset-safe dashboard) from the 2026-11-16 audit. Start by committing the pending work and making every public status line match the evidence.
+**Achieved:**
+- Committed 8 days of pending dashboard work (ring vs straight touches drawn from the session templates, display only). All 14 offline verifiers passed. The three dashboard copies match.
+- Repo hygiene: mirrored four missing sketches into `Data/firmware`, fixed three dead links (09 README, `Data/datasheets/XIAO_nRF52840_Sense.md`), filed the one unique calibration export as `10-touch-detection/calibration_2026-11-07_v3_guided-only.json` (13834 frames, taken after the guided run and before Self-test) and deleted two byte-identical duplicates. Link check: 0 dead out of 251 links. Mirror check: 0 gaps.
+- Pointed every reference to a local-only notes file at public docs (DECISIONS 2026-07-14 for yaw drift, the 08 README for sensor faults, GENERAL_PLAN for scope). The dashboard's frozen-sensor message now names the usual causes itself.
+- Synced the status lines with the evidence. v5 is flashed (GENERAL_PLAN said it was not). The link runs at 50 Hz, not ~47 Hz: the 2026-11-07 black box shows firmware spacing 20.0 ms median, dashboard mean 49.93 Hz (minimum 30.7 Hz, 11 gaps over 30 ms), 15609 frames, 0 lost, 0 bad. The MTU is 247 at most (from the core source), so the "527" was the central's offer. Stage 10 is now in the phase table and the README stage table. The 10 README intro matches the v3 session (it had said the capture had not run on the glove). Stages 03, 06, 07, 09 and 10 have a Toolchain line. The BOM notes two spare GY-521 modules.
+- GENERAL_PLAN "Next steps, in order" replaced with the corrected list. DECISIONS now holds 24 entries dated 2026-11-16 (alphabet, bias-only recal between reps, no auto re-zero during a batch, batch file metadata, offset-aware dataset check, calibration posture, touch scope and detector, watchdog and boot-hang handling, gyro-scale flag, firmware version in the BLE name, new stage folder for v6, features and classifier ladder, device math, Python pins, samples per letter, BLE fallback, build target and others). Nine open items they settle were closed. The rest moved to the open section.
+- One-command check runner `tools/run_all_checks.py` (dashboard copies, all verifiers, synthetic dataset, dead links, `Data/` mirror): 6 of 6 PASS. Tool versions pinned (Python 3.12, numpy 2.5.4, matplotlib 3.11.2). The touch report's calibration still window now uses the frames the calibration accepted. Worst gyro std drops from 7 to 21 °/s to 1.29 °/s.
+- CI workflow `.github/workflows/checks.yml` runs the check runner and `pyflakes` on every push to master. `pyflakes` is clean after removing seven unused imports and variables. Not yet run on GitHub.
+**Problems:** `Data/firmware` holds two older copies, `02-single-mpu6050__diag_accel_raw.ino` and `02-single-mpu6050__diag_gyro_raw.ino`, that differ from the current sketches. I left them in place for now. Whether to replace them with the current sketches or keep them as history is an open question. Also, the v5 serial report line still prints `mtu=527` in the 09 README and in older entries here. I left those as recorded.
+**Next:** a CI workflow that runs the offline checks, then the bias-only recalibration between batch reps (DECISIONS 2026-11-16).
 
 ### 2026-11-08 | Phase 8: touch detection question, replay screenshots
 

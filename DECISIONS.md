@@ -8,18 +8,40 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 | Date | Decision | Area |
 |---|---|---|
-| open | [Separating a touch from a near miss in live detection](#open-separating-a-touch-from-a-near-miss-in-live-detection) | Touch detection |
-| open | [Auto re-zero erasing small thumb poses](#open-auto-re-zero-erasing-small-thumb-poses) | Fusion |
-| open | [Per-finger mount correction](#open-per-finger-mount-correction) | Calibration |
 | open | [Thumb-aware ML features](#open-thumb-aware-ml-features) | Data |
-| open | [Finger-vs-hand relative formula](#open-finger-vs-hand-relative-formula) | Fusion |
-| open | [BLE throughput if the central refuses the link requests](#open-ble-throughput-if-the-central-refuses-the-link-requests) | BLE |
 | open | [Guided functional calibration](#open-guided-functional-calibration) | Calibration |
 | open | [Real contact sensing vs inferred touch](#open-real-contact-sensing-vs-inferred-touch) | Hardware |
 | open | [SPREAD reads 25 deg bent](#open-spread-reads-25-deg-bent) | Calibration |
-| open | [Hardware watchdog for a stuck SCL line](#open-hardware-watchdog-for-a-stuck-scl-line) | Firmware |
-| open | [Python dependency pin](#open-python-dependency-pin) | Tooling |
-| open | [Samples per letter](#open-samples-per-letter) | Data |
+| open | [Calibration posture against mount slip](#open-calibration-posture-against-mount-slip) | Calibration |
+| open | [Touch poses as separable classes](#open-touch-poses-as-separable-classes) | Touch detection |
+| open | [Gravity-only features enough, and thumb features](#open-gravity-only-features-enough-and-thumb-features) | Data |
+| open | [Can UART and HID run at once](#open-can-uart-and-hid-run-at-once) | BLE |
+| open | [Watchdog against the bootloader](#open-watchdog-against-the-bootloader) | Firmware |
+| open | [Pinky part faulty?](#open-pinky-part-faulty) | Hardware |
+| 2026-11-16 | [Alphabet: ASL, one-handed, 24 static letters](#2026-11-16--alphabet-asl-one-handed-24-static-letters) | Data |
+| 2026-11-16 | [Between-rep recalibration in Batch Capture is bias-only](#2026-11-16--between-rep-recalibration-in-batch-capture-is-bias-only) | Calibration |
+| 2026-11-16 | [Auto re-zero is off while Batch Capture runs](#2026-11-16--auto-re-zero-is-off-while-batch-capture-runs) | Fusion |
+| 2026-11-16 | [Batch file metadata: one # meta line](#2026-11-16--batch-file-metadata-one--meta-line) | Data |
+| 2026-11-16 | [check_dataset.py subtracts the accel offsets from the meta line](#2026-11-16--check_datasetpy-subtracts-the-accel-offsets-from-the-meta-line) | Data |
+| 2026-11-16 | [Calibration posture: palm down, fingers straight, hand in the air](#2026-11-16--calibration-posture-palm-down-fingers-straight-hand-in-the-air) | Calibration |
+| 2026-11-16 | [Touch scope: IMU poses only, a near miss counts](#2026-11-16--touch-scope-imu-poses-only-a-near-miss-counts) | Touch detection |
+| 2026-11-16 | [Touch detector: fold touch poses into the letter classifier](#2026-11-16--touch-detector-fold-touch-poses-into-the-letter-classifier) | Touch detection |
+| 2026-11-16 | [Hardware watchdog: 2 s, started first in setup()](#2026-11-16--hardware-watchdog-2-s-started-first-in-setup) | Firmware |
+| 2026-11-16 | [Gyro scale flag in the frame: mask bit 6](#2026-11-16--gyro-scale-flag-in-the-frame-mask-bit-6) | BLE |
+| 2026-11-16 | [Firmware version in the BLE name](#2026-11-16--firmware-version-in-the-ble-name) | BLE |
+| 2026-11-16 | [New firmware in stage folder 11-firmware-watchdog](#2026-11-16--new-firmware-in-stage-folder-11-firmware-watchdog) | Firmware |
+| 2026-11-16 | [No per-finger mount roll correction in the features](#2026-11-16--no-per-finger-mount-roll-correction-in-the-features) | Calibration |
+| 2026-11-16 | [Features: drift-free gravity features first](#2026-11-16--features-drift-free-gravity-features-first) | Data |
+| 2026-11-16 | [Classifier ladder: kNN, logistic regression, small MLP](#2026-11-16--classifier-ladder-knn-logistic-regression-small-mlp) | Data |
+| 2026-11-16 | [Device math: plain C++ with a host golden-file test](#2026-11-16--device-math-plain-c-with-a-host-golden-file-test) | Firmware |
+| 2026-11-16 | [Python pins: numpy 2.5.4, matplotlib 3.11.2, pillow 12.0.0, Python 3.12](#2026-11-16--python-pins-numpy-254-matplotlib-3112-pillow-1200-python-312) | Tooling |
+| 2026-11-16 | [Samples per letter: 30 over 3 sessions, 50 for confusable groups](#2026-11-16--samples-per-letter-30-over-3-sessions-50-for-confusable-groups) | Data |
+| 2026-11-16 | [BLE throughput fallback: closed for this laptop](#2026-11-16--ble-throughput-fallback-closed-for-this-laptop) | BLE |
+| 2026-11-16 | [Phase 4 100 Hz: won't fix](#2026-11-16--phase-4-100-hz-wont-fix) | Firmware |
+| 2026-11-16 | [Finger-vs-hand formula: keep rel_h^-1 rel_f](#2026-11-16--finger-vs-hand-formula-keep-rel_h-1-rel_f) | Fusion |
+| 2026-11-16 | [Curl sign: measure once and write it down](#2026-11-16--curl-sign-measure-once-and-write-it-down) | Calibration |
+| 2026-11-16 | [Boot hang covered by the watchdog and a skip marker](#2026-11-16--boot-hang-covered-by-the-watchdog-and-a-skip-marker) | Firmware |
+| 2026-11-16 | [Build target: Seeeduino:nrf52:xiaonRF52840Sense, core 1.1.13](#2026-11-16--build-target-seeeduinonrf52xiaonrf52840sense-core-1113) | Tooling |
 | 2026-11-08 | [Ring vs straight drawn by a template-guided shape weight](#2026-11-08--ring-vs-straight-drawn-by-a-template-guided-shape-weight) | Display |
 | 2026-11-07 | [Thumb display: nearest-anchor weights plus near-pair contact](#2026-11-07--thumb-display-nearest-anchor-weights-plus-near-pair-contact) | Display |
 | 2026-11-07 | [Learned thumb base movement](#2026-11-07--learned-thumb-base-movement) | Calibration |
@@ -85,57 +107,15 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 ## Open decisions
 
-### Open: batch quality gate and the pinky zero-g offset
-
-**Options:** (a) leave the `tiltErr` limit at 2 degrees. (b) Correct the pinky offset before the gate sees it. (c) Loosen the limit for the pinky only.
-
-**Leaning:** (a) until there is real batch data.
-
-**Why it's open:** the pinky has a zero-g offset of about (0.250, 0.190, -0.165) g. If it keeps `tiltErr` above 2 degrees, the gate could reject every rep. This is a tuning risk found in the dashboard audit, unverified: the gate logic was read and found correct, but it has not been run on real pinky data. Decide after real batch data.
-
-### Open: auto re-zero erasing small thumb poses
-
-**Options:** (a) leave `HEAL_POSE_DEG` 8 as is. (b) Gate the thumb: no auto re-zero while the thumb's total rotation is beyond some angle. (c) Gate on the thumb's own motion history.
-
-**Leaning:** (a) until there is a clean 50 Hz CSV.
-
-**Update 2026-11-07:** auto re-zero is now blocked while a touch is detected, so a held straight touch survives. The thumb-only case in this item is unchanged.
-
-**Why it's open:** the thumb's main axis (from the low-rate captures, before the later correction) is 19 to 27 deg off vertical, so about 18 to 25 deg of thumb motion still looks like "home" to the heading check. The thumb moves on two axes (see the split decision), so this figure is rough. A held thumb pose could slide to zero after about 1 s still, on a flat hand only. This is calculated, not measured on the glove. A gate (b) would also stop re-zero from healing real thumb drift like T4 (53.7 deg off before healing, 13.9 after). Decide after the TH3 capture.
-
-### Open: per-finger mount correction
-
-**Options:** (a) none, as now. (b) Gravity mount: measure each finger sensor's tilt at calibration. (c) Full gyro mount: learn each sensor's frame from the gyros.
-
-**Leaning:** (a).
-
-**Update 2026-11-07, first real calibration export:** the fist hold shows the finger sensors are rolled by 11, 27, 29 and 34 deg (index to pinky), the same pattern as the T5 gyro fit (10, 17, 21, 30 deg). For display this is now solved from the fist hold, see [finger roll](#2026-11-07--finger-roll-from-the-fist-hold). Detection, exports and the dataset still use the raw orientation, so for ML features the question stays open. Whether the roll is stable between sessions is unverified (one export).
-
-**Why it's open:** on the 2026-10-31 T5 replay, gravity / gyro mounts gave thumb p90 12.2 / 12.7 (vs 14.3 without), index 17.4 / 15.3 (vs 20.3), middle 16.9 / 16.9 (vs 20.3), ring 17.8 / 17.6 (vs 21.7), pinky 29.2 / 27.9 (vs 32.0). The gain is a few degrees on a low-rate, clipped capture, so not a clear win. Re-test on a clean capture.
-
 ### Open: thumb-aware ML features
 
 **Options:** (a) keep the `curl` feature set (d_y only). (b) Use `dir` or `quat` for the thumb. (c) Add a thumb total-rotation feature (`2 acos|w|`, no direction, like the dashboard readout) or a two-axis one. The single measured flex axis was dropped on 2026-11-07.
 
 **Leaning:** (b) or (c), unverified.
 
+**Update 2026-11-16:** the feature-set ablation (see the open item on gravity-only features) decides this too.
+
 **Why it's open:** `curl` is nearly blind to the thumb's motion, which is mostly sideways swing plus some downward bend. `dir` and `quat` carry the thumb's yaw drift, because gravity cannot correct that axis when the hand is flat. Letters that differ mainly by thumb position depend on this. Needs real Phase 8 data from several sessions to compare.
-
-### Open: finger-vs-hand relative formula
-
-**Options:** (a) keep `rel_h^-1 * rel_f` (each sensor relative to its own calibration zero, then finger relative to hand). (b) Use `(qRef_h^-1 qRef_f)^-1 (q_h^-1 q_f)`, which compares the raw hand and finger quaternions and removes the zero offset between them.
-
-**Leaning:** keep (a) for now.
-
-**Why it's open:** I replayed the 2026-10-31 captures with (b), with beta 0.3, and with the deadband removed. None was a clear win. Those captures are 17 Hz, clipped and had a wrong calibration zero, so the comparison is weak. Re-test on clean captures after the fixes (unverified until then).
-
-### Open: BLE throughput if the central refuses the link requests
-
-**Options:** (a) keep asking for 2M PHY, data length update, MTU 247 and a 15 ms connection interval and hope the central grants them. (b) Shrink the frame so it fits fewer packets per connection event (for example drop fields or send fewer sensors per frame). (c) Try a different host or browser. (d) Lower the rate to what the link carries and fix it in the analysis.
-
-**Leaning:** (a). Update 2026-10-31: the updated v5 is flashed. On this host the central accepted the requests (serial report: `mtu=527 ci_ms=15.0 hz=50.0 tx_fail=0`). Resolved pending confirmation: it stays open until the dashboard RATE readout and a recorded CSV show about 50 Hz. `write_us=0` while connected is odd (unverified), possibly because the dashboard had not subscribed yet. Other hosts or browsers may still refuse, so (b) remains the fallback.
-
-**Why it's open:** the motion tests ran at about 17 Hz with 0 % loss, which points at `bleuart.write()` blocking on a slow link (unverified, needs the `mtu=`, `ci_ms=`, `hz=`, `write_us=` report line). If the central refuses, (b) costs frame format changes in firmware, dashboard parser and `check_dataset.py` together, and (d) is not acceptable for ML data. Decide after reading the report line.
 
 ### Open: guided functional calibration
 
@@ -168,14 +148,6 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Why it's open:** the glove never measures contact. Touching and nearly touching (about 1 cm apart) may look identical in the IMU data, but this is unverified until the touch-pose set is recorded and `train_baseline.py` shows how touch and near-miss poses get confused. The classifier mostly needs repeatable, distinct poses, not true contact. Cost of (b): more wires on a glove that already has wire-fatigue risk, new firmware, and a BLE frame change that has to go through the dashboard parser and `check_dataset.py` together. Hardware option, not started.
 
-### Open: separating a touch from a near miss in live detection
-
-**Options:** (A) several guided holds per touch, light and firm, so the template covers repeat variance. (B) drop the cap that limits the radius to half the distance to the near-miss hold, at the cost of accepting near misses. (C) fingertip contact pads (already a fallback in `10-touch-detection/PLAN.md`).
-
-**Leaning:** none. Not decided.
-
-**Why it's open:** in the first real v3 session a repeat touch landed 2.1x to 3.5x the template radius away from its guided hold, about as far as the near-miss hold. Replay of the raw frames shows the error sits in the touching digits (thumb heading 6 to 31 deg off its hold, target finger 8 to 23 deg less curled), not in a global shift or in timing. So a radius cannot separate the two. Needs a second session recorded straight into Self-test. Unverified: 16 s between the guided run and Self-test were not recorded, and a zero of all sensors in that gap fits the data better but is a guess.
-
 ### Open: SPREAD reads 25 deg bent
 
 **Options:** (a) drift in the hand-relative pose by that point in the run. (b) The finger roll or sensor mount makes sideways spread look like bend. (c) The spread was not really flat or open in that hold.
@@ -186,29 +158,299 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Update 2026-11-07 (v3 session):** the flat check read 10.7 deg bent, against about 25 for SPREAD in the first export. So some of the 25 is not drift. Cause still unverified.
 
-### Open: hardware watchdog for a stuck SCL line
+**Update 2026-11-16:** re-measure after the new calibration posture (palm down, hand in the air) is in use.
 
-**Options:** (a) leave it. A stuck SCL hangs the glove until someone power-cycles it. (b) Enable the nRF52 hardware watchdog so a hung loop reboots the chip.
+### Open: Calibration posture against mount slip
 
-**Leaning:** (b), but only after the v5 SDA-to-GND test shows how the `Wire` driver actually behaves.
+**Options:** (a) Keep the palm-down posture. (b) Move calibration to a different posture.
 
-**Why it's open:** with SCL held low, the nRF52 `Wire` driver waits forever (no timeout in its loops), so no recovery code can run. A watchdog reboot fixes that. The cost is a dropped BLE link and a recalibration, roughly a 3 s gap. That's better than a dead glove halfway through a labelling session, but I want the test result first.
+**Leaning:** (a), pending the test.
 
-### Open: Python dependency pin
+**Why it's open:** Does the hand-versus-finger gravity change on returning to the calibration posture come from posture or from the sensors slipping? A pen line across the mount gives the slip offset. Decide after one session. Unverified until then.
 
-**Options:** keep `tools/requirements.txt` at numpy 2.2.6, or bump it to 2.5.3, the version the October scripts were tested on.
+### Open: Touch poses as separable classes
 
-**Leaning:** bump to 2.5.3, since that is the version that has actually run the current tools.
+**Options:** (a) Touch poses become classes of the letter classifier. (b) Drop the touch idea.
 
-### Open: samples per letter
+**Leaning:** (a), pending data.
 
-**Options:** 30 reps per letter over 3 sessions (dashboard grid and `check_dataset.py` default), or 90 (30 × 3 sessions, the original plan).
+**Why it's open:** The one-session test of the pose-class detector gives the recall and the wrong-pair rate. Unverified until then.
 
-**Leaning:** 30 first, then check leave-one-session-out accuracy. Go to 90 only for letters that need it. The plan already uses this. Confirm after the first real session shows how long a session takes.
+### Open: Gravity-only features enough, and thumb features
+
+**Options:** (a) Gravity-only features. (b) Add heading-based features. (c) Add thumb features.
+
+**Leaning:** (a), pending the ablation.
+
+**Why it's open:** An ablation table with leave-one-session-out scores per feature set decides this and the thumb-aware features item. Needs real data from several sessions.
+
+### Open: Can UART and HID run at once
+
+**Options:** (a) Both services at once. (b) Switch between them.
+
+**Leaning:** None.
+
+**Why it's open:** A spike on the glove shows whether the Nordic UART stream and a HID keyboard can share the radio. Unverified until then.
+
+### Open: Watchdog against the bootloader
+
+**Options:** (a) Keep the 2 s watchdog. (b) Lengthen the timeout to 4 s. (c) Drop the skip marker if the bootloader uses `GPREGRET2`.
+
+**Leaning:** (a), pending the fault tests.
+
+**Why it's open:** Three things to measure on the glove: whether the bootloader can live with a running watchdog after a power cycle, whether a pin reset stops it, and whether any boot step takes more than 1.5 s between feeds. Also whether the reset-loop guard works. Unverified until then.
+
+### Open: Pinky part faulty?
+
+**Options:** (a) Keep the part and correct the offset in software. (b) Replace it with a spare.
+
+**Leaning:** (a).
+
+**Why it's open:** Read the offset registers and compare the offset between sessions. If it moves more than 0.03 g, replace the part. The root cause of the offset is unverified.
 
 ---
 
 ## Decisions
+
+### 2026-11-16 | Alphabet: ASL, one-handed, 24 static letters
+
+**Options:** (a) ASL one-handed. (b) Another fingerspelling alphabet. (c) Include the motion letters J and Z.
+
+**Choice:** (a). 24 static letters. J and Z are out because they are motions.
+
+**Why:** They need a path through space, which six IMUs on one hand cannot give. It also keeps the scope rule intact.
+
+**Cost:** Some letters depend on hand attitude (G and H against P and Q), which the features have to carry. Revisit: never, it is the scope rule.
+
+### 2026-11-16 | Between-rep recalibration in Batch Capture is bias-only
+
+**Options:** (a) A full calibration between reps. (b) Bias and noise only. (c) None.
+
+**Choice:** (b). It never touches the filter state, the reference orientation, the accel offsets, the zero pose, the mount or the headings.
+
+**Why:** A full calibration moves the zero to whatever pose is held at that moment, so every later rep would be measured against a different zero. Relying on the user to lay the hand flat each time is fragile.
+
+**Cost:** A clip or a firmware drop now forces a full flat calibration before the next rep. Revisit if heading error on flat reps stays above 10 degrees after 20 reps.
+
+### 2026-11-16 | Auto re-zero is off while Batch Capture runs
+
+**Options:** (a) Leave auto re-zero on. (b) Off while a batch is active.
+
+**Choice:** (b).
+
+**Why:** The dataset must not be rewritten silently halfway through a run. The bias refresh still runs, so drift inside a run is handled that way. This settles the dataset side of the open question about auto re-zero erasing small thumb poses. The live display case is unchanged.
+
+**Cost:** Heading drift inside a run is not healed, only the gyro bias is. Revisit under the same condition as the between-rep recal.
+
+### 2026-11-16 | Batch file metadata: one # meta line
+
+**Options:** (a) New CSV columns. (b) One `# meta {json}` line at the top of each batch CSV. (c) A separate sidecar file.
+
+**Choice:** (b). Raw values stay unchanged. The line holds the dashboard version, device name, accel offsets and bias.
+
+**Why:** Traceability: a file says how it was made, and raw data stays reinterpretable. A sidecar gets separated from its file. Columns would repeat constants on every row.
+
+**Cost:** Every parser has to read the line, and a format change and its parsers change in the same commit. Revisit: never.
+
+### 2026-11-16 | check_dataset.py subtracts the accel offsets from the meta line
+
+**Options:** (a) Correct the pinky offset in the file. (b) Loosen the limit for the pinky. (c) Subtract the per-sensor offsets recorded in the meta line before the magnitude check, and fall back to slot defaults with a warning when the line is missing.
+
+**Choice:** (c). This closes the open item about the batch quality gate and the pinky offset.
+
+**Why:** Raw stays raw, and the offset is known: (0.2572, 0.1864, -0.1609) g, learned on 2026-11-07. Without this the gate could reject every pinky rep.
+
+**Cost:** Old files without a meta line get the defaults. If the offset moves more than 0.03 g between sessions, replace the pinky part.
+
+### 2026-11-16 | Calibration posture: palm down, fingers straight, hand in the air
+
+**Options:** (a) Hand flat on the table. (b) A letter posture. (c) Palm down, fingers straight and together, hand in the air with the elbow resting on the table.
+
+**Choice:** (c). Agreed 2026-11-16.
+
+**Why:** It keeps the hand off the table. A letter posture breaks two assumptions in the code: the hand IMU tilt reading assumes a flat hand, and heading alignment needs the forward axis horizontal (it returns nothing when the fingers point up).
+
+**Cost:** Pending the posture test, which can still move it. Revisit if that test shows the shift is mount slip and not posture.
+
+### 2026-11-16 | Touch scope: IMU poses only, a near miss counts
+
+**Options:** (a) Claim contact. (b) Touch poses inferred from IMU data, where a near miss of about 1 cm counts as a touch.
+
+**Choice:** (b). This closes the open item about separating a touch from a near miss.
+
+**Why:** The measured repeat error is 10 to 27 degrees per digit against a 4 to 10 degree template radius, so contact cannot be told from a close pose.
+
+**Cost:** No contact claim. Revisit if a letter pair that needs contact stays confused after 3 sessions.
+
+### 2026-11-16 | Touch detector: fold touch poses into the letter classifier
+
+**Options:** (a) Keep the separate template matcher. (b) Run one more session testing the pose-class detector, then fold the touch poses into the letter classifier as classes. Retire the matcher from detection, keep it for the 3D drawing.
+
+**Choice:** (b). Agreed 2026-11-16.
+
+**Why:** One classifier is simpler to port and to explain. The poses that matter are letters anyway: F is thumb on index, W is thumb on pinky. Two non-letter touch poses (ASL number 8, thumb on middle, and number 7, thumb on ring) become the SPACE and BACKSPACE classes.
+
+**Cost:** Two extra classes to collect. 7 against W and 8 against F are part of the go/no-go test. If either pair is below the pair threshold, the replacement command pose is picked from the confusion matrix, not guessed now.
+
+### 2026-11-16 | Hardware watchdog: 2 s, started first in setup()
+
+**Options:** (a) Leave a stuck SCL line to hang the glove. (b) nRF52 watchdog, 2 s, started first in `setup()`, fed between boot steps and once per `loop()` tick, with the reset reason reported in bit 7 of the validity mask.
+
+**Choice:** (b). This closes the open watchdog decision.
+
+**Why:** A stuck SCL makes the `Wire` driver wait forever (no timeout in its loops, read in the core source), so no recovery code can run. Only a reset helps.
+
+**Cost:** About 3 s of link loss and a recalibration after a reset. Revisit if a boot step takes more than 1.5 s between feeds (then 4 s), or if the bootloader cannot live with a running watchdog even after a power cycle. Those tests are in the open item on the watchdog and the bootloader.
+
+### 2026-11-16 | Gyro scale flag in the frame: mask bit 6
+
+**Options:** (a) Assume ±2000 deg/s. (b) Mask bit 6 means gyro ±2000 deg/s. When it is clear the dashboard does not fuse, shows the banner "firmware v5 detected, flash v6" and logs it in the black box.
+
+**Choice:** (b).
+
+**Why:** Today a v4 glove (±500 deg/s) would be read 4 times wrong with no warning. A refusal has to be loud, never silent.
+
+**Cost:** One firmware change and one dashboard change in the same commit. Revisit: never.
+
+### 2026-11-16 | Firmware version in the BLE name
+
+**Options:** (a) A version field in the frame. (b) The version in the device name: `HandRig-6IMU-v6`. The dashboard stores `device.name` in the session facts and the batch meta.
+
+**Choice:** (b).
+
+**Why:** The dashboard connects with `acceptAllDevices`, so the name can change freely and the frame stays as it is.
+
+**Cost:** The name must fit the scan response (it does). Revisit: never.
+
+### 2026-11-16 | New firmware in stage folder 11-firmware-watchdog
+
+**Options:** (a) Edit stage 09 in place. (b) A new numbered stage folder for v6.
+
+**Choice:** (b). `09-firmware-hardening/` stays as the v5 record.
+
+**Why:** Milestone folders are never overwritten.
+
+**Cost:** One more folder.
+
+### 2026-11-16 | No per-finger mount roll correction in the features
+
+**Options:** (a) Correct each finger's mount roll in the features. (b) None, the display roll stays.
+
+**Choice:** (b). This closes the open item on per-finger mount correction.
+
+**Why:** A fixed roll is a constant the classifier absorbs. Leave-one-session-out scoring shows whether it is not constant.
+
+**Cost:** None up front. Revisit if leave-one-session-out is more than 10 points under a random split on the `dir` features while the gravity features hold up.
+
+### 2026-11-16 | Features: drift-free gravity features first
+
+**Options:** (a) Quaternion features with headings. (b) A base model on gravity-only features, with heading-based features added only if an ablation earns them.
+
+**Choice:** (b).
+
+**Why:** With 6 DOF there is no heading reference, so heading-based features drift.
+
+**Cost:** The model is blind to rotation about the vertical. The ablation decides. Revisit after it.
+
+### 2026-11-16 | Classifier ladder: kNN, logistic regression, small MLP
+
+**Options:** (a) Edge Impulse straight away. (b) kNN, then logistic regression, then a one-hidden-layer MLP, written by hand. Edge Impulse or TFLite Micro only if the MLP is not enough.
+
+**Choice:** (b).
+
+**Why:** Hand-written models can be explained line by line.
+
+**Cost:** Training code in numpy. Revisit if the MLP fails the go/no-go and a bigger model passes.
+
+### 2026-11-16 | Device math: plain C++ with a host golden-file test
+
+**Options:** (a) Port everything including self-healing. (b) Port fusion and features to plain C++ and check them against the JS on recorded frames in a host test. Self-healing is not ported.
+
+**Choice:** (b).
+
+**Why:** Explainable and testable without the glove.
+
+**Cost:** The device needs a re-zero pose instead of automatic healing. Revisit if heading features are kept and drift on the device.
+
+### 2026-11-16 | Python pins: numpy 2.5.4, matplotlib 3.11.2, pillow 12.0.0, Python 3.12
+
+**Options:** (a) Keep numpy 2.2.6 as in `tools/requirements.txt`. (b) Pin the versions that run and pass today.
+
+**Choice:** (b). This closes the open Python pin item. It leaned to 2.5.3, and the installed version is 2.5.4.
+
+**Why:** It is what runs and passes the checks today.
+
+**Cost:** None. Revisit on the next fresh install.
+
+### 2026-11-16 | Samples per letter: 30 over 3 sessions, 50 for confusable groups
+
+**Options:** (a) 30 per letter over 3 sessions on 3 days. (b) 90 per letter. (c) 30, with 50 for confusable groups.
+
+**Choice:** (c). This closes the open item on samples per letter.
+
+**Why:** Start small, then check leave-one-session-out accuracy.
+
+**Cost:** About 6 extra short sessions. Revisit if leave-one-session-out plateaus.
+
+### 2026-11-16 | BLE throughput fallback: closed for this laptop
+
+**Options:** (a) Keep asking for the faster link. (b) Shrink the frame. (c) Another host. (d) Lower the rate.
+
+**Choice:** (a), closed for this laptop. This closes the open BLE throughput item. The smaller frame stays the written fallback.
+
+**Why:** Measured in the 2026-11-07 session: 50 Hz at the dashboard, firmware spacing 20.0 ms median, 15609 frames, 0 lost, 0 bad. The real MTU is 247 at most (core source), so the larger figure the serial report once printed was the central's offer, not the link.
+
+**Cost:** None. Revisit if another central gives under 45 Hz.
+
+### 2026-11-16 | Phase 4 100 Hz: won't fix
+
+**Options:** (a) Keep chasing 100 Hz on the bench loop. (b) Close it. 50 Hz is the design rate.
+
+**Choice:** (b).
+
+**Why:** Nothing downstream needs 100 Hz.
+
+**Cost:** None. Revisit: never.
+
+### 2026-11-16 | Finger-vs-hand formula: keep rel_h^-1 rel_f
+
+**Options:** (a) Keep `rel_h^-1 * rel_f`. (b) Compare the raw quaternions with the calibration zero offset removed.
+
+**Choice:** (a). This closes the open formula item.
+
+**Why:** No better option was shown on the replays.
+
+**Cost:** None. Revisit if the ablation shows the `dir` features doing worse than expected.
+
+### 2026-11-16 | Curl sign: measure once and write it down
+
+**Options:** (a) Leave it open. (b) Measure it once on the glove and record it here. Display only.
+
+**Choice:** (b).
+
+**Why:** It has been open since August and takes about a minute.
+
+**Cost:** None. Revisit: never.
+
+### 2026-11-16 | Boot hang covered by the watchdog and a skip marker
+
+**Options:** (a) Accept a boot hang until a power cycle. (b) The watchdog runs from the start of `setup()`. Before touching a sensor the firmware writes its id to `GPREGRET2`. After a watchdog reset that sensor is skipped until the next power cycle.
+
+**Choice:** (b). About 30 lines, no hardware.
+
+**Why:** It costs little and turns a dead glove into a missing finger.
+
+**Cost:** Worst case 5 resets (about 25 s) before streaming. A skipped finger stays missing until power-off. Revisit if the bootloader uses `GPREGRET2` (then use `.noinit` RAM).
+
+### 2026-11-16 | Build target: Seeeduino:nrf52:xiaonRF52840Sense, core 1.1.13
+
+**Options:** (a) Another core. (b) FQBN `Seeeduino:nrf52:xiaonRF52840Sense` with the Seeeduino nrf52 core 1.1.13.
+
+**Choice:** (b). Confirmed with `arduino-cli board listall`.
+
+**Why:** It is the core the firmware builds on.
+
+**Cost:** None. Revisit on a core upgrade.
 
 ### 2026-11-08 | Ring vs straight drawn by a template-guided shape weight
 
@@ -248,7 +490,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 
 **Why:** the first real fist hold gave rolls of 11, 27, 29 and 34 deg (index to pinky), the same pattern as the T5 gyro fit (10, 17, 21, 30 deg). Two separate sources agree, and the fist is already in the guided run.
 
-**Cost:** it assumes all fingers really curl about the same axis in a fist. Detection and the dataset do not get the correction, so the open item on [per-finger mount correction](#open-per-finger-mount-correction) stays open for ML. Needs a fist at every calibration. Unverified live.
+**Cost:** it assumes all fingers really curl about the same axis in a fist. Detection and the dataset do not get the correction, so for ML features the question was settled later, see [no per-finger mount roll correction](#2026-11-16--no-per-finger-mount-roll-correction-in-the-features). Needs a fist at every calibration. Unverified live.
 
 ### 2026-11-07 | Stillness gate removed from guided holds
 

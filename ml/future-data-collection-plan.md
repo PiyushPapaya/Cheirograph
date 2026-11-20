@@ -34,7 +34,7 @@ If one export holds several labels, name it after the main one and note the mix 
 
 ## Target
 
-30 reps per letter across 3 sessions (10 per session). The dashboard grid turns a letter "done" at 30, and `check_dataset.py` checks the same thing by default. Once a first model trains, add reps for letters that get confused. The stretch goal is 90 per letter (`check_dataset.py --goal-reps 90`). See the open decision in [DECISIONS.md](../DECISIONS.md#open-samples-per-letter).
+30 reps per letter across 3 sessions (10 per session). The dashboard grid turns a letter "done" at 30, and `check_dataset.py` checks the same thing by default. Once a first model trains, add reps for letters that get confused. The stretch goal is 90 per letter (`check_dataset.py --goal-reps 90`). See the open decision in [DECISIONS.md](../DECISIONS.md#2026-11-16--samples-per-letter-30-over-3-sessions-50-for-confusable-groups).
 
 Re-seat the glove and change hand position between sessions. Variety between sessions matters more than raw volume, because the honest accuracy number is leave-one-session-out.
 

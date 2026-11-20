@@ -39,3 +39,7 @@ Sensor failures on a wearable are almost always wire fatigue at a knuckle, not a
 ![Full hand, top view, wired and ready](glove_mount_hand_top.jpg)
 
 ![All sensors live, onboard LEDs lit, confirming power and read](glove_mount_sensors_live.jpg)
+
+## Toolchain
+
+No firmware in this stage, it is a hardware stage (`main.cpp` has no includes). The project builds with Seeed nRF52 Boards **1.1.13**, Seeed Arduino LSM6DS3 **2.0.7** and MPU6050_light **1.2.1**.

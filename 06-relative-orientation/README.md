@@ -44,3 +44,7 @@ If this math is wrong, every labeled training sample built on top of it is wrong
 
 - **Sign pinning.** `q` and `−q` are the same rotation. Without forcing `w ≥ 0`, one hand pose can show up with two different encodings, and a classifier would treat them as different. The export pins the sign.
 - **Yaw can't be trusted.** Without a magnetometer, nothing anchors yaw, so the yaw part of `q_rel` slowly drifts. Curl is pitch relative to the hand, which gravity anchors. See [DECISIONS.md](../DECISIONS.md#2026-07-14--live-with-6-dof-yaw-drift).
+
+## Toolchain
+
+No firmware in this stage (`main.cpp` is a stub, the math runs in the dashboard). The project builds with Seeed nRF52 Boards **1.1.13**, Seeed Arduino LSM6DS3 **2.0.7** and MPU6050_light **1.2.1**.

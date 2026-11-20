@@ -60,4 +60,4 @@ If a device holds the **clock** line (SCL) low instead of SDA, the nRF52 `Wire` 
 
 ## Toolchain
 
-Same as stage 08: **Seeed nRF52 Boards 1.1.13** (board *Seeed XIAO nRF52840 Sense*) and Seeed Arduino LSM6DS3 **2.0.7**. Not compiled yet: an `arduino-cli` build attempt on 2026-10-19 stalled in library detection and was stopped.
+**Seeed nRF52 Boards 1.1.13** (board *Seeed XIAO nRF52840 Sense*), Seeed Arduino LSM6DS3 **2.0.7**, MPU6050_light **1.2.1**. Compiled and flashed on 2026-10-31. The build needed the separate `Arduino_LSM6DS3` library removed, because it shadows the Seeed one. (An `arduino-cli` attempt on 2026-10-19 stalled in library detection and was stopped.)

@@ -41,3 +41,7 @@ Everything downstream depends on this switching loop working cleanly. If the mux
 ## What's here
 
 - [`main.cpp`](main.cpp), the mux-handling code, reused directly by the Phase 4 sketch.
+
+## Toolchain
+
+No extra libraries here: `main.cpp` has no includes. The project builds with Seeed nRF52 Boards **1.1.13** (Arduino IDE). Library versions for the full firmware are in stages 08 and 09.

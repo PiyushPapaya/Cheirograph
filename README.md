@@ -41,7 +41,7 @@ The part still ahead is recognition. I'd rather say that up front than have you 
 | **Sensors** | 5 finger IMUs behind an I²C mux + the XIAO's onboard IMU on the back of the hand |
 | **Firmware** | C++ on a Seeed XIAO nRF52840 Sense, raw register-level I²C, bus recovery at runtime |
 | **Link** | Bluetooth LE, Nordic UART, 80-byte frames with a validity mask and checksum |
-| **Rate** | 50 Hz over the air, ~94 Hz raw on the bench (all six sensors) |
+| **Rate** | 50 Hz over the air (measured over 5 min, 0 frames lost), ~94 Hz raw on the bench (all six sensors) |
 | **Dashboard** | Single HTML file. Web Bluetooth + Three.js. Fusion runs in the browser. No build step |
 | **Fusion** | Madgwick per sensor, then `q_rel = conj(q_hand) ⊗ q_finger` |
 | **Self-healing** | Bias tracking, snap-back, auto re-zero, live calibration of the hand IMU's mount |
@@ -146,6 +146,8 @@ All five finger sensors share one I²C address, so a multiplexer switches betwee
 | Labelled dataset | ⬜ Next | [ml](ml/) |
 | On-device classifier + BLE keyboard | ⬜ After that | [ml](ml/) |
 
+No classifier yet. The glove streams and shows the hand. The labelled dataset is next.
+
 ## Measured results
 
 | What | Result |
@@ -153,7 +155,7 @@ All five finger sensors share one I²C address, so a multiplexer switches betwee
 | Loop rate, 6 IMUs raw | ~93.6 Hz (target 100) |
 | Loop rate with fusion on all 6 | ~85 Hz |
 | BLE stream, v4 after the bandwidth fix | ~47 Hz, 3.7 KB/s |
-| BLE stream, v5 with link requests | 50 Hz, MTU 527, 15 ms interval, 0 failed sends (firmware serial report) |
+| BLE stream, v5 with link requests | 50 Hz, MTU 247, 15 ms interval, 0 failed sends. Black-box session 2026-11-07: 15609 frames, 0 lost, 0 bad |
 | Gyro bias std after calibration | 0.05–0.35 °/s |
 | Roll/pitch drift, held still | ≤ 0.35 °/min (line fit, 31.5 s) |
 | Yaw drift, held still | 0.03–2.2 °/min. Expected, there's no magnetometer |
@@ -210,6 +212,7 @@ Each folder is one milestone with its code, raw data, plots and a write-up. Old 
 | [07 Full glove assembly](07-full-glove-assembly/) | It survives being worn | <img src="07-full-glove-assembly/glove_mount_hand_top.jpg" width="90"> |
 | [08 BLE wireless dashboard](08-ble-wireless-dashboard/) | Live wireless 3D hand, and the hardest bug | |
 | [09 Firmware hardening](09-firmware-hardening/) | 50 Hz over BLE, ±2000 °/s gyro, bus-fault recovery (untested), motion tests before and after | |
+| [10 Touch detection](10-touch-detection/) | Guided calibration and touch templates, first real session and what failed | |
 
 ## Roadmap
 

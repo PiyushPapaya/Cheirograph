@@ -5,7 +5,7 @@ All components used in Cheirograph. Update this file as parts are added or swapp
 | # | Part | Designator | Qty | Notes |
 |---|---|---|---|---|
 | 1 | Seeed XIAO nRF52840 Sense | U1 | 1 | MCU, BLE, onboard LSM6DS3 IMU on internal I²C (not behind mux) |
-| 2 | MPU-6050 breakout (GY-521) | IMU1–5 | 5 | All wired at I²C addr 0x68; sit behind the PCA9548A mux |
+| 2 | MPU-6050 breakout (GY-521) | IMU1–5 | 5 | All wired at I²C addr 0x68; sit behind the PCA9548A mux. 2 spare GY-521 modules: note each spare's `WHO_AM_I` before use |
 | 3 | PCA9548A I²C multiplexer breakout | U2 | 1 | Addr 0x70; 8-channel; selects one MPU-6050 at a time |
 | 4 | Half-finger glove (left hand) | — | 1 | Substrate; finger IMUs on middle phalanx, thumb on proximal phalanx |
 | 5 | Solderless breadboard (mini) | — | 1–2 | Prototyping phase |

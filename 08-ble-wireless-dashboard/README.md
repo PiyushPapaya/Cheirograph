@@ -4,7 +4,7 @@
 
 Once the glove was wired and mounted, I wanted a way to actually see it working, untethered, in real time, in a browser, before committing to the effort of collecting a labeled training set. This stage streams all six IMUs over Bluetooth LE to a live dashboard that renders a 3D hand model plus per-sensor accel/gyro traces. It's also where the hardest debugging session of the whole project happened.
 
-**Status: v4 firmware live on the glove since 2026-08-07, streaming at ~47 Hz.** Open issues are listed at the bottom.
+**Status: v4 firmware live on the glove since 2026-08-07, streaming at ~47 Hz. Stage 09 (v5) replaced it and holds 50 Hz.** Open issues are listed at the bottom.
 
 **Firmware:** [`08_ble_dashboard.ino`](08_ble_dashboard.ino). Flash it with the Arduino IDE using the Seeed nRF52 Boards package (the Adafruit-based core, see Toolchain below).
 **Dashboard:** `handrig_dashboard.html`, open it directly in Chrome or Edge, desktop or Android, no build step, no server. The canonical copy is `tools/handrig_dashboard.html` (the `tools/verify_*.mjs` scripts read it). Byte-identical copies sit [here](handrig_dashboard.html) (this stage's deliverable) and in `Data/html/`; copy the canonical file over both after every edit and compare with `md5sum`.

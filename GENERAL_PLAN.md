@@ -2,7 +2,7 @@
 
 The roadmap for Cheirograph: goal, scope, hardware and the phase checklist. This file looks forward. What actually happened, session by session, is in [DOCUMENTATION.md](DOCUMENTATION.md). Why each design choice was made is in [DECISIONS.md](DECISIONS.md).
 
-Last updated: 2026-10-31.
+Last updated: 2026-11-20.
 
 ---
 
@@ -45,7 +45,7 @@ Pin map and channel map: [hardware/WIRING.md](hardware/WIRING.md). Parts list: [
 
 ## Phase checklist
 
-Each phase has its own folder at the repo root (`00-…` to `09-…`). Folder numbers and phase numbers don't line up one to one: stage folder `08` is Phase 7.5, and stage folder `09` hardens the firmware for Phase 8. Old folders are never deleted or overwritten.
+Each phase has its own folder at the repo root (`00-…` to `10-…`). Folder numbers and phase numbers don't line up one to one: stage folder `08` is Phase 7.5, stage folder `09` hardens the firmware for Phase 8, and stage folder `10` is touch detection, also part of Phase 8. Old folders are never deleted or overwritten.
 
 **Legend:** ✅ done · 🟡 partly done · ⬜ not started
 
@@ -59,8 +59,9 @@ Each phase has its own folder at the repo root (`00-…` to `09-…`). Folder nu
 | 5 | Madgwick fusion per IMU | [`05-madgwick-fusion`](05-madgwick-fusion/) | 🟡 bench-tested, closing test missing |
 | 6 | Relative orientation | [`06-relative-orientation`](06-relative-orientation/) | 🟡 works in the dashboard, firmware is a stub |
 | 7 | Mount on the glove | [`07-full-glove-assembly`](07-full-glove-assembly/) | ✅ 2026-07-18 |
-| 7.5 | Live wireless dashboard | [`08-ble-wireless-dashboard`](08-ble-wireless-dashboard/), [`tools/`](tools/) | 🟡 streams live at ~47 Hz, open issues below |
+| 7.5 | Live wireless dashboard | [`08-ble-wireless-dashboard`](08-ble-wireless-dashboard/), [`tools/`](tools/) | 🟡 50 Hz on v5 (2026-11-07 black box), open issues below |
 | 8 | Labelled data collection | [`09-firmware-hardening`](09-firmware-hardening/), [`tools/`](tools/), [`ml/`](ml/) | 🟡 tooling built, no real data yet |
+| 8 | Touch detection from IMU poses | [`10-touch-detection`](10-touch-detection/) | 🟡 built, ran once on the glove (2026-11-07), live detection scored 0 % |
 | 9 | Train the classifier | [`ml/`](ml/) | ⬜ kNN baseline exists, synthetic data only |
 | 10 | On-device model + Bluetooth HID | | ⬜ |
 | 11 | Iterate and write up, tag `v1.0` | | ⬜ |
@@ -94,12 +95,12 @@ Each phase has its own folder at the repo root (`00-…` to `09-…`). Folder nu
 **Goal:** move a finger on the glove and watch the same finger move in a 3D view, with no cable.
 
 **Done:**
-- v4 firmware flashed on the glove on 2026-08-07. It streams 80-byte frames over the Nordic UART service at ~47 Hz / 3.7 KB/s after the bandwidth fix.
+- v4 firmware flashed on the glove on 2026-08-07. It streams 80-byte frames over the Nordic UART service at ~47 Hz / 3.7 KB/s after the bandwidth fix. v5 holds 50 Hz (2026-11-07 black box: 15609 frames, 0 lost).
 - Clone-IMU init bug found and fixed.
 - In-browser Madgwick, calibration with a stillness gate and an instant filter settle, a GO/NO-GO noise check, and batch capture.
 
 **Open, needs the glove:**
-- The pinky accel reads 25–28 % low (`|a|` ≈ 0.72–0.77 g), on and off. Check the solder at the knuckle.
+- The pinky accel "25–28 % low" is a zero-g offset, corrected and learned live in the dashboard. Root cause unverified.
 - Hand axes and model hand: done 2026-10-31. The hand IMU mount is now measured live (tilt and in-plane angle), and the model is a left hand (DECISIONS 2026-10-31).
 - Measure the curl sign.
 - Tilted, palm-down hand drifts on its own. Retest flat vs. tilted at a known β.
@@ -119,7 +120,7 @@ Each phase has its own folder at the repo root (`00-…` to `09-…`). Folder nu
 - v5 firmware that recovers from bus faults at runtime.
 
 **Open:**
-- v5 has not been compiled or flashed.
+- v5 is compiled and flashed (2026-10-31). Its fault-recovery paths are untested.
 - No real session has been recorded yet.
 
 Exports go in `ml/dataset/` using the naming rule in [ml/future-data-collection-plan.md](ml/future-data-collection-plan.md). CSVs under `ml/` are gitignored until the dataset is final.
@@ -140,14 +141,16 @@ Collect more data for letter pairs the model confuses, write the final devlog, r
 
 ## Next steps, in order
 
-1. Compile `09-firmware-hardening` in the Arduino IDE and flash it. Capture a serial trace of the v4 boot first, as the "before".
-2. Run the v5 test plan in [`09-firmware-hardening/README.md`](09-firmware-hardening/README.md), including the SDA-to-GND short. Its result decides the watchdog question in DECISIONS.md.
-3. Fix or rule out the pinky accel (solder at the knuckle, then the boot diagnostic).
-4. On the dashboard: pick the curl sign on the glove and log it in DECISIONS.md. Hand axes (fwd +X) and model hand (left) are set, 2026-10-31.
-5. Record a 20–30 s clip of the glove driving the 3D hand. This is the demo for the README.
-6. Phase 5 closing test: a same-session bias on/off pair plus a 5-minute still run.
-7. First real Phase 8 session, then run `check_dataset.py` on the export before anything else.
-8. Run `train_baseline.py` on the real data and compare the `quat`, `dir` and `curl` features.
+1. Clean slate: the dashboard work is committed and the status lines match the evidence (done 2026-11-20). Add a CI workflow that runs the offline checks.
+2. Fix Batch Capture before recording anything: the between-rep recal is bias-only (DECISIONS 2026-11-16) and must not move the zero pose, auto re-zero must be off while a batch runs, and the export needs a header with dashboard version, accel offsets and bias.
+3. Make `check_dataset.py` subtract the accel offsets from that header. Today it would reject the pinky.
+4. One glove session to close the open loops: motion tests T0 to T6 with Record on before Calibrate, the 5-minute still run and the bias on/off pair for Phase 5, the curl sign, and the flat-repeat test for the hand IMU mount.
+5. v5 fault tests from [`09-firmware-hardening/README.md`](09-firmware-hardening/README.md), including the SDA-to-GND short. Then add the watchdog.
+6. The one-session touch test in [`10-touch-detection`](10-touch-detection/). Pick the pose-class detector or stop. Do not spend more than one session.
+7. Record a 20 to 30 s clip of the glove driving the 3D hand for the README.
+8. First real Phase 8 session with the 9-letter starter set. Run `check_dataset.py` on the export before anything else.
+9. Two more sessions on other days. Run `train_baseline.py` and compare the feature sets, leave-one-session-out only.
+10. Port fusion and features to C++ in a new stage folder and check it against the dashboard on recorded frames.
 
 ---
 
