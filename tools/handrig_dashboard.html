@@ -2575,7 +2575,7 @@ function nbAnalyze(frames){
     message="GO - all sensors within calibration-agreed thresholds. Safe to start Batch Capture.";
   }else{
     message="NO-GO — at least one sensor failed. Re-seat wiring / re-run boot diagnostic "+
-      "before starting Phase 8 capture (see CLAUDE.md gotchas for the usual causes).";
+      "before starting Phase 8 capture (usual causes: frozen register, wedged I2C bus, loose wire).";
   }
 
   return {durationS,shortCapture,sensors,allOk,go:allOk,message};
@@ -2614,7 +2614,7 @@ function showNoisePanel(go,text){
 // ARMED -> [Space] -> save a noise-reduced sample -> 5s recalibration -> ARMED,
 // so many labelled reps can be captured back-to-back without re-running the
 // full calibrate/record/export cycle by hand for each one. Fingerspelling is a
-// STATIC hand-shape per CLAUDE.md's scope boundary, so a "rep" is one held
+// STATIC hand-shape per the scope in GENERAL_PLAN.md, so a "rep" is one held
 // pose, not a motion trajectory.
 const BATCH_HLEN=30;        // ~0.6s window at 50Hz -- long enough to average out sensor noise,
                              // short enough that a genuinely held pose stays included start-to-end
@@ -2788,7 +2788,7 @@ function captureBatchSample(){
       // the whole hand changed every finger's features in the training data.
       // An instantaneous read is fine here: the stillness gate above already
       // guarantees the filter wasn't mid-motion when this was grabbed. Order
-      // (w,x,y,z) per CLAUDE.md's quaternion convention.
+      // (w,x,y,z) quaternion order.
       relQuat:handRelQuat(m.id),
     };
   });

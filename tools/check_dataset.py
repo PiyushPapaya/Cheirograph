@@ -18,7 +18,7 @@ one or more batch CSVs (or folders of them) written by the dashboard's
      for a dropped sensor.
    - a sensor whose six raw medians are bit-identical to the previous rep:
      a live IMU dithers by ~20 LSB, so this means a frozen register (the
-     "stuck thumb" gotcha in CLAUDE.md)
+     "stuck thumb" fault in 08-ble-wireless-dashboard/README.md)
    - the same row twice (one export re-saved, or the pre-fix double export)
 
 2. Coverage: reps per letter per session, against the Phase 8 target

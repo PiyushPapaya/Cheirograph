@@ -174,7 +174,7 @@ def main():
         print("GO - all sensors within calibration-agreed thresholds. Safe to start Batch Capture.")
     else:
         print("NO-GO — at least one sensor failed. Re-seat wiring / re-run boot diagnostic "
-              "before starting Phase 8 capture (see CLAUDE.md gotchas for the usual causes).")
+              "before starting Phase 8 capture (usual causes: frozen register, wedged I2C bus, loose wire; see 08-ble-wireless-dashboard/README.md).")
 
     sys.exit(0 if all_ok else 1)
 

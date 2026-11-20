@@ -54,7 +54,7 @@ void setup() {
 
   // Hold the sensor DEAD STILL for this: calcOffsets measures gyro bias (should
   // read ~0 deg/s at rest) and accel bias (levels X/Y, leaves ~1g on Z). Drift
-  // almost always traces back to skipping or fouling this step - see CLAUDE.md.
+  // almost always traces back to skipping or fouling this step - see 08-ble-wireless-dashboard/README.md for the usual sensor faults.
   Serial.println("Calibrating - keep the sensor still...");
   delay(1000);
   mpu.calcOffsets();  // gyro + accel

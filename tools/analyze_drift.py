@@ -7,7 +7,7 @@ Reports roll/pitch/yaw drift in degrees/minute per sensor. Roll and pitch are
 gravity-anchored (Madgwick corrects them from accel every tick) so they should
 stay near ~0 deg/min even with a biased gyro. Yaw has no absolute reference in
 a 6-DOF IMU, so some drift there is expected physics, not a bug - see
-CLAUDE.md and DECISIONS.md (2026-07-14) on the 6-DOF yaw drift decision.
+DECISIONS.md (2026-07-14, "Live with 6-DOF yaw drift") on the 6-DOF yaw drift decision.
 
 How drift is measured: a straight line is fitted (least squares) through each
 angle over time, and the slope is the drift rate. The first version of this

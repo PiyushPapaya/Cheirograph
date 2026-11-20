@@ -110,7 +110,7 @@ to call these final; a multi-minute bias on/off A/B run is what closes Phase 5.
 exactly what's expected, since Madgwick's accel correction anchors both
 against gravity every tick regardless of gyro bias. **Yaw drifts at
 roughly 0.2-2.1 deg/min** — small, and exactly the un-correctable behavior
-CLAUDE.md's gotcha list and DECISIONS.md (2026-07-14) already predict for a
+DECISIONS.md (2026-07-14, "Live with 6-DOF yaw drift") already predicts for a
 6-DOF IMU with no magnetometer: nothing anchors yaw, so any residual bias
 after subtraction integrates slowly and without bound. This run used
 `SUBTRACT_GYRO_BIAS=1` (the sketch's default); we don't have a same-session

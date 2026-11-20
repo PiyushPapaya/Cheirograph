@@ -199,7 +199,7 @@ Live path (guided calibration, added today, not in the first plan):
 - Auto re-zero is blocked during the guided run. Templates are cleared on disconnect and live in memory only.
 
 Findings:
-- The first synthetic run of `train_touch.py` printed GATE FAIL. The implementer stopped instead of weakening the gate. I then checked whether the linear model was the limit, leave-one-session-out on synthetic poses, recall / near-miss false alarm:
+- The first synthetic run of `train_touch.py` printed GATE FAIL. I stopped instead of weakening the gate. I then checked whether the linear model was the limit, leave-one-session-out on synthetic poses, recall / near-miss false alarm:
   - No session offset, near miss 30 deg: linear 1.00 / 0.00 on all pairs. kNN: TI 1.00 / 0.15, TR 1.00 / 0.12.
   - Session curl offset sd 6 deg, near miss 12 deg: linear TI 0.90 / 0.28, TR 0.76 / 0.25.
   - Plus yaw drift 10 deg, near 12: linear TI 0.95 / 0.53, TR 0.46 / 0.03. Near 30: TI 1.00 / 0.23, TR 0.76 / 0.12.
