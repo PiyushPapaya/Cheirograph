@@ -1,5 +1,7 @@
 # Motion tests (v5 firmware, finger drift)
 
+Printable list for a glove session: [session-checklist.md](session-checklist.md).
+
 On v5 the fingers drift and tilt on their own while held straight. Small movements look fine. After a big movement, the fingers don't come back to the rest pose. These tests pin down why before any code changes.
 
 ## Suspects

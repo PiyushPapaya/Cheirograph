@@ -317,7 +317,7 @@
         <div class="c">
           <div class="big" id="calcount">20</div>
           <div class="lab" id="callab" aria-live="polite">Hold your hand flat &amp; still</div>
-          <div class="sub" id="calsub">measuring gyro bias on all sensors…</div>
+          <div class="sub" id="calsub">hand in the air, palm down, fingers straight and together, elbow on the table: hold still</div>
           <div class="calbar"><i id="calfill"></i></div>
         </div>
       </div>
@@ -333,7 +333,7 @@
       <div class="veil" id="veil">
         <div class="box">
           <h2>Connect the glove</h2>
-          <p>Flash <b>09-firmware-hardening</b> (v5, ±2000 °/s gyro; v4 reads 4× too large here), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (20&nbsp;s)</b> lying flat and still. That removes gyro bias so the fingers stop drifting.</p>
+          <p>Flash <b>09-firmware-hardening</b> (v5, ±2000 °/s gyro; v4 reads 4× too large here), watch the boot diagnostic on Serial at 115200 with the glove flat and still, then connect. Run <b>Calibrate (20&nbsp;s)</b> with the hand in the air, palm down, fingers straight and together, elbow on the table: hold still. That removes gyro bias so the fingers stop drifting.</p>
           <button class="primary" id="conn2">Connect over Bluetooth</button>
           <div class="warn" id="unsupported"></div>
         </div>
@@ -2305,8 +2305,8 @@ function startCalibration(durationMs=CAL_INITIAL_MS, onDone=null, kind="initial"
   document.getElementById("calcount").textContent=Math.ceil(durationMs/1000);
   document.getElementById("calfill").style.width="0%";
   document.getElementById("calsub").textContent=kind==="recal"
-    ? "quick refresh between reps — fighting bias drift…"
-    : "measuring gyro bias on all sensors…";
+    ? "bias refresh: keep still, any pose"
+    : "hand in the air, palm down, fingers straight and together, elbow on the table: hold still";
   document.getElementById("calbanner").classList.add("show");
   // Driven by a timer, NOT requestAnimationFrame: rAF is paused in a background tab
   // while BLE notifications keep arriving, so a rAF-driven finish stalled and the

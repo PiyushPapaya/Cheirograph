@@ -89,7 +89,8 @@ Capture produce the same numbers whatever they are set to.
 Self-healing (2026-10-31, not yet tried on the glove): per sensor it detects
 stillness, tracks gyro bias slowly while still, raises the Madgwick beta in
 proportion to the tilt error to snap back, and re-zeroes automatically when the
-hand lies flat in the calibration pose. The header **HEALTH** cell shows `OK`,
+hand lies flat in the calibration pose.
+Calibrate with the hand in the air, palm down, fingers straight and together, elbow on the table: hold still. Palm down keeps the mount-tilt read and heading alignment working (`refHeading()` returns null with fingers up). Lifting the hand off the table stops the table pressing on the back of the hand. The header **HEALTH** cell shows `OK`,
 `re-zero`, `slow link` (under 40 Hz) or `zero? <fingers>` for sensors that
 clipped or dropped frames since their last zero. Batch Capture rejects a rep in
 those states. The drawn hand is eased (40 ms) for smoothness. None of this
@@ -301,3 +302,14 @@ Tests: `python verify_check_dataset.py`, and `node verify_*.mjs` for the
 dashboard logic.
 `verify_thumb_rig.mjs` checks that the thumb stays out of the palm box and that
 the flex axis reads the right sign.
+
+### `analyze_posture.py`  *(calibration posture test, S03)*
+
+Judges the table-vs-air posture test. Point it at the folder with the dashboard raw CSVs (`T1_table.csv`, `T2_air.csv`, and so on). Files are matched by name prefix (T1, T2, A1, M1, R1 ...).
+
+```bash
+python analyze_posture.py <folder> [--offsets file.json]
+python analyze_posture.py --selftest
+```
+
+Per file it drops the first 10 s (5 s if the file is 30 s or shorter), subtracts the accel offsets, and warns if a sensor's gyro std is above 3 deg/s. Per pair (T1->T2, T2->T3, T1->T3, T4->T5, T5->T6, T4->T6, A1->A2, M1->M3, T1->R1, T1->A1) it prints the tilt change theta per sensor and `shift = theta_hand - median(theta of index, middle, ring, pinky)`. Shift 0 means the hand IMU moved with the fingers. A large shift means it moved against them. A turn about the gravity axis is invisible. The selftest builds synthetic files with a different mount rotation per sensor and expects shift 12.0 and 0.0 (within 0.2).

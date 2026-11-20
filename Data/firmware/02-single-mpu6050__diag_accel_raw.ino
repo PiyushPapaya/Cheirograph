@@ -4,7 +4,7 @@
 // three accel axes, no timestamp, no id, no header - the smallest thing that
 // isolates the accelerometer so it can be plotted on its own. This is the
 // second of the two sketches flashed during the Phase 2 bench test; the capture
-// it produced lives in data/phase2_single_mpu6050/accel_raw.csv.
+// it produced lives in 02-single-mpu6050/accel_raw.csv.
 //
 // Output:  aX,aY,aZ   (g - so a flat, still sensor reads ~0,0,1)
 // Library: MPU6050_light by rfetick

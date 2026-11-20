@@ -50,8 +50,8 @@ Re-seat the glove and change hand position between sessions. Variety between ses
 
 ## Before every session
 
-1. Flash the current firmware, hold the glove flat and still, and confirm the boot diagnostic shows 6/6 `OK`.
-2. Connect the dashboard and calibrate with the glove flat and still.
+1. Flash the current firmware, hold the glove still, and confirm the boot diagnostic shows 6/6 `OK`.
+2. Connect the dashboard and calibrate with the hand in the air, palm down, fingers straight and together, elbow on the table: hold still. Palm down keeps the mount-tilt read and heading alignment working (`refHeading()` returns null with fingers up). Lifting the hand off the table stops the table pressing on the back of the hand (S03 section 6).
 3. Record 60 s still and run Noise Check. It must say GO.
 
 ## After every session

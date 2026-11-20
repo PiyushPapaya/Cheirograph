@@ -144,7 +144,7 @@ Collect more data for letter pairs the model confuses, write the final devlog, r
 1. Clean slate: the dashboard work is committed and the status lines match the evidence (done 2026-11-20). Add a CI workflow that runs the offline checks.
 2. Fix Batch Capture before recording anything: the between-rep recal is bias-only (DECISIONS 2026-11-16) and must not move the zero pose, auto re-zero must be off while a batch runs, and the export needs a header with dashboard version, accel offsets and bias.
 3. Make `check_dataset.py` subtract the accel offsets from that header. Today it would reject the pinky.
-4. One glove session to close the open loops: motion tests T0 to T6 with Record on before Calibrate, the 5-minute still run and the bias on/off pair for Phase 5, the curl sign, and the flat-repeat test for the hand IMU mount.
+4. One glove session to close the open loops: motion tests T0 to T6 with Record on before Calibrate, the 5-minute still run and the bias on/off pair for Phase 5, the curl sign, and the flat-repeat test for the hand IMU mount. Add the posture test from `docs/log/specs/S03-calibration-posture-test.md`: `tools/analyze_posture.py` and `09-firmware-hardening/motion-tests/session-checklist.md` are ready.
 5. v5 fault tests from [`09-firmware-hardening/README.md`](09-firmware-hardening/README.md), including the SDA-to-GND short. Then add the watchdog.
 6. The one-session touch test in [`10-touch-detection`](10-touch-detection/). Pick the pose-class detector or stop. Do not spend more than one session.
 7. Record a 20 to 30 s clip of the glove driving the 3D hand for the README.
