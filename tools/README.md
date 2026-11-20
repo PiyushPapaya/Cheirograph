@@ -115,18 +115,21 @@ every sensor's tilt error under 2 deg.
 Quality gate for the dashboard's **Export batch CSV** files. Run it on every
 export before it goes into training. It fails on anything that makes a row
 unusable: a pre-2026-10-06 export (quaternions not hand-relative), NaN, a
-non-unit or unpinned (`qw < 0`) quaternion, a sensor not reading ~1 g (zeros =
-dropped), a sensor whose raw values repeat exactly between reps (frozen
+non-unit or unpinned (`qw < 0`) quaternion, a sensor not reading ~1 g after its
+accel offsets are subtracted (zeros = dropped, tested on the raw value first), a sensor whose raw values repeat exactly between reps (frozen
 register), or the same rows saved twice. Then it prints reps per letter per
 session against the target (30 reps over 3 sessions). It reads the session
 number from the renamed file name (`handrig_batch_<letter>_<session#>_<ts>.csv`).
 Exit code 0 = pass, 1 = problems (`--strict` also fails on short coverage).
+The offsets come from the file's `# meta` line (see `batch_io.py`). A file without
+one gets the built-in offsets (only the pinky has one) and a warning. A meta schema
+newer than 1 fails.
 - Dependency: `numpy`. Shares the file loader `batch_io.py`.
 ```bash
 python check_dataset.py path/to/exports/
 ```
 `verify_check_dataset.py` plants each of those faults in synthetic data and
-checks the gate catches every one (13 checks).
+checks the gate catches every one, plus the offset and meta cases (19 checks).
 
 ### `make_synthetic_batch.py`  *(Phase 8, testing only)*
 Writes fake batch CSVs in the exact export format (10 rough fingerspelling
@@ -217,6 +220,24 @@ of a run with no recal, every `qRef` is unchanged, the bias changes by less than
 run with a full calibration instead must move the pose by more than 20 degrees, so the test can see the bug.
 ```bash
 node verify_batch_recal.mjs [path/to/handrig_dashboard.html]
+```
+
+### `verify_batch_rezero.mjs`  *(Phase 8, Batch Capture)*
+Replays the same v3 session through the flat-check window with Batch Capture on and checks that the
+auto re-zero leaves every `qRef` unchanged (under 0.01 degrees). With Batch Capture off the same frames
+must move `qRef`, so the test can see the bug. In the recorded session the hand and thumb sit outside
+the re-zero pose window, so the test re-anchors the calibration "up" once all sensors are still.
+```bash
+node verify_batch_rezero.mjs [path/to/handrig_dashboard.html]
+```
+
+### `verify_bias_tilt.mjs`  *(Phase 8, calibration)*
+Feeds one finger synthetic frames through the real `parseFrame`: calibration, 5 s still, then a 1 deg/s
+tilt for 30 s with matching gyro and accel. The background bias tracker must not move the bias by
+0.1 deg/s or more. A control with a perfectly still finger and a 0.5 deg/s gyro offset must move it by
+more than 0.2, so the test also shows the tracker still works.
+```bash
+node verify_bias_tilt.mjs [path/to/handrig_dashboard.html]
 ```
 
 ## Dropped from the original plan

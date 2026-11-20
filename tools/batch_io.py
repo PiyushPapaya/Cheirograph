@@ -7,6 +7,7 @@ File format (written by exportBatchCSV() in tools/handrig_dashboard.html):
 
     # batch-captured static-pose samples. raw = median over ...
     # q* = hand-relative orientation conj(q_hand)*q_finger ...
+    # meta {"schema":1, ...}          one JSON line: offsets, bias, dashboard version, ...
     label,rep,t_ms,hand_ax,...,pinky_gz,hand_qw,...,pinky_qz
 
     3 id columns, then 6 sensors x 6 raw values (accel in g, gyro in deg/s,
@@ -18,6 +19,7 @@ different (and wrong) feature, so the loader records whether that marker is
 present and check_dataset.py refuses files without it.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +34,13 @@ QUAT = ["qw", "qx", "qy", "qz"]
 EXPECTED_HEADER = (["label", "rep", "t_ms"]
                    + [f"{s}_{a}" for s in SENSORS for a in RAW_AXES]
                    + [f"{s}_{q}" for s in SENSORS for q in QUAT])
+
+# Accel zero-g offsets in g, used when a file has no meta line. Same as ACC_OFFSET in the
+# dashboard: only the pinky (a genuine MPU-6050) has one.
+DEFAULT_OFFSETS = np.zeros((6, 3))
+DEFAULT_OFFSETS[5] = [0.250, 0.190, -0.165]
+
+META_SCHEMA = 1
 
 # handrig_batch_<letter>_<session#>_<timestamp>.csv, the rename convention in
 # ml/future-data-collection-plan.md. The bare download name has no session.
@@ -51,6 +60,7 @@ class BatchFile:
     raw: np.ndarray = None        # (rows, 6 sensors, 6 axes)
     quat: np.ndarray = None       # (rows, 6 sensors, 4)
     bad_lines: list = field(default_factory=list)  # (line number, reason)
+    meta: dict = None             # the '# meta {...}' line as a dict, None for old files
 
 
 def session_of(path: Path) -> str:
@@ -69,6 +79,12 @@ def load_batch(path) -> BatchFile:
         for lineno, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
+                continue
+            if line.startswith("# meta "):
+                try:
+                    bf.meta = json.loads(line[7:])
+                except ValueError:
+                    bf.bad_lines.append((lineno, "bad meta JSON"))
                 continue
             if line.startswith("#"):
                 if "hand-relative" in line:
@@ -100,6 +116,19 @@ def load_batch(path) -> BatchFile:
     bf.raw = np.array(raw_rows).reshape(-1, 6, 6)
     bf.quat = np.array(quat_rows).reshape(-1, 6, 4)
     return bf
+
+
+def offsets_of(bf) -> np.ndarray:
+    """(6, 3) accel offsets in g that were in use when the file was captured.
+
+    From the meta line if it has a 6x3 block of numbers, else DEFAULT_OFFSETS."""
+    try:
+        o = np.array(bf.meta["offsets"], dtype=float)
+        if o.shape == (6, 3) and np.all(np.isfinite(o)):
+            return o
+    except (TypeError, KeyError, ValueError):
+        pass
+    return DEFAULT_OFFSETS.copy()
 
 
 def find_csvs(paths):

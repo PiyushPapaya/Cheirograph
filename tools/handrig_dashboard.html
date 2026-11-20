@@ -359,6 +359,7 @@
           <label class="ctrl" title="Which pitch sign means curling toward the palm is not measured yet. |pitch| counts either direction. Signed modes count one direction and read 0 for the other.">curl sign <select id="curlsign"></select></label>
           <label class="ctrl" title="The glove is a LEFT hand, so the model is drawn as a left hand by default. Right mirrors the geometry (thumb on the other side, spread swings the other way).">model hand <select id="handmodel"></select></label>
           <label class="ctrl" title="Load the JSON written by tools/train_touch.py. The GESTURE readout then lists which fingers touch the thumb. Once Guided calibration has run, its templates take over.">touch model <input type="file" id="touchModelFile" accept=".json,application/json" aria-label="Load touch model"></label>
+          <button id="resetAccOff" title="Forget the accel offsets the dashboard learned and saved in this browser. Back to the built-in values (only the pinky has one).">reset learned accel offsets</button>
           <span class="ctrlnote">Curl one finger slowly: pick the curl sign where its % rises. Swing the thumb away from the index: pick the model hand where it moves away too. Display only, exports are unaffected.</span>
         </div>
       </div>
@@ -452,6 +453,7 @@ const SYNC=0xAB, FRAME_LEN=80, ACC_SCALE=8192.0, GYR_SCALE=16.384, DEG=Math.PI/1
 // so its scale is fine but its zero point is off, which read as |a|~0.75 g and tilted
 // its gravity vector up to ~20 deg. The other five fit within 0.025 g of zero.
 const ACC_OFFSET=[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0.250,0.190,-0.165]];
+const ACC_OFFSET_DEFAULT=ACC_OFFSET.map(r=>r.slice());   // for the reset button
 // Offsets the dashboard learned itself (learnAccOffset, below) override these defaults
 // and survive a reload. Clear the key in DevTools to go back to the constants above.
 const ACC_OFFSET_KEY="gestura_acc_offset_v1";
@@ -1423,7 +1425,7 @@ let guided=null,guidedTimer=null,touchTemplates=[],tplOn={},selfT=null,selfTimer
 // off. tplEpoch is the zeroEpoch they were learned under.
 let zeroEpoch=0,tplEpoch=0,tplFrom=null;
 let runRec=null;   // the black box of the last guided run (and the self-test after it)
-const DASH_VERSION="touch-calibration v3 · black box · 2026-11-07";
+const DASH_VERSION="bias anchored to still-start gravity · 2026-11-20";
 const elText=(id,t)=>{document.getElementById(id).textContent=t;};
 const relMs=now=>now-runRec.t0;
 // ---- errors: kept for the page and, if a run exists, in its log too
@@ -1746,9 +1748,14 @@ function supportOk(){return "bluetooth" in navigator;}
 // A new connection is a new stream. Without this, bytes left in rxBuf from the previous
 // link are glued onto the first new packet (one bad frame), and the old lastSeq makes
 // the first new frame look like ~100 lost packets in the loss % readout.
+// Link counters since connect, written into the batch file's meta line (the per-second window
+// above is reset every second, so it cannot say anything about the whole session).
+const LINK={hzSum:0,hzN:0,frames:0,lost:0};
+// Epoch ms of every full calibration and Zero press since page load, for the meta line.
+const ZEROS=[];
 function resetLink(){
   rxBuf=new Uint8Array(0);
-  lastSeq=-1;lastT=0;
+  lastSeq=-1;lastT=0;LINK.hzSum=0;LINK.hzN=0;LINK.frames=0;LINK.lost=0;
   framesWin=0;bytesWin=0;lostWin=0;totWin=0;badFrames=0;
   winT=performance.now();
 }
@@ -1880,8 +1887,8 @@ function parseFrame(f){
   const dv=new DataView(f.buffer,f.byteOffset,f.byteLength);
   const seq=dv.getUint8(1), t=dv.getUint32(2,true), mask=dv.getUint8(6);
   const rr=runRec&&runRec.live?runRec:null;   // the black box, only while a run is recording
-  if(lastSeq>=0){const gap=(seq-lastSeq-1)&0xff;lostWin+=gap;if(rr){rr.lost+=gap;rr.lostAcc+=gap;}}
-  totWin++;lastSeq=seq;framesWin++;
+  if(lastSeq>=0){const gap=(seq-lastSeq-1)&0xff;lostWin+=gap;LINK.lost+=gap;if(rr){rr.lost+=gap;rr.lostAcc+=gap;}}
+  totWin++;lastSeq=seq;framesWin++;LINK.frames++;
   if(rr)rr.framesIn++;
   // dt==0 can happen when the firmware sends catch-up frames in the same ms after
   // a stalled BLE write. Those frames add no elapsed time, so they must not add
@@ -1986,6 +1993,7 @@ function parseFrame(f){
     // exactly as re-interpretable as the freeform raw CSV export, per the firmware's own
     // "raw stays reinterpretable" convention (see 08_ble_dashboard.ino SENSOR AXES note).
     pushBatchRaw(st,ax,ay,az,gx,gy,gz);
+    if(batchActive)pushBatchRel(st,sid);
   }
   if(rr)bbFrame(rr.bb,t,mask,rr.row);
   if(recRow){
@@ -2019,6 +2027,8 @@ const HEAL_REZERO_S=1.0;        // still this long in the calibration pose -> au
 const HEAL_BETA=1.0;            // snap-back beta: Madgwick turns up to 2*beta rad/s = 115 deg/s
 const HEAL_ERR_FULL_DEG=20;     // tilt error at which the full snap-back beta applies
 const HEAL_BIAS_K=0.002;        // bias EMA per frame: ~10 s time constant at 50 Hz
+const HEAL_STILL_TILT_DEG=0.8;  // gravity may move this far from where the still period began, else it was a slow tilt, not stillness
+                                // (0.5 broke the v3 replay: real held hands wander about 0.7 deg, 0.8 passes it and still stops a 1 deg/s tilt)
 const HEAL_BIAS_MAX_DPS=1.5;    // only nudge bias by residuals this small (never absorb motion)
 const HEAL_POSE_DEG=8;          // every sensor's "up" within this of its calibration "up"
 const HEAL_TILT_OK_DEG=2;       // and its filter already converged on tilt
@@ -2037,10 +2047,24 @@ function healStillness(st,devX,devY,devZ,rgx,rgy,rgz,dt){
   const quiet=devX<gate(0)&&devY<gate(1)&&devZ<gate(2)&&creep<HEAL_ACC_DRIFT_G;
   st.quietS=quiet?(st.quietS||0)+dt:0;   // still, without trusting |a| (the offset learner needs this)
   st.stillS=quiet&&Math.abs(st.amag-1)<0.1?st.stillS+dt:0;
+  // A slow real tilt passes both gates above (about 1 deg/s is under the creep gate and under the
+  // 1.5 deg/s residual cap), so bias tracking would learn it as gyro bias. Anchor the gravity
+  // direction where a still period began. If it moves more than 0.8 deg from the anchor, the sensor
+  // was turning, not still: restart the bias clock biasS and set a new anchor. A slow tilt then
+  // never lets biasS reach HEAL_STILL_S. Turning about the vertical stays invisible to a 6-DOF sensor.
+  // Separate from stillS on purpose: snap-back and auto re-zero keep their own meaning of "still".
+  if(st.stillS>0){
+    const a=st.aSmooth, an=Math.hypot(a[0],a[1],a[2])||1;
+    const c=st.stillUp?(a[0]*st.stillUp[0]+a[1]*st.stillUp[1]+a[2]*st.stillUp[2])/an:0;
+    if(!st.stillUp||!(st.biasS>0)||Math.acos(Math.min(1,c))/DEG>HEAL_STILL_TILT_DEG){
+      st.stillUp=[a[0]/an,a[1]/an,a[2]/an];st.biasS=0;
+    }
+    st.biasS+=dt;
+  }else st.biasS=0;
   // Live bias tracking: a still sensor's gyro reading IS its bias, so drift the
   // estimate toward it, slowly. The 1.5 deg/s cap means it can only fine-tune the
   // calibrated value (warm-up drift), never swallow a real rotation.
-  if(st.calibrated&&calState!=="run"&&st.stillS>=HEAL_STILL_S){
+  if(st.calibrated&&calState!=="run"&&st.stillS>=HEAL_STILL_S&&st.biasS>=HEAL_STILL_S){
     const rg=[rgx,rgy,rgz];
     for(let k=0;k<3;k++){const d=rg[k]-st.bias[k];if(Math.abs(d)<HEAL_BIAS_MAX_DPS)st.bias[k]+=d*HEAL_BIAS_K;}
   }
@@ -2069,8 +2093,9 @@ function healBeta(st){
 // sideways while the hand lies flat look the same to gravity, so that spread is
 // zeroed too. Fingerspelling poses are not palm-down-flat, so they never trigger it.
 function healRezero(dt){
-  // a straight touch can look like the flat pose, and re-zero would erase it while it is held
-  if(guided||selfT||activeTouches().length||calState==="run"||!S[0].calibrated||S[0].bad){rezeroActive=false;return;}
+  // a straight touch can look like the flat pose, and re-zero would erase it while it is held.
+  // Batch Capture too: a rep sampled while qRef slides would mix two zeros.
+  if(batchActive||guided||selfT||activeTouches().length||calState==="run"||!S[0].calibrated||S[0].bad){rezeroActive=false;return;}
   const used=S.filter(st=>!st.bad);
   const ok=used.every(st=>{
     if(!st.calibrated||!st.calUp||st.stillS<HEAL_REZERO_S||st.tiltErr>HEAL_TILT_OK_DEG)return false;
@@ -2326,6 +2351,8 @@ function recalSensor(id,st,c){
   return row;
 }
 function finishCalibration(){
+  if(calKind!=="recal")ZEROS.push(Date.now());
+  S.forEach(st=>{st.relHist=[];});   // the zero is about to move: an old quaternion window would mix two zeros
   const calRows=[];
   const recal=calKind==="recal";
   META.forEach(m=>{
@@ -2448,7 +2475,7 @@ function alignHeadings(){
 function zeroOrient(){
   if(guided||selfT||calState==="run")return;   // a new zero in the middle of a run would shift every hold after it
   const now=performance.now();S.forEach(st=>{st.qRef.copy(st.fil.three());st.zeroT=now;});
-  zeroEpoch++;bbLog("zero orient",{});
+  zeroEpoch++;ZEROS.push(Date.now());bbLog("zero orient",{});
 }
 function calClick(){if(!guided&&!selfT&&!batchActive&&calState!=="run")startCalibration();}
 
@@ -2718,6 +2745,13 @@ function pushBatchRaw(st,ax,ay,az,gx,gy,gz){
   rh.ax.push(ax);rh.ay.push(ay);rh.az.push(az);rh.gx.push(gx);rh.gy.push(gy);rh.gz.push(gz);
   if(rh.ax.length>BATCH_HLEN){rh.ax.shift();rh.ay.shift();rh.az.shift();rh.gx.shift();rh.gy.shift();rh.gz.shift();}
 }
+// Same window as rawHist, for the fused hand-relative quaternion. The sample stores the mean of
+// this window, so the quaternion describes the same ~0.6 s as the raw medians, not one frame.
+function pushBatchRel(st,sid){
+  if(!st.relHist)st.relHist=[];
+  st.relHist.push(handRelQuat(sid));
+  if(st.relHist.length>BATCH_HLEN)st.relHist.shift();
+}
 function median(arr){
   const a=arr.slice().sort((x,y)=>x-y),n=a.length;
   return n%2 ? a[(n-1)/2] : (a[n/2-1]+a[n/2])/2;
@@ -2779,7 +2813,7 @@ function captureBatchSample(){
   const active=META.filter(m=>{const st=S[m.id];return st.alive&&!st.bad&&now-st.last<400;});
   if(active.length<META.length){flashBatch(false);return;}
 
-  const ready=active.every(m=>{const rh=S[m.id].rawHist;return rh&&rh.gx.length>=BATCH_MIN_SAMPLES;});
+  const ready=active.every(m=>{const st=S[m.id],rh=st.rawHist;return rh&&rh.gx.length>=BATCH_MIN_SAMPLES&&st.relHist&&st.relHist.length>=BATCH_MIN_SAMPLES;});
   if(!ready){flashBatch(false);return;}
 
   const stillOk=active.every(m=>{
@@ -2819,10 +2853,9 @@ function captureBatchSample(){
       // exactly what the 3D model draws (the hand itself stays relative to its own zero
       // pose). This used to export st.rel, each sensor against its OWN zero, so tilting
       // the whole hand changed every finger's features in the training data.
-      // An instantaneous read is fine here: the stillness gate above already
-      // guarantees the filter wasn't mid-motion when this was grabbed. Order
-      // (w,x,y,z) quaternion order.
-      relQuat:handRelQuat(m.id),
+      // Mean of the same ~0.6 s window as the raw medians (meanQuat, sign pinned w>=0 again after
+      // averaging), so quaternion and raw describe the same moment. Order (w,x,y,z).
+      relQuat:(q=>q[0]<0?q.map(v=>-v):q)(meanQuat(st.relHist)),
     };
   });
   batchRows.push(sample);
@@ -2914,6 +2947,27 @@ function updateBatchGrid(){
   });
 }
 
+// One JSON line that says how the file was made (schema 1, spec S02). The checker needs the
+// accel offsets: raw accel stays raw in the CSV, so the pinky's zero-g error travels with the file.
+// Fields not built yet are null: device.flags (firmware status bits), session (set/number/id) and
+// posture. The text must never contain the hand-relative marker word, batch_io reads that as a flag.
+function batchMeta(){
+  const t=(v)=>v.map(r3);
+  return {schema:1,
+    dashboard:{version:DASH_VERSION,scriptHash:scriptHash()},
+    device:{name:(device&&device.name)||null,flags:null},
+    session:null,
+    offsets:META.map(m=>ACC_OFFSET[m.id].slice()),
+    bias:META.map(m=>t(S[m.id].bias)),
+    noise:META.map(m=>t(S[m.id].noise)),
+    calUp:META.map(m=>S[m.id].calUp?t(S[m.id].calUp):null),
+    mount:{tiltDeg:r3(mountTiltDeg),psiDeg:r3(handMount/DEG),checked:mountChecked},
+    handRemap:REMAP_OF[0],
+    curlMode:DISPLAY.curlMode,
+    link:{hzMean:LINK.hzN?r3(LINK.hzSum/LINK.hzN):null,lostFrames:LINK.lost},
+    zeros:ZEROS.slice(),
+    posture:null};
+}
 function exportBatchCSV(){
   if(!batchRows.length)return;
   let head="label,rep,t_ms";
@@ -2922,6 +2976,7 @@ function exportBatchCSV(){
   const lines=[
     "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
     "# q* = hand-relative orientation conj(q_hand)*q_finger (viewer frame, bias-corrected) at capture time, order (w,x,y,z), sign pinned to w>=0. hand_q* is the hand against its own zero pose.",
+    "# meta "+JSON.stringify(batchMeta()),
     head,
   ];
   for(const s of batchRows){
@@ -3161,6 +3216,7 @@ function refreshOnce(){
     linkHz=framesWin*1000/dt;
     document.getElementById("thz").textContent=Math.round(linkHz);
     const connected=!!(device&&device.gatt&&device.gatt.connected);
+    if(connected&&linkHz>0){LINK.hzSum+=linkHz;LINK.hzN++;}
     const untrusted=META.filter(m=>S[m.id].calibrated&&!S[m.id].bad&&!sensorTrusted(S[m.id])).map(m=>m.name.toLowerCase());
     const health=!connected?"—":linkHz<HEAL_MIN_HZ?"slow link":rezeroActive?"re-zero":untrusted.length?"zero? "+untrusted.join(","):!mountChecked&&S[0].calibrated?"turn hand":"OK";
     setText(document.getElementById("thealth"),health);
@@ -3218,6 +3274,12 @@ document.getElementById("beta").addEventListener("input",e=>{
     if(touchTemplates.length)warpAnchors=buildWarp(touchTemplates,calNegs,HAND,DISPLAY.handModel==="left"?-1:1,fingerRolls);
   });
 })();
+
+document.getElementById("resetAccOff").addEventListener("click",()=>{
+  try{localStorage.removeItem(ACC_OFFSET_KEY);}catch(e){}
+  ACC_OFFSET_DEFAULT.forEach((v,i)=>{ACC_OFFSET[i]=v.slice();});
+  setStatus("accel offsets reset to defaults, recalibrate");
+});
 
 document.getElementById("conn").addEventListener("click",()=>{
   if(device&&device.gatt.connected)disconnect();else connect();});

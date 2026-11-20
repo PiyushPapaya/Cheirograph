@@ -10,6 +10,16 @@ The dashboard's **Batch Capture** ([`tools/handrig_dashboard.html`](../tools/han
 
 The header comment inside every exported CSV lists the exact columns.
 
+### File format
+
+Three comment lines, then the column header, then one row per rep:
+
+1. Two plain comment lines that say what the raw and quaternion columns mean.
+2. `# meta {...}`: one line of JSON (schema 1) that says how the file was made. It holds the dashboard version and script hash, the device name, the accel zero-g `offsets` (6 x 3, in g), gyro `bias` and `noise` (6 x 3, in deg/s), `calUp` per sensor, the hand mount angle, hand axes, curl mode, link rate and lost frames since connect, and the times of every calibration and Zero press. `device.flags`, `session` and `posture` are `null` until the dashboard fills them.
+3. The column header: `label,rep,t_ms`, 36 raw columns (6 sensors x ax..gz, sensor frame, offsets NOT removed), 24 quaternion columns.
+
+Why the offsets travel with the file: the pinky's accelerometer reads about 0.25 g off in X even when still, so its raw `|a|` is about 0.75 g. The CSV keeps raw values so they can be reprocessed. `check_dataset.py` subtracts the file's offsets before it tests for 1 g. A dead sensor still fails. Files from before this line have no meta: the checker uses the built-in offsets and warns.
+
 Batch Capture stays locked until the in-browser **Noise Check** has returned GO in the current session, so bad sensors can't sneak into the dataset.
 
 ## Where files go

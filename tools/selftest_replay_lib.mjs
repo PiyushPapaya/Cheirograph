@@ -75,6 +75,7 @@ export function loadPage(file = join(here, "handrig_dashboard.html")) {
     script.includes("function nearPair(") ? "" : "const nearPair=null;",
   ].join(NL);
   const stubs = `
+const ZEROS=[],LINK={hzSum:0,hzN:0,frames:0,lost:0};
 const T={now:0}; const performance={now:()=>T.now};
 const localStorage={getItem:()=>null,setItem(){}};
 const document={getElementById:()=>({classList:{remove(){},add(){}},style:{},textContent:""})};
@@ -82,7 +83,7 @@ let runRec=null,lastSeq=-1,lostWin=0,totWin=0,framesWin=0,lastT=0,recording=fals
 let calState="idle",calKind="initial",calAcc=null,calTimer=null,calOnDone=null,guided=null,selfT=null,batchActive=false;
 let touchTemplates=[],tplOn={},TOUCH_MODEL=null,touchOn=[],zeroEpoch=0;
 
-function pushHist(){} function pushBatchRaw(){} function bbFrame(){} function setStatus(){} function updateButtons(){} function clearInterval(){}
+function pushHist(){} function pushBatchRaw(){} function pushBatchRel(){} function bbFrame(){} function setStatus(){} function updateButtons(){} function clearInterval(){}
 function bbLog(){}`;
   return new Function(stubs + NL + src + `
 return {T,S,ACC_OFFSET,parseFrame,nearPair,handDefault,digitTip,digitBase,contactFix,unrollQs,buildWarp,thumbWarp,warpHand,PAIR_FINGER,finishCalibration,touchDirs,handRelQuat,touchMeter,templateTouch,digitDist,
@@ -91,6 +92,7 @@ return {T,S,ACC_OFFSET,parseFrame,nearPair,handDefault,digitTip,digitBase,contac
   bias(id){return S[id].bias.slice();},
   qRefs(){return S.map(st=>st.qRef.clone());},
   setMode(g,s){guided=g;selfT=s;},
+  setBatch(v){batchActive=v;},
   setTemplates(t){touchTemplates=t;},
   zeroNow(){S.forEach(st=>st.qRef.copy(st.fil.three()));alignHeadings();},
   state(){return {calState,guided,selfT};}};`)();

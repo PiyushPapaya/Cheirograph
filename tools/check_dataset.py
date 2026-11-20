@@ -42,7 +42,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from batch_io import SENSORS, find_csvs, load_batch
+from batch_io import META_SCHEMA, SENSORS, find_csvs, load_batch, offsets_of
 
 QUAT_NORM_TOL = 0.01      # exported at 6 decimals, so a real unit quaternion is far inside this
 ACCEL_MIN_G = 0.8         # held-still pose: |a| should be ~1 g. Wider than the
@@ -69,6 +69,11 @@ def check_file(bf, problems, warnings):
         warnings.append(f"{name}: not renamed to handrig_batch_<letter>_<session#>_<ts>.csv, "
                         "session unknown")
 
+    if bf.meta is None:
+        warnings.append(f"{name}: no meta line, default offsets used")
+    elif not isinstance(bf.meta.get("schema"), int) or bf.meta["schema"] > META_SCHEMA:
+        bad(f"unknown meta schema {bf.meta.get('schema')!r}")
+
     n = len(bf.labels)
     if n == 0:
         bad("no data rows")
@@ -91,10 +96,16 @@ def check_file(bf, problems, warnings):
     for r, s in zip(*np.where(bf.quat[:, :, 0] < 0)):
         bad(f"rep {bf.labels[r]}#{bf.reps[r]} {SENSORS[s]}: qw < 0, sign not pinned")
 
-    amag = np.linalg.norm(bf.raw[:, :, :3], axis=2)               # (rows, 6) in g
-    for r, s in zip(*np.where((amag < ACCEL_MIN_G) | (amag > ACCEL_MAX_G))):
-        what = "dropped (all-zero)" if amag[r, s] < DROPPED_G else f"|a| = {amag[r, s]:.2f} g"
-        bad(f"rep {bf.labels[r]}#{bf.reps[r]} {SENSORS[s]}: {what}")
+    # Dropped test on the RAW value: a zero row minus the pinky offset would read 0.36 g and
+    # look like bad accel instead of dropped. Then the 1 g gate on the offset-corrected value,
+    # because the CSV keeps raw accel and a good pinky reads 0.75 g raw (zero-point error).
+    raw_mag = np.linalg.norm(bf.raw[:, :, :3], axis=2)            # (rows, 6) in g
+    amag = np.linalg.norm(bf.raw[:, :, :3] - offsets_of(bf)[None], axis=2)
+    dropped = raw_mag < DROPPED_G
+    for r, s in zip(*np.where(dropped)):
+        bad(f"rep {bf.labels[r]}#{bf.reps[r]} {SENSORS[s]}: dropped (all-zero)")
+    for r, s in zip(*np.where(((amag < ACCEL_MIN_G) | (amag > ACCEL_MAX_G)) & ~dropped)):
+        bad(f"rep {bf.labels[r]}#{bf.reps[r]} {SENSORS[s]}: |a| = {amag[r, s]:.2f} g")
 
     # Frozen register: all six medians exactly equal to the previous rep's.
     for r in range(1, n):

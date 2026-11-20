@@ -18,6 +18,7 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Can UART and HID run at once](#open-can-uart-and-hid-run-at-once) | BLE |
 | open | [Watchdog against the bootloader](#open-watchdog-against-the-bootloader) | Firmware |
 | open | [Pinky part faulty?](#open-pinky-part-faulty) | Hardware |
+| 2026-11-20 | [Bias tracking anchored to the still-start gravity](#2026-11-20--bias-tracking-anchored-to-the-still-start-gravity) | Fusion |
 | 2026-11-16 | [Alphabet: ASL, one-handed, 24 static letters](#2026-11-16--alphabet-asl-one-handed-24-static-letters) | Data |
 | 2026-11-16 | [Between-rep recalibration in Batch Capture is bias-only](#2026-11-16--between-rep-recalibration-in-batch-capture-is-bias-only) | Calibration |
 | 2026-11-16 | [Auto re-zero is off while Batch Capture runs](#2026-11-16--auto-re-zero-is-off-while-batch-capture-runs) | Fusion |
@@ -211,6 +212,16 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-11-20 | Bias tracking anchored to the still-start gravity
+
+**Options:** (a) Keep the creep gate (0.03 g between two accel averages) and the 1.5 deg/s residual cap as the only guards. (b) Lower both gates. (c) Remember the gravity direction where a still period began, and end the bias clock if gravity moves more than 0.8 deg from it.
+
+**Choice:** (c). The tilt limit is `HEAL_STILL_TILT_DEG`, 0.8. It restarts only the bias clock (`biasS`), not `stillS`, so snap-back and auto re-zero keep their old meaning of still.
+
+**Why:** A slow real tilt passes both old gates. The creep gate only trips above about 4.8 deg/s. The residual cap lets anything under 1.5 deg/s through. So a finger rotating at 1 deg/s was learned as gyro bias: in the replay it moved the bias by 0.93 deg/s in 30 s. Lowering the gates (b) would also reject real stillness on a noisy sensor. Gravity does not lie about tilt, so comparing against where the period began catches any tilt rate, however slow. Turning about the vertical axis still looks like bias to a 6-DOF sensor. That limit stays.
+
+**Cost:** A hand that wanders by more than 0.8 deg never gets bias tracking, and the gyro bias then stays at its calibration value. I first tried 0.5 deg. It broke the replay of the real v3 session (4 of the checks in `verify_selftest_replay.mjs` failed, worst hold error 0.28 against a limit of 0.07), because real held hands wander about 0.7 deg and lost bias tracking. 0.7 still failed 2 checks, 0.8 and 0.9 pass all. At 1.0 deg the 1 deg/s tilt leaks 0.17 deg/s of bias. So 0.8 sits between the two limits with little room either side, and it was tuned on one session (unverified on others). The first 0.8 s of a tilt is still tracked (0.08 deg/s of bias in the test).
 
 ### 2026-11-16 | Alphabet: ASL, one-handed, 24 static letters
 

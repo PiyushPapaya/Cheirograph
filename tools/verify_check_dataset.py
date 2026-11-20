@@ -10,6 +10,7 @@ Usage:
 Exit code 0 = every check passed.
 """
 
+import json
 import shutil
 import subprocess
 import sys
@@ -47,8 +48,27 @@ def set_fields(**vals):
     return fn
 
 
+def edit_meta(path, fn):
+    """Apply fn(dict) -> dict to the '# meta {...}' line. fn returning None drops the line."""
+    out = []
+    for l in path.read_text(encoding="utf-8").splitlines():
+        if l.startswith("# meta "):
+            m = fn(json.loads(l[7:]))
+            if m is None:
+                continue
+            l = "# meta " + json.dumps(m)
+        out.append(l)
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def pinky_accel(vec):
+    return set_fields(pinky_ax=f"{vec[0]:.5f}", pinky_ay=f"{vec[1]:.5f}", pinky_az=f"{vec[2]:.5f}")
+
+
 def main():
     sys.path.insert(0, str(HERE))
+    import numpy as np
+    from batch_io import DEFAULT_OFFSETS
     results = []
 
     def check(name, ok, out=""):
@@ -121,6 +141,47 @@ def main():
             breaker(broken)
             code, out = run_checker(broken)
             check(f"catches {name}", code == 1 and expect in out, out)
+
+        # accel offsets and the meta line (WP-09). A real pinky reads 0.75 g raw, so the 1 g
+        # gate must run on raw minus the offsets stored in the file. The planted first row has
+        # the pinky's true gravity pointing against its offset, which makes the raw |a| 0.66 g.
+        OFF = DEFAULT_OFFSETS[5]
+        g_unit = -OFF / np.linalg.norm(OFF)
+
+        def planted(name, true_a, meta_offsets, drop_meta=False, break_meta=False):
+            d = Path(tmp) / name
+            if d.exists():
+                shutil.rmtree(d)
+            shutil.copytree(clean, d)
+            f = first_file(d)
+            edit_first_row(f, pinky_accel(true_a + OFF))
+            def put(m):
+                if drop_meta:
+                    return None
+                if meta_offsets is not None:
+                    m["offsets"][5] = list(meta_offsets)
+                return m
+            edit_meta(f, put)
+            if break_meta:
+                f.write_text(f.read_text(encoding="utf-8").replace("# meta {", "# meta {{", 1), encoding="utf-8")
+            return run_checker(d)
+
+        code, out = planted("off1", g_unit, OFF)
+        check("pinky raw 0.66 g passes when the file's offsets explain it", code == 0, out)
+        code, out = planted("off2", g_unit, [0, 0, 0])
+        check("same data with zero offsets in meta fails on the pinky |a|",
+              code == 1 and "pinky: |a| =" in out, out)
+        code, out = planted("off3", g_unit, None, drop_meta=True)
+        check("same data without a meta line warns about default offsets and passes",
+              code == 0 and "default offsets" in out, out)
+        code, out = planted("off4", 0.70 * g_unit, OFF)
+        check("pinky true |a| 0.70 g still fails after the right offsets",
+              code == 1 and "pinky: |a| = 0.70" in out, out)
+        code, out = planted("off5", -OFF, OFF)    # raw = 0: the firmware sent zeros
+        check("pinky all-zero row reads as dropped, not as bad accel",
+              code == 1 and "pinky: dropped" in out and "pinky: |a|" not in out, out)
+        code, out = planted("off6", g_unit, OFF, break_meta=True)
+        check("broken meta JSON is reported", code == 1 and "bad meta JSON" in out, out)
 
         # unrenamed file: warning only, still passes
         unnamed = Path(tmp) / "unnamed"

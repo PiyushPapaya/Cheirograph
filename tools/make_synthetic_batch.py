@@ -30,6 +30,7 @@ Usage:
 """
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -79,6 +80,13 @@ for _near, _src in (("NEARTI", "TI"), ("NEARTR", "TR")):
 assert set(POSE_SHAPES) == set(POSES) and set(NEAR_MISS) <= set(POSE_SHAPES)
 
 THUMB_REST_DEG = -40      # thumb points forward and out toward -X when "straight"
+
+
+def meta_line(sess_no):
+    """The "# meta" line (schema 1). Zero offsets: the synthetic accel has none."""
+    meta = {"schema": 1, "synthetic": True, "offsets": [[0.0, 0.0, 0.0]] * 6,
+            "session": {"id": f"synthetic-{sess_no:02d}"}}
+    return "# meta " + json.dumps(meta)
 
 
 HEADER_LINES = ["# SYNTHETIC test data from tools/make_synthetic_batch.py, NOT a glove capture",
@@ -186,7 +194,7 @@ def main():
                 "curl_offset": rng.normal(0, args.curl_offset_sd, 5),
                 "gyro_bias": rng.normal(0, 1.5, (6, 3))}
         if args.poses:
-            lines = [HEADER_LINES[0], HEADER_LINES[1], HEADER_LINES[2], ",".join(EXPECTED_HEADER)]
+            lines = [HEADER_LINES[0], HEADER_LINES[1], HEADER_LINES[2], meta_line(s), ",".join(EXPECTED_HEADER)]
             for label in POSE_SHAPES:
                 for rep in range(1, args.reps + 1):
                     raw, quat = make_rep(rng, label, sess, POSE_SHAPES)
@@ -203,6 +211,7 @@ def main():
                      "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
                      "# q* = hand-relative orientation conj(q_hand)*q_finger (viewer frame, bias-corrected) "
                      "at capture time, order (w,x,y,z), sign pinned to w>=0.",
+                     meta_line(s),
                      ",".join(EXPECTED_HEADER)]
             for rep in range(1, args.reps + 1):
                 raw, quat = make_rep(rng, letter, sess)
