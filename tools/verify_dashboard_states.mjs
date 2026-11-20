@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, "handrig_dashboard.html"), "utf8");
+const html = readFileSync(join(here, "handrig_dashboard.html"), "utf8").replace(/\r\n/g, "\n");   // page may be checked out with CRLF
 const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
 const grab = re => { const m = script.match(re); if (!m) { console.error("FAIL: section not found: " + re); process.exit(1); } return m[0]; };
 const src = [grab(/const FINGER_ANCHORS=\{[\s\S]*?\n\};/), grab(/const THUMB_BASE_FRAC=[^\n]*/),

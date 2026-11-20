@@ -2270,13 +2270,13 @@ function sensorTrusted(st){return st.clipT<st.zeroT&&st.dropT<st.zeroT;}
 const STILL_DEV_DPS=3;
 const CAL_INITIAL_MS=20000;   // full calibration: doubled from 10s -> roughly halves bias-estimate std error
 const CAL_RECAL_MS=5000;      // Batch Capture's between-rep drift recheck (see startCalibration's onDone param)
-let calState="idle", calEnd=0, calDur=0, calAcc=null, calOnDone=null, calTimer=null;
+let calState="idle", calKind="initial", calEnd=0, calDur=0, calAcc=null, calOnDone=null, calTimer=null;
 // durationMs/onDone let Batch Capture (below) reuse the exact same averaging/gating
 // logic for its short between-rep recalibration instead of re-deriving it.
 function startCalibration(durationMs=CAL_INITIAL_MS, onDone=null, kind="initial"){
   calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));
   S.forEach(st=>st.calGyroEMA=null);   // fresh trend baseline each hold, not stale pre-hold motion
-  calState="run";calDur=durationMs;calEnd=performance.now()+durationMs;calOnDone=onDone;
+  calState="run";calKind=kind;calDur=durationMs;calEnd=performance.now()+durationMs;calOnDone=onDone;
   document.getElementById("calcount").textContent=Math.ceil(durationMs/1000);
   document.getElementById("calfill").style.width="0%";
   document.getElementById("calsub").textContent=kind==="recal"
@@ -2304,10 +2304,33 @@ function cancelCalibration(){
   document.getElementById("calbanner").classList.remove("show");
   updateButtons();
 }
+// Between-rep recal (Batch Capture): refreshes gyro BIAS only and never touches the zero pose.
+// Why: bias drifts with temperature, so it is worth re-measuring, and that only needs the hand
+// STILL. The zero pose (qRef, calUp, zeroT) needs the hand FLAT. If the recal also re-zeroed, a
+// letter held during the 5 s would become the new "flat" and every later rep would be measured
+// against it. Two guards keep a bad measurement out: at least 50 still samples (1 s), and a new
+// bias within 3 deg/s of the old one on every axis (real drift between reps is well under
+// 1 deg/s, so a bigger jump means the hand moved and the average is not a bias). On a reject the
+// old bias stays. accBias, flag, bad and calibrated are left alone too.
+const RECAL_MIN_N=50, RECAL_MAX_JUMP_DPS=3;
+function recalSensor(id,st,c){
+  const row={id,n:c.n,kept:false,reason:""};
+  if(c.n<RECAL_MIN_N){row.reason="few still samples";row.bias=st.bias.map(r3);return row;}
+  const nb=[0,1,2].map(k=>c.gs[k]/c.n);
+  if(nb.some((v,k)=>Math.abs(v-st.bias[k])>RECAL_MAX_JUMP_DPS)){row.reason="moved";row.bias=st.bias.map(r3);return row;}
+  for(let k=0;k<3;k++){
+    st.bias[k]=nb[k];
+    st.noise[k]=Math.sqrt(Math.max(0,c.gq[k]/c.n-nb[k]*nb[k]));
+  }
+  row.kept=true;row.bias=st.bias.map(r3);
+  return row;
+}
 function finishCalibration(){
   const calRows=[];
+  const recal=calKind==="recal";
   META.forEach(m=>{
     const st=S[m.id],c=calAcc[m.id];
+    if(recal){calRows.push(recalSensor(m.id,st,c));return;}
     st.dropBad=false;   // a fresh calibration verdict supersedes any pending dropout latch
     if(c.n<5){st.flag="no data";st.bad=true;calRows.push({id:m.id,n:c.n,flag:st.flag,bad:true});return;}
     for(let k=0;k<3;k++){
@@ -2374,15 +2397,18 @@ function finishCalibration(){
     // away from a reference that was captured before the filter actually settled.
     st.qRef.copy(st.fil.three());
   });
-  setMountTilt();
-  alignHeadings();
-  zeroEpoch++;   // every touch template, roll and thumb offset was measured against the old zero
+  if(!recal){   // a recal must not move the zero, the mount fit or the epoch (see recalSensor)
+    setMountTilt();
+    alignHeadings();
+    zeroEpoch++;   // every touch template, roll and thumb offset was measured against the old zero
+  }
   if(runRec){
-    const kind=guided&&guided.phase==="still"?"guided-still":batchActive?"batch":"plain";
-    runRec.cal.push({ms:Math.round(performance.now()-runRec.t0),kind,sensors:calRows});
+    const kind=recal?"recal":guided&&guided.phase==="still"?"guided-still":batchActive?"batch":"plain";
+    const rejected=recal?calRows.filter(r=>!r.kept).map(r=>({id:r.id,reason:r.reason})):undefined;
+    runRec.cal.push({ms:Math.round(performance.now()-runRec.t0),kind,sensors:calRows,...(rejected?{rejected}:{})});
     bbLog("calibration",{kind,bad:calRows.filter(r=>r.bad).map(r=>META[r.id].name+": "+r.flag),n:calRows.map(r=>r.n)});
   }
-  if(!mountChecked)setStatus(`calibrated${mountTiltDeg>15?` · XIAO sits tipped ${mountTiltDeg.toFixed(0)}°, corrected`:""} · now tilt and roll the whole hand, fingers straight, ~2 s: checks how the XIAO sits`);
+  if(!recal&&!mountChecked)setStatus(`calibrated${mountTiltDeg>15?` · XIAO sits tipped ${mountTiltDeg.toFixed(0)}°, corrected`:""} · now tilt and roll the whole hand, fingers straight, ~2 s: checks how the XIAO sits`);
   calState="done";
   clearInterval(calTimer);
   document.getElementById("calbanner").classList.remove("show");
@@ -2764,9 +2790,16 @@ function captureBatchSample(){
 
   // quality gate (2026-10-31): a rep is only worth training on if the fused orientation
   // behind it is: link fast enough to integrate (40+ Hz) and no sensor clipped or dropped
-  // a frame since its last zero. The recal between reps re-zeros, so this only rejects
-  // reps where the move INTO the pose already lost rotation. Reject, stay armed, retry.
-  if(linkHz<HEAL_MIN_HZ||!active.every(m=>sensorTrusted(S[m.id]))){flashBatch(false);return;}
+  // a frame since its last zero. The recal between reps no longer re-zeros, so a clip or drop
+  // stays flagged until a full calibration. Reject, stay armed, retry.
+  if(linkHz<HEAL_MIN_HZ){flashBatch(false);return;}
+  // The recal does not move the zero, so a clip or drop since the last FULL calibration stays on
+  // the sensor. Only a real zero can repair lost rotation, so say so instead of failing silently.
+  const untrusted=active.filter(m=>!sensorTrusted(S[m.id]));
+  if(untrusted.length){
+    setStatus(untrusted.map(m=>m.name.toUpperCase()).join(", ")+" clipped or dropped since the last full calibration: press Calibrate (hand in the air, palm down)");
+    flashBatch(false);return;
+  }
   // and the hand IMU's mount angle has been checked against the fingers this session
   // (velcro: it can sit differently every time, see learnMount). HEALTH says "turn hand".
   if(!mountChecked){flashBatch(false);return;}

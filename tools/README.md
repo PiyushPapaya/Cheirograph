@@ -210,6 +210,15 @@ dashboard page (default `tools/handrig_dashboard.html`).
 node verify_selftest_replay.mjs [path/to/handrig_dashboard.html]
 ```
 
+### `verify_batch_recal.mjs`  *(Phase 8, Batch Capture)*
+Replays the same 2026-11-07 v3 session and runs a 5 s recal while the hand holds a fist.
+Checks that the between-rep recal refreshes gyro bias only: the index `q_rel` stays within 1 degree
+of a run with no recal, every `qRef` is unchanged, the bias changes by less than 3 deg/s. A control
+run with a full calibration instead must move the pose by more than 20 degrees, so the test can see the bug.
+```bash
+node verify_batch_recal.mjs [path/to/handrig_dashboard.html]
+```
+
 ## Dropped from the original plan
 
 The first plan had three more Python scripts. The dashboard covers all of them, so they were never built:

@@ -70,6 +70,8 @@ export function loadPage(file = join(here, "handrig_dashboard.html")) {
     ...["applyRemap", "parseFrame", "healStillness", "healBeta", "healRezero", "learnAccOffset", "solve4",
       "learnMount", "setHandMount", "setMountTilt", "finishCalibration", "refHeading", "alignHeadings",
       "handRelQuat", "touchDirs", "touchMeter", "activeTouches"].map(fn),
+    script.includes("const RECAL_MIN_N=") ? line("const RECAL_MIN_N=") : "",   // absent in pages from before the bias-only recal
+    script.includes("function recalSensor(") ? fn("recalSensor") : "",
     script.includes("function nearPair(") ? "" : "const nearPair=null;",
   ].join(NL);
   const stubs = `
@@ -77,7 +79,7 @@ const T={now:0}; const performance={now:()=>T.now};
 const localStorage={getItem:()=>null,setItem(){}};
 const document={getElementById:()=>({classList:{remove(){},add(){}},style:{},textContent:""})};
 let runRec=null,lastSeq=-1,lostWin=0,totWin=0,framesWin=0,lastT=0,recording=false,recFrames=[];
-let calState="idle",calAcc=null,calTimer=null,calOnDone=null,guided=null,selfT=null,batchActive=false;
+let calState="idle",calKind="initial",calAcc=null,calTimer=null,calOnDone=null,guided=null,selfT=null,batchActive=false;
 let touchTemplates=[],tplOn={},TOUCH_MODEL=null,touchOn=[],zeroEpoch=0;
 
 function pushHist(){} function pushBatchRaw(){} function bbFrame(){} function setStatus(){} function updateButtons(){} function clearInterval(){}
@@ -85,7 +87,9 @@ function bbLog(){}`;
   return new Function(stubs + NL + src + `
 return {T,S,ACC_OFFSET,parseFrame,nearPair,handDefault,digitTip,digitBase,contactFix,unrollQs,buildWarp,thumbWarp,warpHand,PAIR_FINGER,finishCalibration,touchDirs,handRelQuat,touchMeter,templateTouch,digitDist,
   makeTemplate,finishTemplates,setHandMount,DEG,
-  startCal(){calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));S.forEach(st=>st.calGyroEMA=null);calState="run";},
+  startCal(kind="initial"){calKind=kind;calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));S.forEach(st=>st.calGyroEMA=null);calState="run";},
+  bias(id){return S[id].bias.slice();},
+  qRefs(){return S.map(st=>st.qRef.clone());},
   setMode(g,s){guided=g;selfT=s;},
   setTemplates(t){touchTemplates=t;},
   zeroNow(){S.forEach(st=>st.qRef.copy(st.fil.three()));alignHeadings();},
