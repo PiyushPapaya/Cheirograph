@@ -87,3 +87,4 @@ social/
 09-firmware-hardening/motion-tests/**/*.mp4
 09-firmware-hardening/motion-tests/**/*.mov
 .playwright-mcp/
+/docs/log/
