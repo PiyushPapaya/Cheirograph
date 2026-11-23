@@ -7,6 +7,7 @@ Checks (one PASS/FAIL line each, exit 1 if any fails):
      verify_touch_model.py runs it with its fixture)
   c) every tools/verify_*.py passes
   d) make_synthetic_batch.py output passes check_dataset.py
+  d2) train_classifier.py --selftest prints PASS
   e) no dead relative links in tracked .md files
   f) Data/ mirrors every tracked data/firmware/image/html file of a stage folder
 
@@ -74,6 +75,13 @@ def check_synthetic():
         return ok, "RESULT: PASS" if ok else out.strip()[-300:]
 
 
+def check_classifier():
+    rc, out = run([sys.executable, str(TOOLS / "train_classifier.py"), "--selftest"])
+    lines = out.strip().splitlines()
+    ok = rc == 0 and lines and lines[-1].strip() == "PASS"
+    return ok, "PASS" if ok else (lines[-1] if lines else f"exit {rc}")
+
+
 def check_links(files):
     dead = []
     for rel in files:
@@ -123,6 +131,7 @@ def main():
     add("verify_*.mjs", check_scripts("verify_*.mjs", ["node"], skip=("verify_touch_js.mjs",)))
     add("verify_*.py", check_scripts("verify_*.py", [sys.executable]))
     add("synthetic batch + check_dataset", check_synthetic())
+    add("train_classifier --selftest", check_classifier())
     add("markdown links", check_links(files))
     add("Data/ mirror", check_mirror(files))
     sys.exit(0 if all(results) else 1)
