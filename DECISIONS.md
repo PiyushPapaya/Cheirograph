@@ -18,6 +18,8 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 | open | [Can UART and HID run at once](#open-can-uart-and-hid-run-at-once) | BLE |
 | open | [Watchdog against the bootloader](#open-watchdog-against-the-bootloader) | Firmware |
 | open | [Pinky part faulty?](#open-pinky-part-faulty) | Hardware |
+| 2026-11-23 | [v5 frames: banner and drop, no guessed scale](#2026-11-23--v5-frames-banner-and-drop-no-guessed-scale) | BLE |
+| 2026-11-23 | [Synthetic batches are tagged as model frame](#2026-11-23--synthetic-batches-are-tagged-as-model-frame) | Data |
 | 2026-11-20 | [Bias tracking anchored to the still-start gravity](#2026-11-20--bias-tracking-anchored-to-the-still-start-gravity) | Fusion |
 | 2026-11-16 | [Alphabet: ASL, one-handed, 24 static letters](#2026-11-16--alphabet-asl-one-handed-24-static-letters) | Data |
 | 2026-11-16 | [Between-rep recalibration in Batch Capture is bias-only](#2026-11-16--between-rep-recalibration-in-batch-capture-is-bias-only) | Calibration |
@@ -212,6 +214,26 @@ For what happened session by session, see [DOCUMENTATION.md](DOCUMENTATION.md). 
 ---
 
 ## Decisions
+
+### 2026-11-23 | v5 frames: banner and drop, no guessed scale
+
+**Options:** (a) Refuse frames without mask bit 6 silently. (b) Assume ±2000 °/s and fuse them anyway. (c) Show a banner, log one black-box event and drop the frames before fusion.
+
+**Choice:** (c). The banner says `firmware v5 detected, flash v6`. The frames still count for RATE.
+
+**Why:** A guessed scale corrupts data without any sign of it. A silent refusal looks like a dead link. The banner says exactly what to do.
+
+**Cost:** v5 firmware can't be used with this dashboard at all. Recorded v5 sessions still replay, because the replay helper sets bit 6.
+
+### 2026-11-23 | Synthetic batches are tagged as model frame
+
+**Options:** (a) Rewrite the synthetic generator to emit sensor-frame accel and run it through the remap. (b) Tag synthetic meta with `rawFrame:"model"` and skip the remap for those files.
+
+**Choice:** (b). Real exports never carry the key.
+
+**Why:** `verify_touch_model.py` pins the synthetic letter rows with a digest. Changing the frame would break that pin for no gain in the classifier tests.
+
+**Cost:** the remap code path is tested only by `verify_features.py`, not end to end on synthetic batches.
 
 ### 2026-11-20 | Bias tracking anchored to the still-start gravity
 

@@ -50,6 +50,8 @@
   .tb-meta i{font-style:normal;font-size:9px;letter-spacing:.16em;color:var(--ink-3)}
   .conn-state{display:flex;align-items:center;gap:10px;padding:0 20px;min-width:200px}
   .status{font-size:11px;color:var(--ink-2);letter-spacing:.04em}
+  .fwbanner{display:none;margin:6px 0;padding:8px 12px;border:1px solid #e5484d;color:#e5484d;font-size:12px;letter-spacing:.06em}
+  .fwbanner.show{display:block}
   /* status glyph: hollow ring = idle, filled disc = streaming, diamond = error */
   .dot{width:10px;height:10px;border-radius:50%;border:1px solid var(--ink-3);flex:none}
   .dot.on{background:var(--ink);border-color:var(--ink);animation:blink 1.8s ease-in-out infinite}
@@ -290,6 +292,7 @@
     </div>
   </div>
   <div class="conn-state"><span class="dot" id="dot"></span><span class="status" id="status" role="status" aria-live="polite">not connected</span></div>
+  <div class="fwbanner" id="fwbanner" role="alert"></div>
   <div class="telem">
     <div><div class="k">gesture</div><div class="v mono" id="gest">—</div></div>
     <div><div class="k">rate</div><div class="v mono"><span id="thz">0</span> Hz</div></div>
@@ -379,6 +382,11 @@
         <div class="glabel">Batch</div>
         <div class="gbody">
           <label class="ctrl" title="Static-pose label for Batch Capture (e.g. a fingerspelling letter). Editable any time between reps, so there is no need to stop the batch to switch letters.">label <input type="text" id="batchLabel" maxlength="12" value="A" aria-label="Batch label" list="poseList"><datalist id="poseList"></datalist></label>
+          <label class="ctrl" title="Phase 8 class set (protocol S05). Prompt mode walks 10 shuffled rounds over this set's classes.">set <select id="batchSet" aria-label="Batch set"></select></label>
+          <label class="ctrl" title="Session number, 1 to 99. Goes into the file name and the meta line.">session <input type="number" id="batchSession" min="1" max="99" value="1" style="width:4em" aria-label="Batch session number"></label>
+          <label class="ctrl" title="Prompt mode: the dashboard shows the next label and the round's posture, and fills the label field."><input type="checkbox" id="batchPromptOn" checked> prompt</label>
+          <label class="ctrl" title="TOPUP only: comma-separated classes, e.g. M,N. Empty means every class in the grid."><input type="text" id="batchTopup" placeholder="topup classes" style="width:7em" aria-label="Topup classes"></label>
+          <span class="batchcount" id="batchPrompt" role="status"></span>
           <button id="batchToggle" disabled title="20 s calibration, then hold a pose and press Space to save each rep as a noise-reduced sample. Recalibrates for 5 s between reps to fight drift.">Batch capture</button>
           <span class="batchcount" id="batchCount">0 reps captured</span>
           <button id="batchCsv" disabled>Export batch CSV</button>
@@ -1425,7 +1433,7 @@ let guided=null,guidedTimer=null,touchTemplates=[],tplOn={},selfT=null,selfTimer
 // off. tplEpoch is the zeroEpoch they were learned under.
 let zeroEpoch=0,tplEpoch=0,tplFrom=null;
 let runRec=null;   // the black box of the last guided run (and the self-test after it)
-const DASH_VERSION="bias anchored to still-start gravity · 2026-11-20";
+const DASH_VERSION="frame flags: gyro-scale and watchdog bits · 2026-11-23";
 const elText=(id,t)=>{document.getElementById(id).textContent=t;};
 const relMs=now=>now-runRec.t0;
 // ---- errors: kept for the page and, if a run exists, in its log too
@@ -1673,6 +1681,7 @@ function sessionFacts(){
   return {
     dashboard:{version:DASH_VERSION,scriptHash:scriptHash(),page:String(location.pathname||"").split("/").pop()},
     userAgent:navigator.userAgent,
+    device:{name:deviceName,flags:lastMask>>6},
     link:{hzMin:h.min==null?null:r3(h.min),hzMean:h.n?r3(h.sum/h.n):null,hzSamples:h.n,frames:r.framesIn,lost:r.lost,
       lossPct:total?r3(100*r.lost/total):null,badFrames:Math.max(0,badFrames-r.badFrames0),bufferRefused:r.bb.full,eventsDropped:r.bb.eventsLost},
     mount:{tiltDeg:r3(mountTiltDeg),psiDeg:r3(handMount/DEG),checked:mountChecked},
@@ -1741,6 +1750,7 @@ function drawTouchPanel(dirs,on){
 // ===== BLE =====
 let device=null,txChar=null,rxBuf=new Uint8Array(0);
 let lastSeq=-1,framesWin=0,bytesWin=0,lostWin=0,totWin=0,winT=0,lastT=0,badFrames=0;
+let deviceName=null;   // kept from connect(), the name survives a dropped link
 let linkUp=false,connecting=false;   // linkUp: onConnected() ran and onDisc() hasn't yet
 
 function supportOk(){return "bluetooth" in navigator;}
@@ -1788,7 +1798,7 @@ async function connect(){
       dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[NUS]});
       inPicker=false;
     }
-    device=dev;
+    device=dev;deviceName=dev.name||null;
     device.addEventListener("gattserverdisconnected",onDisc);   // same fn reference => DOM dedupes
     setStatus("connecting…");
     const srv=await withTimeout(device.gatt.connect(),15000,"timed out connecting");
@@ -1818,7 +1828,7 @@ async function connect(){
   }
 }
 function onConnected(){
-  linkUp=true;
+  linkUp=true;scaleWarned=false;dogSeen=false;hideFwBanner();
   document.getElementById("dot").className="dot on";
   document.getElementById("veil").style.display="none";
   document.getElementById("conn").textContent="Disconnect";
@@ -1883,6 +1893,9 @@ function pushHist(h,gx,gy,gz,ax,ay,az){
   if(h.gx.length>HLEN){h.gx.shift();h.gy.shift();h.gz.shift();h.ax.shift();h.ay.shift();h.az.shift();}
 }
 
+let scaleWarned=false,dogSeen=false,lastMask=0;
+function showFwBanner(t){const e=document.getElementById("fwbanner");e.textContent=t;e.classList.add("show");}
+function hideFwBanner(){const e=document.getElementById("fwbanner");e.textContent="";e.classList.remove("show");}
 function parseFrame(f){
   const dv=new DataView(f.buffer,f.byteOffset,f.byteLength);
   const seq=dv.getUint8(1), t=dv.getUint32(2,true), mask=dv.getUint8(6);
@@ -1894,6 +1907,15 @@ function parseFrame(f){
   // a stalled BLE write. Those frames add no elapsed time, so they must not add
   // rotation either (substituting 0.02 here would integrate each one twice).
   let dt=(t-lastT)/1000;lastT=t;if(dt<0||dt>0.25)dt=0.02;
+  lastMask=mask;
+  // Mask bit 6 = the firmware's gyro is +-2000 dps (v6). Without it the scale is unknown (v5 was
+  // +-500, 4x off), so fuse nothing. The frame still counted above, so RATE shows the link is alive.
+  if(!(mask&0x40)){
+    if(!scaleWarned){scaleWarned=true;showFwBanner("firmware v5 detected, flash v6");setStatus("firmware v5 detected, flash v6","bad");bbLog("firmware scale",{mask});}
+    return;
+  }
+  // Mask bit 7 = this boot came from a watchdog reset (I2C hang). Say so once per connection.
+  if((mask&0x80)&&!dogSeen){dogSeen=true;setStatus("glove rebooted by its watchdog (I2C hang). Recalibrate.","bad");bbLog("watchdog reset",{});}
 
   const recRow=recording?[t]:null;
   let off=7;
@@ -2770,6 +2792,9 @@ function startBatchCapture(){
   if(!window.BatchGate.satisfied(!!(device&&device.gatt&&device.gatt.connected)))return;
   if(guided||selfT||calState==="run")return;
   batchActive=true;batchState="calibrating";
+  sessionStartedAt=Date.now();
+  promptPlan=buildPromptPlan(batchClasses(document.getElementById("batchSet").value,document.getElementById("batchTopup").value));
+  promptIdx=0;
   const ae=document.activeElement;
   if(ae&&ae.id==="batchToggle")ae.blur();   // see the keydown handler: Space must not hit the button
   updateBatchUI();
@@ -2779,6 +2804,7 @@ function startBatchCapture(){
   },"initial");
   updateButtons();
 }
+function batchPromptWanted(){return document.getElementById("batchPromptOn").checked;}
 function stopBatchCapture(){
   const wasCal=batchActive&&calState==="run";
   batchActive=false;batchState="idle";
@@ -2842,7 +2868,8 @@ function captureBatchSample(){
   if(!active.every(m=>S[m.id].tiltErr<HEAL_TILT_OK_DEG)){flashBatch(false);return;}
 
   const idx=(batchRepCounts[label]||0)+1;
-  const sample={label,idx,t:Date.now()};
+  const pc=promptCurrent();
+  const sample={label,idx,t:Date.now(),posture:(batchPromptWanted()&&pc)?pc.posture:null};
   META.forEach(m=>{
     const st=S[m.id],rh=st.rawHist;
     sample[m.name]={
@@ -2860,6 +2887,7 @@ function captureBatchSample(){
   });
   batchRows.push(sample);
   batchRepCounts[label]=idx;
+  if(batchPromptWanted()&&pc&&pc.label===label)promptIdx++;   // advance only when the prompted class was the one captured
   persistBatchRows();
   flashBatch(true);
 
@@ -2895,6 +2923,7 @@ function updateBatchUI(){
     document.getElementById("batchCount").textContent=`${batchRows.length} reps captured`;
   }
   document.getElementById("batchCsv").disabled=batchActive||batchRows.length===0;
+  showPrompt();
   updateBatchGrid();
 }
 
@@ -2902,14 +2931,66 @@ function updateBatchUI(){
 // batchRepCounts already tracks reps per label in memory; this surfaces it
 // as an A-Z grid so coverage gaps across the fingerspelling alphabet are
 // visible at a glance instead of tallying exported CSVs by hand.
-const BATCH_ALPHABET="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-const BATCH_GOAL_REPS=30;   // ~3 sessions x ~10 reps/session, per the phase-8 target
+// Phase 8 classes (spec S05): 24 static ASL letters (J and Z move, out of scope), REST, and two
+// command poses that are touch shapes, not letters: SPACE = ASL "8" (thumb on middle),
+// BKSP = ASL "7" (thumb on ring). F and W stay letters.
+const BATCH_ALPHABET="ABCDEFGHIKLMNOPQRSTUVWXY".split("").concat(["REST","SPACE","BKSP"]);
+const BATCH_GOAL_REPS=30;   // 3 sessions x 10 reps per class
+const BATCH_GOAL_REPS_HARD=50;   // FIST and VUR letters: 2 extra alternation sessions
+const BATCH_HARD=["E","M","N","S","T","U","R","K"];
+const BATCH_SETS={
+  STARTER:["A","B","C","D","I","L","V","W","Y","REST"],
+  CMD:["SPACE","BKSP","F","W"],
+  FIST:["E","M","N","S","T","A"],
+  VUR:["U","R","K","V"],
+  ROUND:["O","F","X","C","D"],
+  ATT:["G","H","P","Q","K","U"],
+  TOPUP:null,   // chosen per session from the topup field, else every class in the grid
+  TOUCHTEST:["F","SPACE","BKSP","W","NF","NSPACE","NBKSP","NW","REST","FREE"]
+};
+const BATCH_ROUNDS=10;
+// Posture code of round r (1-based): N neutral, F wrist flexed, P forearm rotated, H arm high, L arm low.
+function posturePerRound(r){return r<=4?"N":r<=6?"F":r<=8?"P":r===9?"H":"L";}
+function batchGoal(label){return BATCH_HARD.includes(label)?BATCH_GOAL_REPS_HARD:BATCH_GOAL_REPS;}
+function pad2(n){return String(n).padStart(2,"0");}
+function clampSession(v){const n=Math.round(Number(v));return Number.isFinite(n)?Math.min(99,Math.max(1,n)):1;}
+// 10 rounds, each a Fisher-Yates shuffle of the classes. rnd() is injectable so a test is deterministic.
+function buildPromptPlan(classes,rnd){
+  rnd=rnd||Math.random;
+  const plan=[];
+  for(let r=1;r<=BATCH_ROUNDS;r++){
+    const a=classes.slice();
+    for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+    a.forEach(label=>plan.push({round:r,posture:posturePerRound(r),label}));
+  }
+  return plan;
+}
+function batchClasses(set,topup){
+  if(set==="TOPUP"){
+    const l=(topup||"").split(",").map(x=>x.trim().toUpperCase()).filter(Boolean);
+    return l.length?l:BATCH_ALPHABET.slice();
+  }
+  return (BATCH_SETS[set]||BATCH_ALPHABET).slice();
+}
+function batchFileName(set,nn,ts){return "handrig_batch_"+set+"_"+pad2(clampSession(nn))+"_"+ts+".csv";}
+let promptPlan=[],promptIdx=0,sessionStartedAt=null;
+function promptCurrent(){return promptIdx<promptPlan.length?promptPlan[promptIdx]:null;}
+function showPrompt(){
+  const el=document.getElementById("batchPrompt");if(!el)return;
+  const c=promptCurrent();
+  if(!batchActive||!document.getElementById("batchPromptOn").checked){el.textContent="";return;}
+  if(!c){el.textContent="all "+BATCH_ROUNDS+" rounds done";return;}
+  el.textContent="round "+c.round+"/"+BATCH_ROUNDS+" · posture "+c.posture+" · show "+c.label+" ("+(promptIdx+1)+"/"+promptPlan.length+")";
+  document.getElementById("batchLabel").value=c.label;
+}
 // Touch poses, same names and order as the keys of POSES in tools/pose_labels.py
 // (tools/verify_touch_model.py checks the two stay equal).
 const POSE_LABELS=["FLAT","FISTOUT","FISTIN","THUMBOUT","TI","TM","TR","TP","OKRING","ROCK","TRSTRAIGHT","TRP","NEARTI","NEARTR"];
 const POSE_GOAL_REPS=20;    // 2 sessions x 10 reps
 function buildBatchGrid(){
   const wrap=document.getElementById("batchgrid");
+  const sel=document.getElementById("batchSet");
+  Object.keys(BATCH_SETS).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k;sel.appendChild(o);});
   const list=document.getElementById("poseList");
   POSE_LABELS.forEach(name=>{
     const o=document.createElement("option");o.value=name;list.appendChild(o);
@@ -2936,7 +3017,7 @@ function updateBatchGrid(){
     if(!cell)return;
     const n=batchRepCounts[letter]||0;
     cell.querySelector("b").textContent=n;
-    cell.classList.toggle("done",n>=BATCH_GOAL_REPS);
+    cell.classList.toggle("done",n>=batchGoal(letter));
   });
   POSE_LABELS.forEach(name=>{
     const cell=document.getElementById("bg-"+name);
@@ -2949,14 +3030,13 @@ function updateBatchGrid(){
 
 // One JSON line that says how the file was made (schema 1, spec S02). The checker needs the
 // accel offsets: raw accel stays raw in the CSV, so the pinky's zero-g error travels with the file.
-// Fields not built yet are null: device.flags (firmware status bits), session (set/number/id) and
-// posture. The text must never contain the hand-relative marker word, batch_io reads that as a flag.
+// posture is one code per row (null when prompt mode was off). The text must never contain the hand-relative marker word, batch_io reads that as a flag.
 function batchMeta(){
   const t=(v)=>v.map(r3);
   return {schema:1,
     dashboard:{version:DASH_VERSION,scriptHash:scriptHash()},
-    device:{name:(device&&device.name)||null,flags:null},
-    session:null,
+    device:{name:deviceName||(device&&device.name)||null,flags:lastMask>>6},
+    session:sessionMeta(),
     offsets:META.map(m=>ACC_OFFSET[m.id].slice()),
     bias:META.map(m=>t(S[m.id].bias)),
     noise:META.map(m=>t(S[m.id].noise)),
@@ -2966,7 +3046,14 @@ function batchMeta(){
     curlMode:DISPLAY.curlMode,
     link:{hzMean:LINK.hzN?r3(LINK.hzSum/LINK.hzN):null,lostFrames:LINK.lost},
     zeros:ZEROS.slice(),
-    posture:null};
+    posture:batchRows.map(r=>r.posture||null)};
+}
+function sessionMeta(){
+  const nn=pad2(clampSession(document.getElementById("batchSession").value));
+  const t0=sessionStartedAt||(batchRows.length?batchRows[0].t:Date.now());
+  const d=new Date(t0);
+  const ymd=d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate());
+  return {set:document.getElementById("batchSet").value,number:nn,id:ymd+"-"+nn,startedAt:d.toISOString()};
 }
 function exportBatchCSV(){
   if(!batchRows.length)return;
@@ -2985,7 +3072,7 @@ function exportBatchCSV(){
     META.forEach(m=>row.push(...s[m.name].relQuat.map(v=>v.toFixed(6))));
     lines.push(row.join(","));
   }
-  downloadCSV(lines.join("\n"),"handrig_batch_"+Date.now()+".csv");
+  downloadCSV(lines.join("\n"),batchFileName(document.getElementById("batchSet").value,document.getElementById("batchSession").value,Date.now()));
   // Safely on disk now. Clear memory AND storage: clearing only storage left batchRows
   // in memory, so the next capture re-persisted (and the next export re-exported) every
   // row that had already been exported. batchRepCounts is kept on purpose: it drives the
@@ -3299,6 +3386,7 @@ document.getElementById("batchToggle").addEventListener("click",()=>{
 });
 document.getElementById("batchCsv").addEventListener("click",exportBatchCSV);
 document.getElementById("batchLabel").addEventListener("input",updateBatchUI);
+document.getElementById("batchPromptOn").addEventListener("change",updateBatchUI);
 document.querySelectorAll("#traceview button").forEach(b=>{
   b.addEventListener("click",()=>{
     traceMode=b.dataset.v;

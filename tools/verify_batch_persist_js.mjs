@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // verify_batch_persist_js.mjs - throwaway-style verification for the Batch
-// Capture localStorage crash-resilience helpers and the A-Z coverage grid
+// Capture localStorage crash-resilience helpers and the coverage grid
 // math ported into tools/handrig_dashboard.html. Same idea as
 // verify_batch_gate_js.mjs: eval just the pure logic slices (stubbed
 // localStorage / document, no real DOM/BLE) and drive them through the
@@ -97,7 +97,7 @@ function check(name, cond) {
   check("restore tolerates corrupt JSON without throwing", threw === false);
 }
 
-// ===== 2) per-letter coverage grid math =====
+// ===== 2) coverage grid math (Phase 8 classes) =====
 {
   const start = script.indexOf("// ===== per-letter coverage grid =====");
   const end = script.indexOf("function exportBatchCSV(){");
@@ -120,9 +120,11 @@ function check(name, cond) {
       _classes: classes,
     };
   }
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach((l) => cells.set("bg-" + l, makeCell()));
+  // Phase 8 grid: 24 static letters (no J, Z) + REST, SPACE, BKSP
+  const GRID = "ABCDEFGHIKLMNOPQRSTUVWXY".split("").concat(["REST", "SPACE", "BKSP"]);
+  GRID.forEach((l) => cells.set("bg-" + l, makeCell()));
   globalThis.document = { getElementById: (id) => cells.get(id) || null };
-  globalThis.batchRepCounts = { A: 30, B: 29, C: 0 };
+  globalThis.batchRepCounts = { A: 30, B: 29, C: 0, E: 49, M: 50 };
   // eslint-disable-next-line no-eval
   (0, eval)(script.slice(start, end));
 
@@ -132,8 +134,10 @@ function check(name, cond) {
   check("uncaptured letter (0) renders 0, not done",
     cells.get("bg-C")._b.textContent === 0 && !cells.get("bg-C")._classes.has("done"));
   check("count text matches batchRepCounts", cells.get("bg-A")._b.textContent === 30);
-  check("every letter A-Z got a rendered count (no gaps in the grid)",
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").every((l) => cells.get("bg-" + l)._b.textContent !== ""));
+  check("FIST letter needs 50: 49 is not done, 50 is",
+    cells.get("bg-E")._classes.has("done") === false && cells.get("bg-M")._classes.has("done") === true);
+  check("every grid cell got a rendered count (no gaps in the grid)",
+    GRID.every((l) => cells.get("bg-" + l)._b.textContent !== ""));
 }
 
 process.exit(failures === 0 ? 0 : 1);

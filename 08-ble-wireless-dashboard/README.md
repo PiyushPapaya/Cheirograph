@@ -67,6 +67,16 @@ Every boot, before BLE advertising starts, the firmware checks all six channels 
 
 Read this after every flash before trusting anything downstream of it. If a channel isn't `OK` here, the problem is now electrical, a cold solder joint, wiring, wrong mux channel, not firmware. The init path is verified by readback at this point, so software is no longer a plausible suspect.
 
+## Frame validity mask (byte 6)
+
+| Bit | Meaning |
+|---|---|
+| 0 to 5 | Sensor sid 0 to 5 delivered a trusted sample (0 = hand, 1 to 5 = fingers). |
+| 6 | Gyro range is +-2000 dps. Set by firmware v6 on every frame. Clear means v5 (+-500): the dashboard shows "firmware v5 detected, flash v6", logs one `firmware scale` event and fuses nothing. |
+| 7 | This boot came from a watchdog reset (I2C hang). The dashboard shows a notice once per connection and logs `watchdog reset`. |
+
+Both bits are also stored as `device.flags` (last mask >> 6) in the batch meta line and the session export.
+
 ## Sensor mounting axis convention
 
 The firmware always streams raw, sensor-frame data. The axis remap into a common frame lives in the dashboard, not the firmware, so every capture stays reinterpretable even if the remap changes later. Measured directly on the mounted glove: for the finger sensors, the sensor's own −Y axis points toward the fingertip and +Z points up. The hand sensor uses a different convention entirely, it's a different chip, mounted differently, which is confirmed by it reading roughly −0.98 g on its Z axis with the glove lying flat, palm down.

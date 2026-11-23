@@ -72,21 +72,25 @@ export function loadPage(file = join(here, "handrig_dashboard.html")) {
       "handRelQuat", "touchDirs", "touchMeter", "activeTouches"].map(fn),
     script.includes("const RECAL_MIN_N=") ? line("const RECAL_MIN_N=") : "",   // absent in pages from before the bias-only recal
     script.includes("function recalSensor(") ? fn("recalSensor") : "",
+    script.includes("function showFwBanner(") ? fn("showFwBanner") + NL + fn("hideFwBanner") : "",
     script.includes("function nearPair(") ? "" : "const nearPair=null;",
   ].join(NL);
   const stubs = `
 const ZEROS=[],LINK={hzSum:0,hzN:0,frames:0,lost:0};
 const T={now:0}; const performance={now:()=>T.now};
 const localStorage={getItem:()=>null,setItem(){}};
-const document={getElementById:()=>({classList:{remove(){},add(){}},style:{},textContent:""})};
+const _els={};
+const document={getElementById:(id)=>_els[id]||(_els[id]={classList:{remove(){this.on=false},add(){this.on=true},on:false},style:{},textContent:""})};
+const BB=[],STATUS=[];
+let scaleWarned=false,dogSeen=false,lastMask=0;
 let runRec=null,lastSeq=-1,lostWin=0,totWin=0,framesWin=0,lastT=0,recording=false,recFrames=[];
 let calState="idle",calKind="initial",calAcc=null,calTimer=null,calOnDone=null,guided=null,selfT=null,batchActive=false;
 let touchTemplates=[],tplOn={},TOUCH_MODEL=null,touchOn=[],zeroEpoch=0;
 
-function pushHist(){} function pushBatchRaw(){} function pushBatchRel(){} function bbFrame(){} function setStatus(){} function updateButtons(){} function clearInterval(){}
-function bbLog(){}`;
+function pushHist(){} function pushBatchRaw(){} function pushBatchRel(){} function bbFrame(){} function setStatus(t){STATUS.push(t);} function updateButtons(){} function clearInterval(){}
+function bbLog(t,d){BB.push([t,d]);}`;
   return new Function(stubs + NL + src + `
-return {T,S,ACC_OFFSET,parseFrame,nearPair,handDefault,digitTip,digitBase,contactFix,unrollQs,buildWarp,thumbWarp,warpHand,PAIR_FINGER,finishCalibration,touchDirs,handRelQuat,touchMeter,templateTouch,digitDist,
+return {BB,STATUS,els:_els,flags(){return {scaleWarned,dogSeen,lastMask};},T,S,ACC_OFFSET,parseFrame,nearPair,handDefault,digitTip,digitBase,contactFix,unrollQs,buildWarp,thumbWarp,warpHand,PAIR_FINGER,finishCalibration,touchDirs,handRelQuat,touchMeter,templateTouch,digitDist,
   makeTemplate,finishTemplates,setHandMount,DEG,
   startCal(kind="initial"){calKind=kind;calAcc=META.map(()=>({n:0,gs:[0,0,0],gq:[0,0,0],as:[0,0,0]}));S.forEach(st=>st.calGyroEMA=null);calState="run";},
   bias(id){return S[id].bias.slice();},
@@ -101,7 +105,7 @@ return {T,S,ACC_OFFSET,parseFrame,nearPair,handDefault,digitTip,digitBase,contac
 // One raw black-box row -> the 80-byte BLE frame parseFrame expects.
 export function frameOf(row, seq) {
   const b = new Uint8Array(80), dv = new DataView(b.buffer);
-  dv.setUint8(0, 0xAB); dv.setUint8(1, seq & 0xff); dv.setUint32(2, row[0] >>> 0, true); dv.setUint8(6, row[1]);
+  dv.setUint8(0, 0xAB); dv.setUint8(1, seq & 0xff); dv.setUint32(2, row[0] >>> 0, true); dv.setUint8(6, row[1] | 0x40);   // recorded with v5 (bit 6 clear) at +-2000 dps; v6 sets bit 6 and the dashboard drops frames without it
   let off = 7;
   for (let s = 0; s < 6; s++) for (let a = 0; a < 6; a++) {
     const v = row[2 + 6 * s + a] * (a < 3 ? 8192 : 16.384);

@@ -32,7 +32,7 @@ const document={scripts:[]}, location={pathname:"/handrig_dashboard.html"}, navi
 const pageErrors=[], S=[], DEG=Math.PI/180, DISPLAY={handModel:"left",curlMode:"abs"}, REMAP_OF=[[0,1,2]];
 const ACC_OFFSET=[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
 let badFrames=0, mountTiltDeg=3, handMount=0, mountChecked=true, zeroEpoch=0, tplEpoch=0, tplFrom=null, touchTemplates=[];
-let runRec=null, guided=null, selfT=null, calState="idle";
+let runRec=null, guided=null, selfT=null, calState="idle", deviceName=null, lastMask=0;
 for(let i=0;i<6;i++)S.push({calibrated:true,bad:false,flag:"",bias:[0,0,0],noise:[.1,.1,.1],accBias:[0,0,0],dropCount:0,dropBad:false});
 const GUIDED_PREP_MS=5000,GUIDED_HOLD_MS=10000,GUIDED_USE_MS=7000,GUIDED_MIN_ROWS=30,GUIDED_MAX_SPREAD=0.1,GUIDED_TRIES=3;
 const TOUCH_TPL_MIN=.3,TOUCH_TPL_OFF=1.3,TOUCH_TPL_WEAK=.08,GUIDED_STAGES=new Array(17);`;
