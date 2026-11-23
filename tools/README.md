@@ -313,3 +313,55 @@ python analyze_posture.py --selftest
 ```
 
 Per file it drops the first 10 s (5 s if the file is 30 s or shorter), subtracts the accel offsets, and warns if a sensor's gyro std is above 3 deg/s. Per pair (T1->T2, T2->T3, T1->T3, T4->T5, T5->T6, T4->T6, A1->A2, M1->M3, T1->R1, T1->A1) it prints the tilt change theta per sensor and `shift = theta_hand - median(theta of index, middle, ring, pinky)`. Shift 0 means the hand IMU moved with the fingers. A large shift means it moved against them. A turn about the gravity axis is invisible. The selftest builds synthetic files with a different mount rotation per sensor and expects shift 12.0 and 0.0 (within 0.2).
+
+### `train_classifier.py`  *(classifier ladder rungs 2 and 3, S07)*
+
+Trains multinomial logistic regression or a 32-unit ReLU MLP in plain numpy and compares them with the kNN from `train_baseline.py` using leave-one-session-out (LOSO). Standardising uses the training fold only. A prediction is accepted only if the top probability is at least `--tau` (default 0.8) and leads the runner-up by 0.2. Rejected reps count as wrong.
+
+```bash
+python train_classifier.py ml/dataset/ --features G18z --model logreg
+python train_classifier.py ml/dataset/ --model mlp --export ml/model_quat_mlp --fixture ml/fixture.json
+python train_classifier.py --selftest
+```
+
+Prints LOSO accuracy, per-class recall and precision and a tau sweep. `--export PREFIX` writes `PREFIX.json` (schema 1, weights one row per class) and `PREFIX.h` (`static const float` arrays, same numbers) and checks the reloaded JSON gives the same predictions. `--fixture` writes 50 rows of features and probabilities for JS or C++ checks. Not done yet: confusion PNG, transition rejection against raw windows. Synthetic input is flagged, and accuracies on it say nothing about the glove.
+
+The selftest builds 5 synthetic sessions, checks logreg LOSO is within 3 points of kNN on `quat`, reloads both exported JSON models and compares predictions, and syntax-checks the C headers with `g++` (or the ARM `g++` from the Arduino core if there is no `g++`). With `quat` the margin depends on the seed, because the heading drift differs per session. The selftest pins seed 0.
+
+### `train_baseline.py`: gravity feature sets, session key, drift timing  *(Phase 8, S06)*
+
+Feature sets now also include gravity-only ones (spec S06): `G18` (each sensor's
+"up" vector after accel offset and remap, 18 numbers), `G18z` (the same with each
+sensor's tilt at calibration, `calUp` in the meta line, rotated away), `P5` (curl of
+each finger relative to the hand, in degrees, from the two up vectors), `R5` (the
+same about the finger axis, joined as `P5+R5`), plus `G18z+P5`, `G18z+T3` (thumb
+direction from the quaternion) and `dir+Ghand`. Gravity sets cannot drift in heading.
+`features()` takes a loaded batch file (it needs raw accel and meta); the old call
+`features(quat, "dir")` still works for the quaternion sets. `P5` sign is the named
+constant `CURL_SIGN` (+1 = toward the palm in the model frame); the curl sign on the
+glove is still an open item, so this is a convention, not a measurement.
+
+Sessions are split by `meta.session.id` when a file has it, else by the session in
+the file name (`handrig_batch_<letter or SET>_<NN>_<ts>.csv`). The printout adds
+per-letter recall. `--report-drift` bins leave-one-session-out accuracy by minutes
+since the last calibration or Zero press (`meta.zeros` against each row's `t_ms`).
+```bash
+python train_baseline.py path/to/exports/ --report-drift
+python verify_features.py      # flat hand, 30 deg curl, 20 deg hand roll, tilted calUp
+```
+
+### `analyze_touch_poses.py`  *(Phase 8, touch-pose test, S05 7.3)*
+
+Scores two touch detectors on the TOUCHTEST files (one per attitude: 01 palm
+forward, 02 palm down, 03 palm toward the face). Design A: nearest class centroid on
+`dir`, accepted only if the nearest is < 0.7 x the second nearest. Design C:
+multinomial logistic regression on `G18z`, rejected below probability 0.6. Near misses
+count as touches (L7) and are also reported on their own. Prints touch recall,
+wrong-pair rate, false accepts on REST and FREE and near-miss acceptance for
+leave-one-attitude-out and leave-one-rep-out, then the S05 7.4 decision.
+```bash
+python make_synthetic_batch.py --poses touchtest --out synth_touch/   # testing only
+python analyze_touch_poses.py synth_touch/
+```
+`--poses` with no value still writes the older thumb-pair `POSES` files for
+`train_touch.py`. Synthetic results are not glove results.

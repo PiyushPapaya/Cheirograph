@@ -17,6 +17,12 @@ The second comment line says "hand-relative". Exports from before the
 2026-10-06 fix wrote each sensor against its own zero instead, which is a
 different (and wrong) feature, so the loader records whether that marker is
 present and check_dataset.py refuses files without it.
+
+Meta keys read here and in train_baseline.py (full list in the dashboard's
+batchMeta()): offsets, calUp, zeros, session.id. Synthetic files from
+make_synthetic_batch.py also carry "rawFrame": "model", meaning their raw accel
+is already in the model frame (no remap needed). Real exports never have it:
+their raw columns are in each sensor's own frame.
 """
 
 import json
@@ -43,7 +49,10 @@ DEFAULT_OFFSETS[5] = [0.250, 0.190, -0.165]
 META_SCHEMA = 1
 
 # handrig_batch_<letter>_<session#>_<timestamp>.csv, the rename convention in
-# ml/future-data-collection-plan.md. The bare download name has no session.
+# ml/future-data-collection-plan.md, and handrig_batch_<SET>_<NN>_<timestamp>.csv,
+# the name the dashboard builds itself once it has set and session fields
+# (STARTER, TOUCHTEST, ...). Both have the same shape, so one pattern reads both.
+# The bare download name has no session.
 _NAME_RE = re.compile(r"handrig_batch_(?P<letter>[A-Za-z]+)_(?P<session>\d+)_(?P<ts>\d+)\.csv$")
 
 
@@ -66,6 +75,19 @@ class BatchFile:
 def session_of(path: Path) -> str:
     m = _NAME_RE.search(path.name)
     return m.group("session") if m else "?"
+
+
+def session_key(bf) -> str:
+    """The session a file belongs to, for leave-one-session-out splits.
+
+    meta.session.id (YYYYMMDD-NN, set by the dashboard) when present, because two
+    days can both have a session "01". Otherwise the file-name session ("01", or "?").
+    A flat meta.session_id is accepted too."""
+    m = bf.meta if isinstance(bf.meta, dict) else {}
+    sess = m.get("session")
+    sid = sess.get("id") if isinstance(sess, dict) else None
+    sid = sid or m.get("session_id")
+    return str(sid) if sid else bf.session
 
 
 def load_batch(path) -> BatchFile:

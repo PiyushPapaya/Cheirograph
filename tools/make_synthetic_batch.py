@@ -79,13 +79,42 @@ for _near, _src in (("NEARTI", "TI"), ("NEARTR", "TR")):
     POSE_SHAPES[_near] = ([_c[0] - 12] + _c[1:], _si, _sm)
 assert set(POSE_SHAPES) == set(POSES) and set(NEAR_MISS) <= set(POSE_SHAPES)
 
+# Touch-pose test (--poses touchtest, spec S05 section 7): the four touch classes, each
+# with a near miss whose thumb stops --near-deg short (the ~1 cm gap), REST, and FREE
+# (ten different non-touch shapes, all labelled FREE).
+TOUCH_SHAPES = {
+    "F":     ([40, 70, 0, 0, 0], 0, 0),       # thumb on index tip, others up
+    "SPACE": ([60, 0, 70, 0, 0], 0, 0),       # thumb on middle (ASL 8)
+    "BKSP":  ([80, 0, 0, 70, 0], 0, 0),       # thumb on ring (ASL 7)
+    "W":     ([100, 0, 0, 0, 70], -12, 0),    # thumb on pinky
+}
+REST_SHAPE = ([20, 30, 35, 40, 45], 0, 0)
+FREE_SHAPES = [([0, 0, 0, 0, 0], 0, 0), ([20, 140, 140, 140, 140], 0, 0), ([0, 140, 140, 140, 140], 0, 8),
+               ([0, 0, 140, 140, 140], 0, 0), ([0, 140, 140, 140, 0], 0, 0), ([60, 140, 140, 140, 0], 0, 0),
+               ([60, 0, 0, 140, 140], 0, 0), ([30, 70, 70, 70, 70], 0, 0), ([0, 0, 140, 140, 0], 0, 0),
+               ([60, 0, 0, 0, 0], -12, 12)]
+# One "session" per attitude, one wear (S05 7.1). The hand's world orientation:
+# R_x(-90) points the fingers (+Z) straight up. 03 turns that 180 deg about the
+# vertical (palm toward the face) and leans it back to 60 deg.
+TOUCH_ATTITUDES = {1: ("palm forward", [(1, 0, 0, -90)]),
+                   2: ("palm down", []),
+                   3: ("palm to face", [(0, 1, 0, 180), (1, 0, 0, -60)])}
+
 THUMB_REST_DEG = -40      # thumb points forward and out toward -X when "straight"
 
 
-def meta_line(sess_no):
-    """The "# meta" line (schema 1). Zero offsets: the synthetic accel has none."""
-    meta = {"schema": 1, "synthetic": True, "offsets": [[0.0, 0.0, 0.0]] * 6,
-            "session": {"id": f"synthetic-{sess_no:02d}"}}
+def meta_line(sess_no, zero_ms=None, set_code=None):
+    """The "# meta" line (schema 1). Zero offsets: the synthetic accel has none.
+
+    rawFrame "model": the raw accel columns here are already in the model frame
+    (gravity is computed in it, see the top of this file), unlike a real export,
+    whose raw columns are in each sensor's own frame. calUp: the calibration pose is
+    the flat hand and the synthetic sensors have no mount tilt, so every sensor saw
+    (0,1,0). zeros: one calibration, a minute before the session's first rep."""
+    meta = {"schema": 1, "synthetic": True, "rawFrame": "model",
+            "offsets": [[0.0, 0.0, 0.0]] * 6, "calUp": [[0.0, 1.0, 0.0]] * 6,
+            "zeros": [] if zero_ms is None else [zero_ms],
+            "session": {"set": set_code, "number": sess_no, "id": f"synthetic-{sess_no:02d}"}}
     return "# meta " + json.dumps(meta)
 
 
@@ -136,10 +165,13 @@ def pin(q):
     return q if q[0] >= 0 else -q
 
 
-def make_rep(rng, letter, sess, shapes=LETTERS):
+def make_rep(rng, letter, sess, shapes=LETTERS, attitude=None, tilt_deg=25):
+    """attitude: world orientation (quaternion) the random tilt is applied on top of."""
     curls, spread_i, spread_m = shapes[letter]
     spreads = [0, spread_i, spread_m, 0, 0]
-    q_hand = random_tilt(rng, 25)
+    q_hand = random_tilt(rng, tilt_deg)
+    if attitude is not None:
+        q_hand = q_mul(attitude, q_hand)
     up = np.array([0.0, 1.0, 0.0])     # an accelerometer at rest reads +1 g pointing UP
 
     raw, quat = [], []
@@ -170,9 +202,12 @@ def main():
     ap.add_argument("--reps", type=int, default=30, help="reps per letter per session")
     ap.add_argument("--drift-deg", type=float, default=10.0,
                     help="std of the per-session, per-finger yaw error in degrees (0 = perfect filter)")
-    ap.add_argument("--poses", action="store_true",
-                    help="write one handrig_batch_POSES_<sess>_<ts>.csv per session with every "
-                         "touch pose (tools/pose_labels.py) instead of the letter files")
+    ap.add_argument("--poses", nargs="?", const="pairs", choices=["pairs", "touchtest"],
+                    help="instead of letter files: 'pairs' (the default when no value is given) "
+                         "writes one handrig_batch_POSES_<sess>_<ts>.csv per session with every "
+                         "thumb-pair pose (tools/pose_labels.py); 'touchtest' writes the S05 touch-pose "
+                         "test, handrig_batch_TOUCHTEST_<attitude>_<ts>.csv for attitudes 01 to 03 "
+                         "(--sessions and --reps are ignored)")
     ap.add_argument("--curl-offset-sd", type=float, default=6.0,
                     help="per-session curl offset in degrees, what re-seating the glove does")
     ap.add_argument("--near-deg", type=float, default=12.0,
@@ -188,13 +223,19 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     ts = int(time.time() * 1000)
 
+    if args.poses == "touchtest":
+        write_touchtest(args, rng, out, ts)
+        return
+
     for s in range(1, args.sessions + 1):
         # Things that change when the glove is taken off and put back on.
         sess = {"yaw_drift": rng.normal(0, args.drift_deg, 5) if args.drift_deg else np.zeros(5),
                 "curl_offset": rng.normal(0, args.curl_offset_sd, 5),
                 "gyro_bias": rng.normal(0, 1.5, (6, 3))}
+        zero_ms = ts - 60000
         if args.poses:
-            lines = [HEADER_LINES[0], HEADER_LINES[1], HEADER_LINES[2], meta_line(s), ",".join(EXPECTED_HEADER)]
+            lines = [HEADER_LINES[0], HEADER_LINES[1], HEADER_LINES[2], meta_line(s, zero_ms, "POSES"),
+                     ",".join(EXPECTED_HEADER)]
             for label in POSE_SHAPES:
                 for rep in range(1, args.reps + 1):
                     raw, quat = make_rep(rng, label, sess, POSE_SHAPES)
@@ -211,7 +252,7 @@ def main():
                      "# batch-captured static-pose samples. raw = median over a ~0.6s held-still window (noise-reduced).",
                      "# q* = hand-relative orientation conj(q_hand)*q_finger (viewer frame, bias-corrected) "
                      "at capture time, order (w,x,y,z), sign pinned to w>=0.",
-                     meta_line(s),
+                     meta_line(s, zero_ms),
                      ",".join(EXPECTED_HEADER)]
             for rep in range(1, args.reps + 1):
                 raw, quat = make_rep(rng, letter, sess)
@@ -224,6 +265,44 @@ def main():
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     n_files = args.sessions * (1 if args.poses else len(args.letters))
     print(f"wrote {n_files} files to {out}")
+
+
+def write_touchtest(args, rng, out, ts):
+    """S05 7.2: per attitude each touch 5 reps, each near miss 3, REST 5; FREE 10 in 01."""
+    shapes = dict(TOUCH_SHAPES, REST=REST_SHAPE)
+    for name, (c, si, sm) in TOUCH_SHAPES.items():
+        shapes["N" + name] = ([c[0] - args.near_deg] + c[1:], si, sm)
+    for i, f in enumerate(FREE_SHAPES):
+        shapes[f"FREE{i}"] = f
+    # one wear: re-seating offsets and filter drift are shared by all three attitudes
+    sess = {"yaw_drift": rng.normal(0, args.drift_deg, 5) if args.drift_deg else np.zeros(5),
+            "curl_offset": rng.normal(0, args.curl_offset_sd, 5),
+            "gyro_bias": rng.normal(0, 1.5, (6, 3))}
+    zero_ms = ts - 60000
+    for att, (_, turns) in TOUCH_ATTITUDES.items():
+        q_att = np.array([1.0, 0, 0, 0])
+        for x, y, z, deg in turns:
+            q_att = q_mul(q_axis_angle([x, y, z], deg), q_att)
+        plan = [(k, 5) for k in TOUCH_SHAPES] + [("N" + k, 3) for k in TOUCH_SHAPES] + [("REST", 5)]
+        if att == 1:
+            plan += [(f"FREE{i}", 1) for i in range(len(FREE_SHAPES))]
+        lines = [HEADER_LINES[0], HEADER_LINES[1], HEADER_LINES[2], meta_line(att, zero_ms, "TOUCHTEST"),
+                 ",".join(EXPECTED_HEADER)]
+        free_rep = 0
+        for shape, n in plan:
+            label = "FREE" if shape.startswith("FREE") else shape
+            for rep in range(1, n + 1):
+                if label == "FREE":
+                    free_rep += 1
+                raw, quat = make_rep(rng, shape, sess, shapes, attitude=q_att, tilt_deg=15)
+                row = [label, str(free_rep if label == "FREE" else rep), str(ts)]
+                row += [f"{v:.5f}" for v in raw.ravel()]
+                row += [f"{v:.6f}" for v in quat.ravel()]
+                lines.append(",".join(row))
+                ts += 1500
+        path = out / f"handrig_batch_TOUCHTEST_{att:02d}_{ts}.csv"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"wrote {len(TOUCH_ATTITUDES)} files to {out}")
 
 
 if __name__ == "__main__":
